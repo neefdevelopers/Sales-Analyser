@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
-import { Clock, AlertTriangle, CheckCircle, Shield } from 'lucide-react';
+import { Clock, Shield } from 'lucide-react';
 
 export default function Navbar({ currentViewTitle }) {
   const { user } = useAuth();
@@ -26,74 +26,43 @@ export default function Navbar({ currentViewTitle }) {
   const isManager = user?.role === 'brand_manager';
 
   return (
-    <>
-      <header className="navbar">
-        <div>
-          <h1 style={{ fontSize: '18px', fontWeight: 800 }}>{currentViewTitle}</h1>
-          <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
-            Logged in as <strong style={{ color: 'var(--text-main)' }}>{user?.name}</strong> ({isManager ? 'Brand Manager' : user?.staff_id})
-          </div>
+    <header className="navbar">
+      <div>
+        <h1 style={{ fontSize: '18px', fontWeight: 800 }}>{currentViewTitle}</h1>
+        <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
+          Logged in as <strong style={{ color: 'var(--text-main)' }}>{user?.name}</strong> ({isManager ? 'Brand Manager' : user?.staff_id})
         </div>
+      </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          {/* Business Timezone & Clock */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '6px 12px',
-              background: 'var(--bg-surface-subtle)',
-              borderRadius: 'var(--radius-md)',
-              fontSize: '12px',
-              fontWeight: 600,
-              color: 'var(--text-muted)'
-            }}
-          >
-            <Clock size={14} color="var(--primary-600)" />
-            <span>Timezone: <strong>Asia/Kolkata</strong></span>
-            {deadlineInfo && (
-              <span style={{ color: 'var(--text-main)', borderLeft: '1px solid var(--border-subtle)', paddingLeft: '8px' }}>
-                {deadlineInfo.currentTime}
-              </span>
-            )}
-          </div>
-
-          <div className={`badge ${isManager ? 'badge-primary' : 'badge-info'}`} style={{ padding: '6px 12px' }}>
-            <Shield size={13} />
-            <span>{isManager ? 'Brand Manager Portal' : 'Sales Staff Portal'}</span>
-          </div>
-        </div>
-      </header>
-
-      {/* Daily Activity Deadline Banner for Yesterday / Today */}
-      {deadlineInfo && (
-        <div className={`deadline-banner ${deadlineInfo.yesterday?.isLocked ? 'locked' : ''}`}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {deadlineInfo.yesterday?.isLocked ? (
-              <AlertTriangle size={15} color="var(--danger-solid)" />
-            ) : (
-              <CheckCircle size={15} color="var(--warning-solid)" />
-            )}
-            <span>
-              <strong>Daily Activity Rule:</strong> Yesterday's ({deadlineInfo.yesterday?.date}) activity{' '}
-              {deadlineInfo.yesterday?.isLocked ? (
-                <span style={{ color: 'var(--danger-text)', fontWeight: 700 }}>
-                  LOCKED (Cutoff passed at 09:30 AM today)
-                </span>
-              ) : (
-                <span style={{ color: 'var(--warning-text)', fontWeight: 700 }}>
-                  Open until 09:30 AM today
-                </span>
-              )}
-              . Today's ({deadlineInfo.today?.date}) entries are open until 09:30 AM tomorrow.
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        {/* Business Timezone & Clock */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '6px 12px',
+            background: 'var(--bg-surface-subtle)',
+            borderRadius: 'var(--radius-md)',
+            fontSize: '12px',
+            fontWeight: 600,
+            color: 'var(--text-muted)'
+          }}
+        >
+          <Clock size={14} color="var(--primary-600)" />
+          <span>Timezone: <strong>Asia/Kolkata</strong></span>
+          {deadlineInfo && (
+            <span style={{ color: 'var(--text-main)', borderLeft: '1px solid var(--border-subtle)', paddingLeft: '8px' }}>
+              {deadlineInfo.currentTime}
             </span>
-          </div>
-          <div style={{ fontSize: '11px', opacity: 0.85 }}>
-            Timezone: Asia/Kolkata (IST)
-          </div>
+          )}
         </div>
-      )}
-    </>
+
+        <div className={`badge ${isManager ? 'badge-primary' : 'badge-info'}`} style={{ padding: '6px 12px' }}>
+          <Shield size={13} />
+          <span>{isManager ? 'Brand Manager Portal' : 'Sales Staff Portal'}</span>
+        </div>
+      </div>
+    </header>
   );
 }
