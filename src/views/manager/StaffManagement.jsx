@@ -265,16 +265,6 @@ export default function StaffManagement() {
                         >
                           {s.status === 'active' ? 'Deactivate' : 'Activate'}
                         </button>
-
-                        {onSelectStaffForPerformance && (
-                          <button
-                            className="btn btn-primary btn-sm"
-                            onClick={() => onSelectStaffForPerformance(s.id)}
-                            title="View Performance Analysis"
-                          >
-                            Performance
-                          </button>
-                        )}
                       </div>
                     </td>
                   </tr>
