@@ -191,10 +191,12 @@ function initSchema(db) {
       return_number TEXT UNIQUE NOT NULL,
       order_id INTEGER NOT NULL REFERENCES orders(id),
       staff_id INTEGER NOT NULL REFERENCES users(id),
+      product_id INTEGER REFERENCES products(id),
+      returned_by_staff_id INTEGER REFERENCES users(id),
       return_quantity INTEGER NOT NULL CHECK(return_quantity > 0),
       return_amount REAL NOT NULL,
       return_date TEXT NOT NULL,
-      return_reason TEXT NOT NULL,
+      return_reason TEXT NOT NULL DEFAULT 'Product Return',
       remarks TEXT,
       reversed_incentive REAL NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
@@ -207,6 +209,34 @@ function initSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_returns_order ON returns(order_id);
     CREATE INDEX IF NOT EXISTS idx_returns_staff ON returns(staff_id);
   `);
+
+  // Ensure returns table has product_id and returned_by_staff_id columns
+  try {
+    db.run(`ALTER TABLE returns ADD COLUMN product_id INTEGER REFERENCES products(id);`);
+  } catch (e) {
+    // Column already exists
+  }
+  try {
+    db.run(`ALTER TABLE returns ADD COLUMN returned_by_staff_id INTEGER REFERENCES users(id);`);
+  } catch (e) {
+    // Column already exists
+  }
+  try {
+    db.run(`
+      UPDATE returns
+      SET product_id = (SELECT product_id FROM orders WHERE orders.id = returns.order_id)
+      WHERE product_id IS NULL;
+
+      UPDATE returns
+      SET returned_by_staff_id = staff_id
+      WHERE returned_by_staff_id IS NULL;
+
+      CREATE INDEX IF NOT EXISTS idx_returns_returned_by ON returns(returned_by_staff_id);
+      CREATE INDEX IF NOT EXISTS idx_returns_product ON returns(product_id);
+    `);
+  } catch (e) {
+    // Ignore
+  }
 
   // Safely drop removed modules tables if they exist
   try {

@@ -5,7 +5,13 @@ import { authenticate } from '../auth.js';
 
 const router = Router();
 
-// GET all returns
+/**
+ * 1. GET Returns List
+ * Brand Manager sees all returns.
+ * Sales Staff sees only their own returns.
+ * Columns: Return ID, Return Date, Returned By (Staff), Product, Returned Quantity.
+ * Supports search and date filters.
+ */
 router.get('/', authenticate, (req, res) => {
   const isManager = req.user.role === 'brand_manager';
   const { staffId, search, startDate, endDate, page = 1, limit = 50 } = req.query;
@@ -14,15 +20,16 @@ router.get('/', authenticate, (req, res) => {
   let params = [];
 
   if (!isManager) {
-    conditions.push('r.staff_id = ?');
-    params.push(req.user.id);
-  } else if (staffId) {
-    conditions.push('r.staff_id = ?');
-    params.push(parseInt(staffId, 10));
+    // Sales staff can view only their own return records
+    conditions.push('(r.returned_by_staff_id = ? OR r.staff_id = ?)');
+    params.push(req.user.id, req.user.id);
+  } else if (staffId && staffId !== 'all') {
+    conditions.push('(r.returned_by_staff_id = ? OR r.staff_id = ?)');
+    params.push(parseInt(staffId, 10), parseInt(staffId, 10));
   }
 
   if (search && search.trim()) {
-    conditions.push('(r.return_number LIKE ? OR o.order_number LIKE ? OR c.name LIKE ? OR c.phone LIKE ? OR p.name LIKE ?)');
+    conditions.push('(r.return_number LIKE ? OR p.name LIKE ? OR p.code LIKE ? OR u_ret.name LIKE ? OR u_ret.staff_id LIKE ?)');
     const term = `%${search.trim()}%`;
     params.push(term, term, term, term, term);
   }
@@ -42,8 +49,8 @@ router.get('/', authenticate, (req, res) => {
     SELECT COUNT(*) AS total
     FROM returns r
     JOIN orders o ON r.order_id = o.id
-    JOIN customers c ON o.customer_id = c.id
-    JOIN products p ON o.product_id = p.id
+    LEFT JOIN products p ON COALESCE(r.product_id, o.product_id) = p.id
+    LEFT JOIN users u_ret ON COALESCE(r.returned_by_staff_id, r.staff_id) = u_ret.id
     ${whereClause}
   `, params);
 
@@ -54,32 +61,31 @@ router.get('/', authenticate, (req, res) => {
     SELECT
       r.id,
       r.return_number,
-      r.order_id,
-      r.staff_id,
-      u.name AS staff_name,
-      u.staff_id AS staff_code,
+      r.return_date,
       r.return_quantity,
       r.return_amount,
-      r.return_date,
-      r.return_reason,
-      r.remarks AS return_remarks,
       r.reversed_incentive,
+      r.order_id,
+      r.staff_id,
+      r.product_id,
+      r.returned_by_staff_id,
       r.created_at,
-      o.order_number,
-      o.quantity AS original_order_quantity,
-      o.total_amount AS original_order_amount,
-      o.payment_method,
-      o.incentive_amount AS original_order_incentive,
-      c.name AS customer_name,
-      c.phone AS customer_phone,
       p.name AS product_name,
       p.code AS product_code,
-      p.price AS unit_price
+      p.price AS unit_price,
+      u_ret.name AS returned_by_name,
+      u_ret.staff_id AS returned_by_code,
+      u_order.name AS staff_name,
+      u_order.staff_id AS staff_code,
+      o.order_number,
+      c.name AS customer_name,
+      c.phone AS customer_phone
     FROM returns r
     JOIN orders o ON r.order_id = o.id
-    JOIN users u ON r.staff_id = u.id
-    JOIN customers c ON o.customer_id = c.id
-    JOIN products p ON o.product_id = p.id
+    LEFT JOIN products p ON COALESCE(r.product_id, o.product_id) = p.id
+    LEFT JOIN users u_ret ON COALESCE(r.returned_by_staff_id, r.staff_id) = u_ret.id
+    LEFT JOIN users u_order ON r.staff_id = u_order.id
+    LEFT JOIN customers c ON o.customer_id = c.id
     ${whereClause}
     ORDER BY r.return_date DESC, r.id DESC
     LIMIT ? OFFSET ?
@@ -98,7 +104,9 @@ router.get('/', authenticate, (req, res) => {
   });
 });
 
-// POST calculate return preview (preview reversed incentive and refund amount)
+/**
+ * 2. POST Preview Return (internal helper)
+ */
 router.post('/preview', authenticate, (req, res) => {
   const { order_id, return_quantity } = req.body;
 
@@ -151,33 +159,33 @@ router.post('/preview', authenticate, (req, res) => {
   });
 });
 
-// POST process new return
+/**
+ * 3. POST Process New Return (Minimal Return Creation)
+ * Input:
+ * - order_id (required)
+ * - product_id (optional, automatically resolved from order)
+ * - return_quantity (required, positive integer)
+ * 
+ * Automatically captures logged-in user as returned_by_staff_id.
+ * Calculates refund amount and incentive reversal automatically.
+ * Validates against remaining returnable quantity inside database transaction.
+ * Retains order relationship internally.
+ */
 router.post('/', authenticate, (req, res) => {
   const {
     order_id,
-    return_quantity,
-    return_date,
-    return_reason,
-    remarks = ''
+    product_id,
+    return_quantity
   } = req.body;
 
   // 1. Validation
   if (!order_id) {
-    return res.status(400).json({ error: 'Order selection is required.' });
+    return res.status(400).json({ error: 'Original order selection is required.' });
   }
 
   const returnQty = parseInt(return_quantity, 10);
   if (isNaN(returnQty) || returnQty <= 0) {
     return res.status(400).json({ error: 'Return quantity must be a positive integer (at least 1).' });
-  }
-
-  if (!return_reason || !return_reason.trim()) {
-    return res.status(400).json({ error: 'Return reason is required.' });
-  }
-
-  const returnDateStr = return_date ? return_date.trim() : new Date().toISOString().split('T')[0];
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(returnDateStr)) {
-    return res.status(400).json({ error: 'Invalid return date format. Expected YYYY-MM-DD.' });
   }
 
   const isManager = req.user.role === 'brand_manager';
@@ -194,12 +202,16 @@ router.post('/', authenticate, (req, res) => {
       `, [order_id]);
 
       if (!order) {
-        throw new Error('Order not found.');
+        throw new Error('Original order not found.');
       }
 
       // Authorization: Sales staff can only process returns on their own orders
       if (!isManager && order.staff_id !== req.user.id) {
         throw new Error('You are only authorized to process returns for your own orders.');
+      }
+
+      if (order.status === 'Cancelled') {
+        throw new Error('Cannot process returns for a cancelled order.');
       }
 
       const remaining = order.quantity - order.already_returned_qty;
@@ -211,7 +223,13 @@ router.post('/', authenticate, (req, res) => {
         throw new Error(`Return quantity (${returnQty}) exceeds remaining returnable quantity (${remaining}).`);
       }
 
-      // Calculate return value and reversed incentive
+      // Validate product matches order
+      const resolvedProductId = product_id ? parseInt(product_id, 10) : order.product_id;
+      if (product_id && parseInt(product_id, 10) !== order.product_id) {
+        throw new Error('Selected product does not belong to the selected original order.');
+      }
+
+      // Calculate refund amount and reversed incentive automatically using business rules
       const returnAmount = Math.round(order.unit_price * returnQty * 100) / 100;
       let reversedIncentive = 0;
       if (order.incentive_amount > 0 && order.quantity > 0) {
@@ -219,7 +237,8 @@ router.post('/', authenticate, (req, res) => {
       }
 
       // Generate unique return number: RET-YYYYMMDD-XXXX
-      const dateFormatted = returnDateStr.replace(/-/g, '');
+      const todayDate = new Date().toISOString().split('T')[0];
+      const dateFormatted = todayDate.replace(/-/g, '');
       const countToday = get("SELECT COUNT(*) AS c FROM returns WHERE return_number LIKE ?", [`RET-${dateFormatted}-%`]);
       const nextSeq = (countToday?.c || 0) + 1;
       const returnNumber = `RET-${dateFormatted}-${String(nextSeq).padStart(4, '0')}`;
@@ -228,20 +247,22 @@ router.post('/', authenticate, (req, res) => {
 
       const result = run(
         `INSERT INTO returns (
-          return_number, order_id, staff_id,
+          return_number, order_id, staff_id, product_id, returned_by_staff_id,
           return_quantity, return_amount, return_date,
           return_reason, remarks, reversed_incentive,
           created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           returnNumber,
           order.id,
-          order.staff_id, // Attributed to original staff member
+          order.staff_id, // Attributed to original earning staff member
+          resolvedProductId,
+          req.user.id, // Logged in user who processed the return
           returnQty,
           returnAmount,
-          returnDateStr,
-          return_reason.trim(),
-          remarks ? remarks.trim() : null,
+          todayDate,
+          'Product Return',
+          null,
           reversedIncentive,
           now,
           now
@@ -252,11 +273,23 @@ router.post('/', authenticate, (req, res) => {
     });
 
     const createdReturn = get(`
-      SELECT r.*, o.order_number, c.name AS customer_name, p.name AS product_name
+      SELECT
+        r.id,
+        r.return_number,
+        r.return_date,
+        r.return_quantity,
+        r.return_amount,
+        r.reversed_incentive,
+        r.order_id,
+        r.staff_id,
+        r.product_id,
+        p.name AS product_name,
+        p.code AS product_code,
+        u.name AS returned_by_name,
+        u.staff_id AS returned_by_code
       FROM returns r
-      JOIN orders o ON r.order_id = o.id
-      JOIN customers c ON o.customer_id = c.id
-      JOIN products p ON o.product_id = p.id
+      JOIN products p ON r.product_id = p.id
+      JOIN users u ON r.returned_by_staff_id = u.id
       WHERE r.id = ?
     `, [newReturnId]);
 
