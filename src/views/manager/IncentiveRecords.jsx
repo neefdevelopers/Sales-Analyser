@@ -53,7 +53,6 @@ export default function IncentiveRecords() {
 
   // Modals for audit inspection
   const [selectedOrderModal, setSelectedOrderModal] = useState(null);
-  const [selectedReturnModal, setSelectedReturnModal] = useState(null);
 
   // Tab state in staff detail view: 'orders' | 'returns' | 'both'
   const [detailTab, setDetailTab] = useState('orders');
@@ -567,49 +566,38 @@ export default function IncentiveRecords() {
                   <tr>
                     <th>Return ID</th>
                     <th>Return Date</th>
-                    <th>Original Order</th>
                     <th>Product</th>
                     <th>Payment Method</th>
-                    <th>Return Quantity</th>
-                    <th>Refund Amount</th>
-                    <th>Incentive Reversed</th>
-                    <th>Action</th>
+                    <th style={{ textAlign: 'right' }}>Returned Quantity</th>
+                    <th style={{ textAlign: 'right' }}>Incentive Reversed</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan="9" style={{ textAlign: 'center', padding: '32px' }}>Loading return records...</td>
+                      <td colSpan="6" style={{ textAlign: 'center', padding: '32px' }}>Loading return records...</td>
                     </tr>
                   ) : filteredReturns.length === 0 ? (
                     <tr>
-                      <td colSpan="9">
+                      <td colSpan="6">
                         <div className="empty-state">
                           <div className="empty-state-icon" style={{ background: '#fef2f2', color: '#dc2626' }}>
                             <RotateCcw size={24} />
                           </div>
                           <div className="empty-state-title">No product returns</div>
-                          <div className="empty-state-desc">No returns recorded against this staff member's orders in {currentMonthName} {currentYear}.</div>
+                          <div className="empty-state-desc">No returns recorded against this staff member in {currentMonthName} {currentYear}.</div>
                         </div>
                       </td>
                     </tr>
                   ) : (
                     filteredReturns.map(r => (
-                      <tr
-                        key={r.id}
-                        className="table-row-clickable"
-                        onClick={() => setSelectedReturnModal(r)}
-                      >
+                      <tr key={r.id}>
                         <td>
-                          <strong style={{ color: '#dc2626' }}>{r.return_number}</strong>
+                          <strong style={{ color: '#dc2626', fontFamily: 'monospace', fontSize: '13px' }}>
+                            {r.return_number}
+                          </strong>
                         </td>
                         <td>{r.return_date}</td>
-                        <td>
-                          <strong style={{ color: 'var(--primary-700)' }}>{r.order_number}</strong>
-                          {r.order_date && (
-                            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{r.order_date}</div>
-                          )}
-                        </td>
                         <td>
                           <div><strong>{r.product_name}</strong></div>
                           <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{r.product_code}</div>
@@ -619,27 +607,11 @@ export default function IncentiveRecords() {
                             {r.payment_method || 'Prepaid'}
                           </span>
                         </td>
-                        <td>
-                          <strong>{r.return_quantity}</strong> units
+                        <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                          {r.return_quantity} units
                         </td>
-                        <td>
-                          ₹{Number(r.return_amount).toLocaleString()}
-                        </td>
-                        <td style={{ color: '#dc2626', fontWeight: 700 }}>
-                          -₹{r.reversed_incentive}
-                        </td>
-                        <td>
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedReturnModal(r);
-                            }}
-                            title="View Return Details"
-                          >
-                            <Eye size={13} />
-                          </button>
+                        <td style={{ textAlign: 'right', color: '#dc2626', fontWeight: 700, fontSize: '14px' }}>
+                          -₹{Number(r.reversed_incentive).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                         </td>
                       </tr>
                     ))
@@ -775,74 +747,7 @@ export default function IncentiveRecords() {
           </div>
         )}
 
-        {/* Return Record Audit Modal */}
-        {selectedReturnModal && (
-          <div className="modal-overlay">
-            <div className="modal-dialog" style={{ maxWidth: '580px' }}>
-              <div className="modal-header">
-                <h3 className="modal-title">Return Audit: {selectedReturnModal.return_number}</h3>
-                <button className="modal-close" onClick={() => setSelectedReturnModal(null)}>✕</button>
-              </div>
-              <div className="modal-body">
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-                  <div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Associated Order</div>
-                    <div style={{ fontWeight: 700, fontSize: '15px', color: 'var(--primary-700)' }}>{selectedReturnModal.order_number}</div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Order Date: {selectedReturnModal.order_date}</div>
-                    {selectedReturnModal.customer_name && (
-                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                        Customer: {selectedReturnModal.customer_name} ({selectedReturnModal.customer_phone})
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Returned Product</div>
-                    <div style={{ fontWeight: 700, fontSize: '15px' }}>{selectedReturnModal.product_name}</div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>SKU: {selectedReturnModal.product_code}</div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                      Return Date: {selectedReturnModal.return_date}
-                    </div>
-                  </div>
-                </div>
 
-                <div className="preview-box" style={{ marginBottom: '16px' }}>
-                  <div className="preview-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
-                    <div>
-                      <div className="preview-item-label">Return Qty</div>
-                      <div className="preview-item-val">{selectedReturnModal.return_quantity} units</div>
-                    </div>
-                    <div>
-                      <div className="preview-item-label">Payment</div>
-                      <div style={{ fontWeight: 700 }}>{selectedReturnModal.payment_method || 'Prepaid'}</div>
-                    </div>
-                    <div>
-                      <div className="preview-item-label">Refund Amount</div>
-                      <div className="preview-item-val" style={{ color: '#dc2626' }}>
-                        ₹{Number(selectedReturnModal.return_amount).toLocaleString()}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="preview-item-label">Incentive Reversal</div>
-                      <div className="preview-item-val" style={{ color: '#dc2626' }}>
-                        -₹{selectedReturnModal.reversed_incentive}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: 'var(--radius-sm)', fontSize: '12.5px', marginBottom: '8px' }}>
-                  <div><strong>Reason:</strong> {selectedReturnModal.return_reason || 'Product Return'}</div>
-                  {selectedReturnModal.remarks && (
-                    <div style={{ marginTop: '4px' }}><strong>Remarks:</strong> {selectedReturnModal.remarks}</div>
-                  )}
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button className="btn btn-secondary" onClick={() => setSelectedReturnModal(null)}>Close</button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     );
   }

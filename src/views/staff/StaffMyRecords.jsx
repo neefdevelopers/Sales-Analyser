@@ -328,26 +328,22 @@ export default function StaffMyRecords() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Return #</th>
+                  <th>Return ID</th>
                   <th>Return Date</th>
-                  <th>Original Order</th>
-                  <th>Customer</th>
                   <th>Product</th>
-                  <th>Returned Qty</th>
-                  <th>Refund Amount</th>
-                  <th>Incentive Reversed</th>
-                  <th>Return Reason</th>
-                  <th>Remarks</th>
+                  <th>Payment Method</th>
+                  <th style={{ textAlign: 'right' }}>Returned Quantity</th>
+                  <th style={{ textAlign: 'right' }}>Incentive Reversed</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="10" style={{ textAlign: 'center', padding: '32px' }}>Loading return records...</td>
+                    <td colSpan="6" style={{ textAlign: 'center', padding: '32px' }}>Loading return records...</td>
                   </tr>
                 ) : filteredReturns.length === 0 ? (
                   <tr>
-                    <td colSpan="10">
+                    <td colSpan="6">
                       <div className="empty-state">
                         <div className="empty-state-icon"><RotateCcw size={24} /></div>
                         <div className="empty-state-title">No returns found</div>
@@ -358,29 +354,20 @@ export default function StaffMyRecords() {
                 ) : (
                   filteredReturns.map(r => (
                     <tr key={r.id}>
-                      <td><strong style={{ color: 'var(--primary-700)' }}>{r.return_number}</strong></td>
+                      <td><strong style={{ color: '#dc2626', fontFamily: 'monospace', fontSize: '13px' }}>{r.return_number}</strong></td>
                       <td>{r.return_date}</td>
-                      <td><span className="badge badge-neutral">{r.order_number}</span></td>
                       <td>
-                        <div><strong>{r.customer_name}</strong></div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{r.customer_phone}</div>
-                      </td>
-                      <td>
-                        <div>{r.product_name}</div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>₹{r.unit_price} / unit</div>
-                      </td>
-                      <td><strong>{r.return_quantity}</strong></td>
-                      <td style={{ color: 'var(--danger-text)', fontWeight: 700 }}>
-                        ₹{Number(r.return_amount).toLocaleString()}
-                      </td>
-                      <td style={{ color: 'var(--danger-solid)', fontWeight: 700 }}>
-                        -₹{r.reversed_incentive}
+                        <div><strong>{r.product_name}</strong></div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{r.product_code || ''}</div>
                       </td>
                       <td>
-                        <span className="badge badge-warning">{r.return_reason}</span>
+                        <span className={`badge ${r.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`}>
+                          {r.payment_method || 'Prepaid'}
+                        </span>
                       </td>
-                      <td style={{ fontSize: '12px', color: 'var(--text-muted)', maxWidth: '180px' }}>
-                        {r.return_remarks || '—'}
+                      <td style={{ textAlign: 'right', fontWeight: 600 }}>{r.return_quantity} units</td>
+                      <td style={{ textAlign: 'right', color: '#dc2626', fontWeight: 700, fontSize: '14px' }}>
+                        -₹{Number(r.reversed_incentive).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </td>
                     </tr>
                   ))
