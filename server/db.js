@@ -42,8 +42,10 @@ export async function getDb() {
   return dbInstance;
 }
 
+let inTransaction = false;
+
 export function saveDb() {
-  if (!dbInstance) return;
+  if (!dbInstance || inTransaction) return;
   try {
     const data = dbInstance.export();
     const buffer = Buffer.from(data);
@@ -109,14 +111,17 @@ export function exec(sql) {
  */
 export function transaction(callback) {
   if (!dbInstance) throw new Error('Database not initialized');
+  inTransaction = true;
   dbInstance.run('BEGIN TRANSACTION;');
   try {
     const result = callback();
     dbInstance.run('COMMIT;');
+    inTransaction = false;
     saveDb();
     return result;
   } catch (err) {
     dbInstance.run('ROLLBACK;');
+    inTransaction = false;
     throw err;
   }
 }
