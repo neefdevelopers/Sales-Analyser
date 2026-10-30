@@ -1,58 +1,112 @@
 // src/views/staff/StaffOrders.jsx
 import React, { useState, useEffect } from 'react';
 import { api } from '../../api';
+import { useAuth } from '../../context/AuthContext';
 import {
   ShoppingCart,
   Plus,
   Search,
-  Filter,
   CheckCircle,
   Eye,
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+  X,
   CreditCard,
   User,
-  Phone,
-  MapPin,
-  Calendar,
-  Package
+  Package,
+  Calendar
 } from 'lucide-react';
 
 export default function StaffOrders() {
+  const { user } = useAuth();
+  const isManager = user?.role === 'brand_manager';
+
   const [orders, setOrders] = useState([]);
   const [products, setProducts] = useState([]);
+  const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [selectedOrderDetails, setSelectedOrderDetails] = useState(null);
 
-  // Form state
-  const [selectedProductId, setSelectedProductId] = useState('');
-  const [quantity, setQuantity] = useState(1);
-  const [paymentMethod, setPaymentMethod] = useState('Prepaid');
+  // Filters
+  const [search, setSearch] = useState('');
+  const [productIdFilter, setProductIdFilter] = useState('all');
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState('all');
+  const [staffFilter, setStaffFilter] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalOrders, setTotalOrders] = useState(0);
+
+  // Add Order Modal State (6 Fields)
+  const [showAddModal, setShowAddModal] = useState(false);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
-  const [orderDate, setOrderDate] = useState(new Date().toISOString().split('T')[0]);
-  const [remarks, setRemarks] = useState('');
+  const [selectedProductId, setSelectedProductId] = useState('');
+  const [quantity, setQuantity] = useState(1);
+  const [paymentMethod, setPaymentMethod] = useState('Prepaid');
 
-  // Preview state
+  // Preview & Feedback
   const [preview, setPreview] = useState(null);
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [notification, setNotification] = useState('');
 
+  // Order Details Modal
+  const [selectedOrderDetails, setSelectedOrderDetails] = useState(null);
+
+  useEffect(() => {
+    fetchProducts();
+    if (isManager) {
+      fetchStaffList();
+    }
+  }, []);
+
   useEffect(() => {
     fetchOrders();
-    fetchProducts();
-  }, [statusFilter]);
+  }, [page, productIdFilter, paymentMethodFilter, staffFilter, startDate, endDate]);
+
+  async function fetchStaffList() {
+    try {
+      const res = await api.get('/staff');
+      setStaffList(res.staff || []);
+    } catch (err) {
+      console.error('Failed to load staff list:', err);
+    }
+  }
+
+  async function fetchProducts() {
+    try {
+      const res = await api.get('/products');
+      const active = (res.products || []).filter(p => p.status === 'active');
+      setProducts(active);
+      if (active.length > 0 && !selectedProductId) {
+        setSelectedProductId(String(active[0].id));
+      }
+    } catch (err) {
+      console.error('Failed to load products:', err);
+    }
+  }
 
   async function fetchOrders() {
     setLoading(true);
     try {
-      let queryStr = `?status=${statusFilter}`;
-      if (search) queryStr += `&search=${encodeURIComponent(search)}`;
-      const res = await api.get(`/orders${queryStr}`);
+      let params = [];
+      params.push(`page=${page}`);
+      params.push('limit=25');
+      if (search.trim()) params.push(`search=${encodeURIComponent(search.trim())}`);
+      if (productIdFilter !== 'all') params.push(`productId=${productIdFilter}`);
+      if (paymentMethodFilter !== 'all') params.push(`paymentMethod=${paymentMethodFilter}`);
+      if (isManager && staffFilter !== 'all') params.push(`staffId=${staffFilter}`);
+      if (startDate) params.push(`startDate=${startDate}`);
+      if (endDate) params.push(`endDate=${endDate}`);
+
+      const qs = params.length > 0 ? '?' + params.join('&') : '';
+      const res = await api.get(`/orders${qs}`);
       setOrders(res.orders || []);
+      setTotalPages(res.pagination?.totalPages || 1);
+      setTotalOrders(res.pagination?.total || 0);
     } catch (err) {
       console.error('Failed to load orders:', err);
     } finally {
@@ -60,20 +114,7 @@ export default function StaffOrders() {
     }
   }
 
-  async function fetchProducts() {
-    try {
-      const res = await api.get('/products');
-      const activeProducts = (res.products || []).filter(p => p.status === 'active');
-      setProducts(activeProducts);
-      if (activeProducts.length > 0 && !selectedProductId) {
-        setSelectedProductId(activeProducts[0].id);
-      }
-    } catch (err) {
-      console.error('Failed to load products:', err);
-    }
-  }
-
-  // Update preview whenever product, quantity, or payment method changes
+  // Update real-time preview whenever product, quantity, or payment method changes
   useEffect(() => {
     if (selectedProductId && quantity > 0) {
       updateOrderPreview();
@@ -92,22 +133,19 @@ export default function StaffOrders() {
       setPreview(res);
       setFormError('');
     } catch (err) {
-      setFormError(err.message);
       setPreview(null);
     }
   }
 
   function openCreateOrderModal() {
     setFormError('');
-    setQuantity(1);
-    setPaymentMethod('Prepaid');
     setCustomerName('');
     setCustomerPhone('');
     setCustomerAddress('');
-    setOrderDate(new Date().toISOString().split('T')[0]);
-    setRemarks('');
+    setQuantity(1);
+    setPaymentMethod('Prepaid');
     if (products.length > 0) {
-      setSelectedProductId(products[0].id);
+      setSelectedProductId(String(products[0].id));
     }
     setShowAddModal(true);
   }
@@ -120,36 +158,60 @@ export default function StaffOrders() {
       setFormError('Customer name is required.');
       return;
     }
-    if (!customerPhone.trim() || customerPhone.replace(/\D/g, '').length < 7) {
+    const cleanPhone = customerPhone.replace(/\D/g, '');
+    if (!cleanPhone || cleanPhone.length < 7) {
       setFormError('Please enter a valid phone number (at least 7 digits).');
+      return;
+    }
+    if (!customerAddress.trim()) {
+      setFormError('Customer address is required.');
+      return;
+    }
+    if (!selectedProductId) {
+      setFormError('Please select a product.');
+      return;
+    }
+    const qtyNum = parseInt(quantity, 10);
+    if (isNaN(qtyNum) || qtyNum <= 0) {
+      setFormError('Quantity must be at least 1.');
       return;
     }
 
     setSubmitting(true);
-
     try {
       const res = await api.post('/orders', {
-        product_id: parseInt(selectedProductId, 10),
-        quantity: parseInt(quantity, 10),
-        payment_method: paymentMethod,
         customer_name: customerName.trim(),
-        customer_phone: customerPhone.trim(),
+        customer_phone: cleanPhone,
         customer_address: customerAddress.trim(),
-        order_date: orderDate,
-        remarks: remarks.trim()
+        product_id: parseInt(selectedProductId, 10),
+        quantity: qtyNum,
+        payment_method: paymentMethod
       });
 
-      setNotification(`Order ${res.order.order_number} created successfully! Calculated Incentive: ₹${res.order.incentive_amount}`);
-      setTimeout(() => setNotification(''), 6000);
+      setNotification(`Order ${res.order.order_number} created successfully! (Incentive: ₹${res.order.incentive_amount})`);
+      setTimeout(() => setNotification(''), 5000);
 
       setShowAddModal(false);
       fetchOrders();
     } catch (err) {
-      setFormError(err.message);
+      setFormError(err.message || 'Failed to create order.');
     } finally {
       setSubmitting(false);
     }
   }
+
+  function handleResetFilters() {
+    setSearch('');
+    setProductIdFilter('all');
+    setPaymentMethodFilter('all');
+    setStaffFilter('all');
+    setStartDate('');
+    setEndDate('');
+    setPage(1);
+    setTimeout(() => fetchOrders(), 0);
+  }
+
+  const hasActiveFilters = search || productIdFilter !== 'all' || paymentMethodFilter !== 'all' || staffFilter !== 'all' || startDate || endDate;
 
   return (
     <div className="page-body">
@@ -166,146 +228,247 @@ export default function StaffOrders() {
       {/* Header */}
       <div className="page-header">
         <div>
-          <h2 className="page-title">My Orders</h2>
+          <h2 className="page-title">{isManager ? 'All Orders' : 'Orders'}</h2>
+          <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '2px', margin: 0 }}>
+            {isManager
+              ? 'View all customer orders created across all sales staff.'
+              : 'Add new customer orders and manage your order history.'}
+          </p>
         </div>
 
         <button
           className="btn btn-primary"
           onClick={openCreateOrderModal}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
         >
           <Plus size={16} />
           <span>New Order</span>
         </button>
       </div>
 
-      {/* Filter and Search Bar */}
+      {/* Filters Toolbar */}
       <div className="table-card">
-        <div className="table-toolbar">
-          <div className="search-input-wrap">
-            <Search size={16} />
-            <input
-              type="text"
-              className="search-input"
-              placeholder="Search by Order #, Customer, Phone, Product..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && fetchOrders()}
-            />
+        <div
+          className="table-toolbar"
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '10px'
+          }}
+        >
+          {/* Search */}
+          <div style={{ display: 'flex', gap: '8px', flex: '1 1 260px' }}>
+            <div className="search-input-wrap" style={{ flex: 1, minWidth: '200px' }}>
+              <Search size={16} />
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Search Order ID, Customer, Phone, Product..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    setPage(1);
+                    fetchOrders();
+                  }
+                }}
+              />
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => {
+                setPage(1);
+                fetchOrders();
+              }}
+            >
+              Search
+            </button>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Status:</span>
-            <select
-              className="form-control"
-              style={{ width: 'auto', padding: '6px 12px', fontSize: '13px' }}
-              value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value)}
-            >
-              <option value="all">All Statuses</option>
-              <option value="Confirmed">Confirmed</option>
-              <option value="Delivered">Delivered</option>
-              <option value="Pending">Pending</option>
-              <option value="Cancelled">Cancelled</option>
-            </select>
+          {/* Filter Dropdowns */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {/* Product Filter */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Product:</span>
+              <select
+                className="form-control"
+                style={{ width: 'auto', padding: '5px 10px', fontSize: '12.5px' }}
+                value={productIdFilter}
+                onChange={e => {
+                  setProductIdFilter(e.target.value);
+                  setPage(1);
+                }}
+              >
+                <option value="all">All Products</option>
+                {products.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Payment Method Filter */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Payment:</span>
+              <select
+                className="form-control"
+                style={{ width: 'auto', padding: '5px 10px', fontSize: '12.5px' }}
+                value={paymentMethodFilter}
+                onChange={e => {
+                  setPaymentMethodFilter(e.target.value);
+                  setPage(1);
+                }}
+              >
+                <option value="all">All Methods</option>
+                <option value="Prepaid">Prepaid</option>
+                <option value="COD">COD</option>
+              </select>
+            </div>
+
+            {/* Staff Filter (Brand Manager only) */}
+            {isManager && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Staff:</span>
+                <select
+                  className="form-control"
+                  style={{ width: 'auto', padding: '5px 10px', fontSize: '12.5px' }}
+                  value={staffFilter}
+                  onChange={e => {
+                    setStaffFilter(e.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value="all">All Sales Staff</option>
+                  {staffList.map(s => (
+                    <option key={s.id} value={s.id}>{s.name} ({s.staff_id})</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Date Filters */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>From:</span>
+              <input
+                type="date"
+                className="form-control"
+                style={{ width: 'auto', padding: '4px 8px', fontSize: '12px' }}
+                value={startDate}
+                onChange={e => {
+                  setStartDate(e.target.value);
+                  setPage(1);
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>To:</span>
+              <input
+                type="date"
+                className="form-control"
+                style={{ width: 'auto', padding: '4px 8px', fontSize: '12px' }}
+                value={endDate}
+                onChange={e => {
+                  setEndDate(e.target.value);
+                  setPage(1);
+                }}
+              />
+            </div>
+
+            {/* Reset */}
+            {hasActiveFilters && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={handleResetFilters}
+                style={{ padding: '4px 8px', fontSize: '12px' }}
+                title="Reset all filters"
+              >
+                <X size={13} style={{ marginRight: '4px' }} /> Reset
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Orders Table */}
+        {/* Orders Table - Exactly 8 Columns */}
         <div className="table-responsive">
           <table className="data-table">
             <thead>
               <tr>
-                <th>Order Number</th>
-                <th>Date</th>
-                <th>Customer</th>
+                <th>Order ID</th>
+                <th>Order Date</th>
+                <th>Sales Staff</th>
+                <th>Customer Name</th>
                 <th>Product</th>
-                <th>Qty</th>
-                <th>Total (₹)</th>
-                <th>Method</th>
-                <th>Calculated Incentive</th>
-                <th>Status</th>
-                <th>Returns</th>
-                <th>Action</th>
+                <th style={{ textAlign: 'center' }}>Quantity</th>
+                <th>Payment Method</th>
+                <th style={{ textAlign: 'right' }}>Order Amount</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="11" style={{ textAlign: 'center', padding: '32px' }}>Loading orders...</td>
+                  <td colSpan="8" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
+                    Loading orders...
+                  </td>
                 </tr>
               ) : orders.length === 0 ? (
                 <tr>
-                  <td colSpan="11">
-                    <div className="empty-state">
-                      <div className="empty-state-icon"><ShoppingCart size={24} /></div>
-                      <div className="empty-state-title">No orders found</div>
-                      <div className="empty-state-desc">You have not created any orders matching the filters.</div>
-                      <button className="btn btn-primary btn-sm" onClick={openCreateOrderModal}>
-                        <Plus size={14} /> Create First Order
+                  <td colSpan="8">
+                    <div className="empty-state" style={{ padding: '36px 16px' }}>
+                      <div className="empty-state-icon"><ShoppingCart size={28} /></div>
+                      <div className="empty-state-title" style={{ fontSize: '16px' }}>No orders found</div>
+                      <div className="empty-state-desc" style={{ maxWidth: '360px' }}>
+                        No orders matched the specified filters or criteria.
+                      </div>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        onClick={openCreateOrderModal}
+                        style={{ marginTop: '12px' }}
+                      >
+                        <Plus size={14} /> Create Order
                       </button>
                     </div>
                   </td>
                 </tr>
               ) : (
                 orders.map((o) => (
-                  <tr key={o.id}>
+                  <tr
+                    key={o.id}
+                    className="table-row-clickable"
+                    onClick={() => setSelectedOrderDetails(o)}
+                    title="Click to view complete order information and incentive calculation"
+                  >
                     <td>
-                      <strong style={{ color: 'var(--primary-700)' }}>{o.order_number}</strong>
+                      <strong style={{ color: 'var(--primary-700)', fontFamily: 'monospace', fontSize: '13px' }}>
+                        {o.order_number}
+                      </strong>
                     </td>
                     <td>{o.order_date}</td>
                     <td>
-                      <div><strong>{o.customer_name}</strong></div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                        {o.customer_phone}
-                      </div>
+                      <div><strong>{o.staff_name}</strong></div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{o.staff_code}</div>
                     </td>
                     <td>
-                      <div>{o.product_name}</div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>₹{o.unit_price} / unit</div>
+                      <div style={{ fontWeight: 600 }}>{o.customer_name}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{o.customer_phone}</div>
                     </td>
-                    <td><strong>{o.quantity}</strong></td>
-                    <td><strong>₹{Number(o.total_amount).toLocaleString()}</strong></td>
+                    <td>
+                      <div><strong>{o.product_name}</strong></div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{o.product_code}</div>
+                    </td>
+                    <td style={{ textAlign: 'center', fontWeight: 700 }}>
+                      {o.quantity}
+                    </td>
                     <td>
                       <span className={`badge ${o.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`}>
                         {o.payment_method}
                       </span>
                     </td>
-                    <td>
-                      <div style={{ color: 'var(--warning-text)', fontWeight: 700 }}>
-                        ₹{o.net_incentive ?? o.incentive_amount}
-                      </div>
-                      {o.reversed_incentive > 0 && (
-                        <div style={{ fontSize: '10.5px', color: 'var(--danger-solid)' }}>
-                          -₹{o.reversed_incentive} rev.
-                        </div>
-                      )}
-                    </td>
-                    <td>
-                      <span className={`badge ${
-                        o.status === 'Delivered' ? 'badge-success' :
-                        o.status === 'Confirmed' ? 'badge-info' :
-                        o.status === 'Pending' ? 'badge-warning' : 'badge-danger'
-                      }`}>
-                        {o.status}
-                      </span>
-                    </td>
-                    <td>
-                      {o.returned_quantity > 0 ? (
-                        <span className="badge badge-danger">
-                          {o.returned_quantity} returned
-                        </span>
-                      ) : (
-                        <span style={{ fontSize: '11.5px', color: 'var(--text-subtle)' }}>None</span>
-                      )}
-                    </td>
-                    <td>
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => setSelectedOrderDetails(o)}
-                        title="View Order Details"
-                      >
-                        <Eye size={13} /> Details
-                      </button>
+                    <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '13.5px' }}>
+                      ₹{Number(o.total_amount).toLocaleString()}
                     </td>
                   </tr>
                 ))
@@ -313,50 +476,147 @@ export default function StaffOrders() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Footer */}
+        {totalPages > 1 && (
+          <div
+            style={{
+              padding: '12px 20px',
+              borderTop: '1px solid var(--border-subtle)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: '13px'
+            }}
+          >
+            <div style={{ color: 'var(--text-muted)' }}>
+              Showing {orders.length} of {totalOrders} orders
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={page <= 1}
+                onClick={() => setPage(prev => Math.max(1, prev - 1))}
+              >
+                <ChevronLeft size={14} /> Previous
+              </button>
+              <span style={{ fontWeight: 600, padding: '0 8px' }}>
+                Page {page} of {totalPages}
+              </span>
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={page >= totalPages}
+                onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}
+              >
+                Next <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Add Order Modal - Complete Order Entry */}
+      {/* 1. Add Order Modal - Exactly 6 Fields */}
       {showAddModal && (
         <div className="modal-overlay">
-          <div className="modal-dialog" style={{ maxWidth: '560px' }}>
+          <div className="modal-dialog" style={{ maxWidth: '520px' }}>
             <div className="modal-header">
-              <h3 className="modal-title">Create New Order</h3>
+              <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ShoppingCart size={18} color="var(--primary-600)" />
+                <span>Create New Order</span>
+              </h3>
               <button className="modal-close" onClick={() => setShowAddModal(false)}>✕</button>
             </div>
 
             <form onSubmit={handleCreateOrder}>
               <div className="modal-body" style={{ padding: '20px 24px' }}>
                 {formError && (
-                  <div style={{ padding: '10px 14px', background: 'var(--danger-bg)', border: '1px solid var(--danger-border)', color: 'var(--danger-text)', borderRadius: 'var(--radius-md)', marginBottom: '16px', fontSize: '13px' }}>
-                    {formError}
+                  <div
+                    style={{
+                      padding: '10px 14px',
+                      background: 'var(--danger-bg)',
+                      border: '1px solid var(--danger-border)',
+                      color: 'var(--danger-text)',
+                      borderRadius: 'var(--radius-md)',
+                      marginBottom: '16px',
+                      fontSize: '13px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                  >
+                    <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                    <span>{formError}</span>
                   </div>
                 )}
 
-                {/* Product Selection */}
+                {/* Field 1: Customer Name */}
                 <div className="form-group" style={{ marginBottom: '14px' }}>
-                  <label className="form-label" style={{ fontWeight: 600, fontSize: '13px', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Package size={15} color="var(--primary-600)" />
-                    <span>Select Product <span className="required">*</span></span>
+                  <label className="form-label" style={{ fontWeight: 600, marginBottom: '6px' }}>
+                    Customer Name <span className="required">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="Enter customer full name"
+                    value={customerName}
+                    onChange={e => setCustomerName(e.target.value)}
+                    required
+                  />
+                </div>
+
+                {/* Field 2: Customer Phone Number */}
+                <div className="form-group" style={{ marginBottom: '14px' }}>
+                  <label className="form-label" style={{ fontWeight: 600, marginBottom: '6px' }}>
+                    Customer Phone Number <span className="required">*</span>
+                  </label>
+                  <input
+                    type="tel"
+                    className="form-control"
+                    placeholder="e.g. 9876543210"
+                    value={customerPhone}
+                    onChange={e => setCustomerPhone(e.target.value)}
+                    required
+                  />
+                </div>
+
+                {/* Field 3: Customer Address */}
+                <div className="form-group" style={{ marginBottom: '14px' }}>
+                  <label className="form-label" style={{ fontWeight: 600, marginBottom: '6px' }}>
+                    Customer Address <span className="required">*</span>
+                  </label>
+                  <textarea
+                    className="form-control"
+                    rows="2"
+                    placeholder="Enter complete delivery street address"
+                    value={customerAddress}
+                    onChange={e => setCustomerAddress(e.target.value)}
+                    required
+                  />
+                </div>
+
+                {/* Field 4: Product Selection */}
+                <div className="form-group" style={{ marginBottom: '14px' }}>
+                  <label className="form-label" style={{ fontWeight: 600, marginBottom: '6px' }}>
+                    Product <span className="required">*</span>
                   </label>
                   <select
                     className="form-control"
                     value={selectedProductId}
                     onChange={e => setSelectedProductId(e.target.value)}
-                    style={{ fontSize: '14px', padding: '8px 12px' }}
                     required
                   >
                     {products.map(p => (
                       <option key={p.id} value={p.id}>
-                        {p.name} — ₹{p.price}
+                        {p.name} — ₹{p.price?.toLocaleString()}
                       </option>
                     ))}
                   </select>
                 </div>
 
-                {/* Quantity and Payment Method */}
-                <div className="form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+                {/* Field 5 & 6: Quantity & Payment Method */}
+                <div className="form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '16px' }}>
                   <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 600, fontSize: '13px', marginBottom: '6px', display: 'block' }}>
+                    <label className="form-label" style={{ fontWeight: 600, marginBottom: '6px' }}>
                       Quantity <span className="required">*</span>
                     </label>
                     <input
@@ -365,21 +625,18 @@ export default function StaffOrders() {
                       className="form-control"
                       value={quantity}
                       onChange={e => setQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                      style={{ fontSize: '14px', padding: '8px 12px', fontWeight: 600 }}
                       required
                     />
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 600, fontSize: '13px', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <CreditCard size={15} color="var(--primary-600)" />
-                      <span>Payment Method <span className="required">*</span></span>
+                    <label className="form-label" style={{ fontWeight: 600, marginBottom: '6px' }}>
+                      Payment Method <span className="required">*</span>
                     </label>
                     <select
                       className="form-control"
                       value={paymentMethod}
                       onChange={e => setPaymentMethod(e.target.value)}
-                      style={{ fontSize: '14px', padding: '8px 12px' }}
                       required
                     >
                       <option value="Prepaid">Prepaid</option>
@@ -388,136 +645,60 @@ export default function StaffOrders() {
                   </div>
                 </div>
 
-                {/* Customer Details */}
-                <div className="form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 600, fontSize: '13px', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <User size={15} color="var(--primary-600)" />
-                      <span>Customer Name <span className="required">*</span></span>
-                    </label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      placeholder="e.g. Rahul Sharma"
-                      value={customerName}
-                      onChange={e => setCustomerName(e.target.value)}
-                      style={{ fontSize: '13.5px', padding: '8px 12px' }}
-                      required
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 600, fontSize: '13px', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Phone size={15} color="var(--primary-600)" />
-                      <span>Phone Number <span className="required">*</span></span>
-                    </label>
-                    <input
-                      type="tel"
-                      className="form-control"
-                      placeholder="10-digit mobile number"
-                      value={customerPhone}
-                      onChange={e => setCustomerPhone(e.target.value)}
-                      style={{ fontSize: '13.5px', padding: '8px 12px' }}
-                      required
-                    />
-                  </div>
-                </div>
-
-                {/* Customer Address */}
-                <div className="form-group" style={{ marginBottom: '14px' }}>
-                  <label className="form-label" style={{ fontWeight: 600, fontSize: '13px', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <MapPin size={15} color="var(--primary-600)" />
-                    <span>Customer Address</span>
-                  </label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    placeholder="Delivery street address, area, city"
-                    value={customerAddress}
-                    onChange={e => setCustomerAddress(e.target.value)}
-                    style={{ fontSize: '13.5px', padding: '8px 12px' }}
-                  />
-                </div>
-
-                {/* Order Date and Remarks */}
-                <div className="form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '16px' }}>
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 600, fontSize: '13px', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Calendar size={15} color="var(--primary-600)" />
-                      <span>Order Date <span className="required">*</span></span>
-                    </label>
-                    <input
-                      type="date"
-                      className="form-control"
-                      value={orderDate}
-                      onChange={e => setOrderDate(e.target.value)}
-                      style={{ fontSize: '13.5px', padding: '8px 12px' }}
-                      required
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 600, fontSize: '13px', marginBottom: '6px', display: 'block' }}>
-                      Remarks (Optional)
-                    </label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      placeholder="Special instructions"
-                      value={remarks}
-                      onChange={e => setRemarks(e.target.value)}
-                      style={{ fontSize: '13.5px', padding: '8px 12px' }}
-                    />
-                  </div>
-                </div>
-
-                {/* Live Order & Incentive Calculation Preview */}
+                {/* Calculated Order Amount & Estimated Incentive Preview */}
                 {preview && (
-                  <div className="preview-box" style={{ padding: '16px 20px', borderRadius: '10px', background: '#f8fafc', border: '1px solid var(--border-color)' }}>
-                    <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <CheckCircle size={14} color="var(--primary-600)" />
-                      <span>Order & Incentive Calculation Preview</span>
+                  <div
+                    style={{
+                      background: '#f8fafc',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-md)',
+                      padding: '14px 16px',
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: '12px'
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>
+                        Order Amount
+                      </div>
+                      <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-main)', marginTop: '2px' }}>
+                        ₹{preview.total_amount?.toLocaleString()}
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                        ₹{preview.unit_price} &times; {preview.quantity} units
+                      </div>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
-                      <div>
-                        <div className="preview-item-label" style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '3px' }}>Unit Price</div>
-                        <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-main)' }}>
-                          ₹{preview.unit_price}
-                        </div>
+
+                    <div>
+                      <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>
+                        Estimated Incentive
                       </div>
-                      <div>
-                        <div className="preview-item-label" style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '3px' }}>Total Amount</div>
-                        <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--primary-700)' }}>
-                          ₹{preview.total_amount?.toLocaleString()}
-                        </div>
+                      <div style={{ fontSize: '18px', fontWeight: 800, color: '#16a34a', marginTop: '2px' }}>
+                        ₹{preview.estimated_incentive?.amount?.toLocaleString()}
                       </div>
-                      <div>
-                        <div className="preview-item-label" style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '3px' }}>Applied Rule</div>
-                        <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-main)' }}>
-                          {preview.estimated_incentive?.type === 'fixed'
-                            ? `Fixed ₹${preview.estimated_incentive?.rate}`
-                            : `${preview.estimated_incentive?.rate}%`}
-                          {' / '}
-                          {preview.estimated_incentive?.basis === 'per_unit' ? 'unit' : 'order'}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="preview-item-label" style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '3px' }}>Estimated Incentive</div>
-                        <div style={{ fontSize: '18px', fontWeight: 800, color: '#16a34a' }}>
-                          ₹{preview.estimated_incentive?.amount ?? 0}
-                        </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                        Rule: {preview.estimated_incentive?.type === 'percentage' ? `${preview.estimated_incentive?.rate}%` : `₹${preview.estimated_incentive?.rate}`} ({preview.estimated_incentive?.basis === 'per_unit' ? 'per unit' : 'per order'})
                       </div>
                     </div>
                   </div>
                 )}
               </div>
 
-              <div className="modal-footer" style={{ padding: '16px 24px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowAddModal(false)}>
+              <div className="modal-footer" style={{ borderTop: '1px solid var(--border-subtle)', padding: '14px 24px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowAddModal(false)}
+                >
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary" disabled={submitting}>
-                  {submitting ? 'Creating...' : 'Confirm & Save Order'}
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={submitting || products.length === 0}
+                >
+                  {submitting ? 'Creating Order...' : 'Save Order'}
                 </button>
               </div>
             </form>
@@ -525,89 +706,145 @@ export default function StaffOrders() {
         </div>
       )}
 
-      {/* Order Details Drawer / Modal */}
+      {/* 2. Order Information View (Opened by clicking order row) */}
       {selectedOrderDetails && (
         <div className="modal-overlay">
-          <div className="modal-dialog">
+          <div className="modal-dialog" style={{ maxWidth: '580px' }}>
             <div className="modal-header">
-              <h3 className="modal-title">Order Details: {selectedOrderDetails.order_number}</h3>
+              <h3 className="modal-title">Order Information: {selectedOrderDetails.order_number}</h3>
               <button className="modal-close" onClick={() => setSelectedOrderDetails(null)}>✕</button>
             </div>
-            <div className="modal-body">
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-                <div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Customer</div>
-                  <div style={{ fontWeight: 700, fontSize: '15px' }}>{selectedOrderDetails.customer_name}</div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                    Phone: {selectedOrderDetails.customer_phone}
-                  </div>
-                  {selectedOrderDetails.customer_address && (
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                      Address: {selectedOrderDetails.customer_address}
-                    </div>
-                  )}
-                </div>
 
+            <div className="modal-body" style={{ padding: '20px 24px' }}>
+              {/* Order Metadata Strip */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: '12px',
+                  background: '#f8fafc',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '12px 16px',
+                  marginBottom: '16px'
+                }}
+              >
                 <div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Product</div>
-                  <div style={{ fontWeight: 700, fontSize: '15px' }}>{selectedOrderDetails.product_name}</div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Code: {selectedOrderDetails.product_code}</div>
-                  <div style={{ fontSize: '12px' }}>Quantity: <strong>{selectedOrderDetails.quantity}</strong> @ ₹{selectedOrderDetails.unit_price}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Order ID</div>
+                  <strong style={{ fontFamily: 'monospace', color: 'var(--primary-700)' }}>
+                    {selectedOrderDetails.order_number}
+                  </strong>
+                </div>
+                <div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Order Date</div>
+                  <strong>{selectedOrderDetails.order_date}</strong>
+                </div>
+                <div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Sales Staff</div>
+                  <strong>{selectedOrderDetails.staff_name}</strong>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{selectedOrderDetails.staff_code}</div>
                 </div>
               </div>
 
-              <div className="preview-box">
-                <div className="preview-grid">
+              {/* Customer Info Card */}
+              <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '14px 16px', marginBottom: '16px' }}>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Customer Information
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                   <div>
-                    <div className="preview-item-label">Gross Amount</div>
-                    <div className="preview-item-val" style={{ color: 'var(--text-main)', fontSize: '16px' }}>
-                      ₹{selectedOrderDetails.total_amount?.toLocaleString()}
-                    </div>
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Name: </span>
+                    <strong>{selectedOrderDetails.customer_name}</strong>
                   </div>
                   <div>
-                    <div className="preview-item-label">Payment Method</div>
-                    <div style={{ fontWeight: 700 }}>{selectedOrderDetails.payment_method}</div>
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Phone: </span>
+                    <strong>{selectedOrderDetails.customer_phone}</strong>
+                  </div>
+                </div>
+                {selectedOrderDetails.customer_address && (
+                  <div style={{ marginTop: '8px', fontSize: '12.5px' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Address: </span>
+                    <span>{selectedOrderDetails.customer_address}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Product & Payment Card */}
+              <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '14px 16px', marginBottom: '16px' }}>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Product & Payment
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div>
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Product: </span>
+                    <strong>{selectedOrderDetails.product_name}</strong>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>SKU: {selectedOrderDetails.product_code}</div>
                   </div>
                   <div>
-                    <div className="preview-item-label">Calculated Incentive</div>
-                    <div className="preview-item-val" style={{ color: '#d97706' }}>
-                      ₹{selectedOrderDetails.incentive_amount}
-                    </div>
-                    <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                      Rule: {selectedOrderDetails.incentive_type === 'fixed' ? `Fixed ₹${selectedOrderDetails.incentive_rate}` : `${selectedOrderDetails.incentive_rate}%`} ({selectedOrderDetails.incentive_basis})
-                    </div>
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Unit Price: </span>
+                    <strong>₹{selectedOrderDetails.unit_price?.toLocaleString()}</strong>
                   </div>
                   <div>
-                    <div className="preview-item-label">Remaining Returnable</div>
-                    <div className="preview-item-val" style={{ color: 'var(--primary-600)' }}>
-                      {selectedOrderDetails.returnable_quantity} units
-                    </div>
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Quantity: </span>
+                    <strong>{selectedOrderDetails.quantity} units</strong>
                   </div>
+                  <div>
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Payment Method: </span>
+                    <span className={`badge ${selectedOrderDetails.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`}>
+                      {selectedOrderDetails.payment_method}
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px dashed var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 600 }}>Total Order Amount:</span>
+                  <strong style={{ fontSize: '17px', color: 'var(--text-main)' }}>
+                    ₹{Number(selectedOrderDetails.total_amount).toLocaleString()}
+                  </strong>
                 </div>
               </div>
 
-              {selectedOrderDetails.returned_quantity > 0 && (
-                <div style={{ marginTop: '14px', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: 'var(--radius-md)' }}>
-                  <div style={{ fontSize: '12px', fontWeight: 700, color: '#b91c1c' }}>Return Adjustments Recorded:</div>
-                  <div style={{ fontSize: '12.5px', color: '#991b1b', marginTop: '4px' }}>
-                    Returned Quantity: <strong>{selectedOrderDetails.returned_quantity} units</strong> (Refund: ₹{selectedOrderDetails.returned_amount})
-                    {' | '}Reversed Incentive: <strong>-₹{selectedOrderDetails.reversed_incentive}</strong>
-                    {' | '}Net Staff Incentive: <strong>₹{selectedOrderDetails.net_incentive}</strong>
+              {/* Incentive Calculation Snapshot Card */}
+              <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 'var(--radius-md)', padding: '14px 16px' }}>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: '#166534', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Incentive Calculation Snapshot
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', fontSize: '12.5px' }}>
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#15803d' }}>Rule Type</div>
+                    <strong>{selectedOrderDetails.incentive_type === 'percentage' ? 'Percentage' : 'Fixed'}</strong>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#15803d' }}>Calculation Basis</div>
+                    <strong>{selectedOrderDetails.incentive_basis === 'per_unit' ? 'Per Unit' : 'Per Order'}</strong>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#15803d' }}>Applied Rate</div>
+                    <strong>{selectedOrderDetails.incentive_rate}{selectedOrderDetails.incentive_type === 'percentage' ? '%' : ' INR'}</strong>
                   </div>
                 </div>
-              )}
 
-              {selectedOrderDetails.remarks && (
-                <div style={{ marginTop: '12px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>Staff Remarks:</div>
-                  <div style={{ fontSize: '13px', background: '#f8fafc', padding: '8px 12px', borderRadius: 'var(--radius-sm)', marginTop: '4px' }}>
-                    {selectedOrderDetails.remarks}
-                  </div>
+                <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed #bbf7d0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '13px', color: '#166534', fontWeight: 600 }}>Earned Order Incentive:</span>
+                  <strong style={{ fontSize: '17px', color: '#15803d' }}>
+                    ₹{selectedOrderDetails.incentive_amount?.toLocaleString()}
+                  </strong>
                 </div>
-              )}
+
+                <div style={{ fontSize: '11px', color: '#15803d', marginTop: '6px' }}>
+                  &bull; Saved as an immutable snapshot. Future changes to product incentive settings do not alter this calculation.
+                </div>
+              </div>
             </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setSelectedOrderDetails(null)}>Close</button>
+
+            <div className="modal-footer" style={{ borderTop: '1px solid var(--border-subtle)', padding: '12px 24px' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setSelectedOrderDetails(null)}
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

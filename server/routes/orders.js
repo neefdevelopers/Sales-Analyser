@@ -305,15 +305,27 @@ router.post('/', authenticate, (req, res) => {
   const {
     customer_name,
     customer_phone,
-    customer_address = '',
+    customer_address,
     product_id,
     quantity,
     payment_method = 'Prepaid',
-    order_date,
-    remarks = ''
+    order_date
   } = req.body;
 
-  // 1. Basic validation - only product and quantity are strictly required from staff
+  // 1. Validation for all required fields
+  if (!customer_name || !customer_name.trim()) {
+    return res.status(400).json({ error: 'Customer name is required.' });
+  }
+
+  const cleanPhone = normalizePhone(customer_phone);
+  if (!cleanPhone || cleanPhone.length < 7) {
+    return res.status(400).json({ error: 'Valid customer phone number (at least 7 digits) is required.' });
+  }
+
+  if (!customer_address || !customer_address.trim()) {
+    return res.status(400).json({ error: 'Customer address is required.' });
+  }
+
   if (!product_id) {
     return res.status(400).json({ error: 'Product selection is required.' });
   }
@@ -321,13 +333,6 @@ router.post('/', authenticate, (req, res) => {
   const qty = parseInt(quantity, 10);
   if (isNaN(qty) || qty <= 0) {
     return res.status(400).json({ error: 'Quantity must be a positive integer (at least 1).' });
-  }
-
-  // Safe defaults for customer and payment method
-  const finalCustomerName = (customer_name && customer_name.trim()) ? customer_name.trim() : 'Direct Customer';
-  const cleanPhone = customer_phone ? normalizePhone(customer_phone) : '9999999999';
-  if (cleanPhone.length < 7) {
-    return res.status(400).json({ error: 'Please enter a valid phone number (at least 7 digits).' });
   }
 
   const finalPaymentMethod = (payment_method && ['Prepaid', 'COD'].includes(payment_method)) ? payment_method : 'Prepaid';
@@ -346,7 +351,7 @@ router.post('/', authenticate, (req, res) => {
     return res.status(400).json({ error: 'Cannot create an order for an inactive product.' });
   }
 
-  // 3. Calculate order total and staff incentive snapshot
+  // 3. Calculate order total and staff incentive snapshot automatically
   const unitPrice = product.price || 0;
   const totalAmount = Math.round(unitPrice * qty * 100) / 100;
   const incentive = calculateIncentive(product, finalPaymentMethod, qty, totalAmount);
@@ -368,18 +373,16 @@ router.post('/', authenticate, (req, res) => {
 
       if (customer) {
         customerId = customer.id;
-        if (customer_name && customer_name.trim()) {
-          run('UPDATE customers SET name = ?, address = ?, updated_at = ? WHERE id = ?', [
-            finalCustomerName,
-            customer_address.trim(),
-            now,
-            customerId
-          ]);
-        }
+        run('UPDATE customers SET name = ?, address = ?, updated_at = ? WHERE id = ?', [
+          customer_name.trim(),
+          customer_address.trim(),
+          now,
+          customerId
+        ]);
       } else {
         const custRes = run(
           'INSERT INTO customers (name, phone, address, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
-          [finalCustomerName, cleanPhone, customer_address.trim(), now, now]
+          [customer_name.trim(), cleanPhone, customer_address.trim(), now, now]
         );
         customerId = custRes.lastInsertRowid;
       }
@@ -392,7 +395,7 @@ router.post('/', authenticate, (req, res) => {
           order_date, status, remarks,
           incentive_type, incentive_basis, incentive_rate, incentive_amount,
           created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Confirmed', ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Confirmed', NULL, ?, ?, ?, ?, ?, ?)`,
         [
           orderNumber,
           staffId,
@@ -403,7 +406,6 @@ router.post('/', authenticate, (req, res) => {
           totalAmount,
           finalPaymentMethod,
           orderDateStr,
-          remarks ? remarks.trim() : null,
           incentive.type,
           incentive.basis,
           incentive.rate,
@@ -417,19 +419,28 @@ router.post('/', authenticate, (req, res) => {
     });
 
     const createdOrder = get(`
-      SELECT o.*, c.name AS customer_name, c.phone AS customer_phone, p.name AS product_name
+      SELECT
+        o.*,
+        c.name AS customer_name,
+        c.phone AS customer_phone,
+        c.address AS customer_address,
+        p.name AS product_name,
+        p.code AS product_code,
+        u.name AS staff_name,
+        u.staff_id AS staff_code
       FROM orders o
       JOIN customers c ON o.customer_id = c.id
       JOIN products p ON o.product_id = p.id
+      JOIN users u ON o.staff_id = u.id
       WHERE o.id = ?
     `, [result]);
 
     res.status(201).json({
       order: createdOrder,
-      message: `Order ${orderNumber} created successfully.`
+      message: `Order ${createdOrder.order_number} created successfully.`
     });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to create order: ' + err.message });
+    res.status(400).json({ error: err.message });
   }
 });
 
