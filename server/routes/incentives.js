@@ -77,20 +77,20 @@ router.get('/monthly-summary', authenticate, requireRole('brand_manager'), (req,
         AND o.status != 'Cancelled'
     `, [staff.id, startDate, endDate]);
 
-    // 2. Return adjustments attributable to orders created within the selected month
-    // (even if the return occurs in a later month)
+    // 2. Return adjustments attributable to orders or direct returns in the selected month
     const returnStats = get(`
       SELECT
         COALESCE(SUM(r.reversed_incentive), 0) AS total_reversed_incentive,
         COALESCE(SUM(r.return_quantity), 0) AS total_returned_quantity,
         COALESCE(SUM(r.return_amount), 0) AS total_returned_amount
       FROM returns r
-      JOIN orders o ON r.order_id = o.id
-      WHERE o.staff_id = ?
-        AND o.order_date >= ?
-        AND o.order_date <= ?
-        AND o.status != 'Cancelled'
-    `, [staff.id, startDate, endDate]);
+      LEFT JOIN orders o ON r.order_id = o.id
+      WHERE (o.staff_id = ? OR r.staff_id = ? OR r.returned_by_staff_id = ?)
+        AND (
+          (o.order_date >= ? AND o.order_date <= ? AND o.status != 'Cancelled')
+          OR (r.order_id IS NULL AND r.return_date >= ? AND r.return_date <= ?)
+        )
+    `, [staff.id, staff.id, staff.id, startDate, endDate, startDate, endDate]);
 
     const totalOrders = orderStats?.total_orders || 0;
     const grossIncentive = Math.round((orderStats?.gross_incentive || 0) * 100) / 100;
@@ -237,18 +237,7 @@ router.get('/staff/:staffId/monthly', authenticate, requireRole('brand_manager')
     };
   });
 
-  // Reconciled summary totals for this staff member in this month
-  const summary = {
-    totalOrders: detailedOrders.length,
-    grossIncentive: Math.round(detailedOrders.reduce((sum, o) => sum + o.order_incentive, 0) * 100) / 100,
-    returnAdjustments: Math.round(detailedOrders.reduce((sum, o) => sum + o.return_adjustment, 0) * 100) / 100,
-    netIncentive: Math.max(0, Math.round(detailedOrders.reduce((sum, o) => sum + o.net_incentive, 0) * 100) / 100),
-    grossSales: Math.round(detailedOrders.reduce((sum, o) => sum + o.total_amount, 0) * 100) / 100,
-    totalQuantity: detailedOrders.reduce((sum, o) => sum + o.quantity, 0),
-    returnedQuantity: detailedOrders.reduce((sum, o) => sum + o.returned_quantity, 0)
-  };
-
-  // Fetch all return records for this staff member's orders in the selected month
+  // Fetch all return records for this staff member in the selected month
   const staffReturns = query(`
     SELECT
       r.id,
@@ -257,25 +246,43 @@ router.get('/staff/:staffId/monthly', authenticate, requireRole('brand_manager')
       r.return_quantity,
       r.return_amount,
       r.reversed_incentive,
-      COALESCE(r.payment_method, o.payment_method) AS payment_method,
+      COALESCE(r.payment_method, o.payment_method, 'Prepaid') AS payment_method,
       r.return_reason,
       r.remarks,
       o.id AS order_id,
-      o.order_number,
+      COALESCE(o.order_number, '-') AS order_number,
       o.order_date,
       p.name AS product_name,
       p.code AS product_code,
       c.name AS customer_name,
       c.phone AS customer_phone
     FROM returns r
-    JOIN orders o ON r.order_id = o.id
-    JOIN products p ON COALESCE(r.product_id, o.product_id) = p.id
-    JOIN customers c ON o.customer_id = c.id
-    WHERE o.staff_id = ?
-      AND o.order_date >= ?
-      AND o.order_date <= ?
+    LEFT JOIN orders o ON r.order_id = o.id
+    LEFT JOIN products p ON COALESCE(r.product_id, o.product_id) = p.id
+    LEFT JOIN customers c ON o.customer_id = c.id
+    WHERE (o.staff_id = ? OR r.staff_id = ? OR r.returned_by_staff_id = ?)
+      AND (
+        (o.order_date >= ? AND o.order_date <= ? AND o.status != 'Cancelled')
+        OR (r.order_id IS NULL AND r.return_date >= ? AND r.return_date <= ?)
+      )
     ORDER BY r.return_date DESC, r.id DESC
-  `, [staff.id, startDate, endDate]);
+  `, [staff.id, staff.id, staff.id, startDate, endDate, startDate, endDate]);
+
+  const standaloneReturnAdjustment = Math.round(
+    staffReturns.filter(r => !r.order_id).reduce((sum, r) => sum + (r.reversed_incentive || 0), 0) * 100
+  ) / 100;
+  const standaloneReturnedQty = staffReturns.filter(r => !r.order_id).reduce((sum, r) => sum + (r.return_quantity || 0), 0);
+
+  // Reconciled summary totals for this staff member in this month
+  const summary = {
+    totalOrders: detailedOrders.length,
+    grossIncentive: Math.round(detailedOrders.reduce((sum, o) => sum + o.order_incentive, 0) * 100) / 100,
+    returnAdjustments: Math.round((detailedOrders.reduce((sum, o) => sum + o.return_adjustment, 0) + standaloneReturnAdjustment) * 100) / 100,
+    netIncentive: Math.max(0, Math.round((detailedOrders.reduce((sum, o) => sum + o.order_incentive, 0) - (detailedOrders.reduce((sum, o) => sum + o.return_adjustment, 0) + standaloneReturnAdjustment)) * 100) / 100),
+    grossSales: Math.round(detailedOrders.reduce((sum, o) => sum + o.total_amount, 0) * 100) / 100,
+    totalQuantity: detailedOrders.reduce((sum, o) => sum + o.quantity, 0),
+    returnedQuantity: detailedOrders.reduce((sum, o) => sum + o.returned_quantity, 0) + standaloneReturnedQty
+  };
 
   res.json({
     staff: {

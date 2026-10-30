@@ -18,7 +18,7 @@ export default function StaffReturns() {
   const isManager = user?.role === 'brand_manager';
 
   const [returns, setReturns] = useState([]);
-  const [returnableOrders, setReturnableOrders] = useState([]);
+  const [products, setProducts] = useState([]);
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -34,7 +34,6 @@ export default function StaffReturns() {
 
   // Modal & Form State
   const [showAddModal, setShowAddModal] = useState(false);
-  const [selectedOrderId, setSelectedOrderId] = useState('');
   const [selectedProductId, setSelectedProductId] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('Prepaid');
   const [returnQuantity, setReturnQuantity] = useState(1);
@@ -48,7 +47,7 @@ export default function StaffReturns() {
   }, [page, staffFilter, paymentMethodFilter, startDate, endDate]);
 
   useEffect(() => {
-    fetchReturnableOrders();
+    fetchProducts();
     if (isManager) {
       fetchStaffList();
     }
@@ -87,37 +86,24 @@ export default function StaffReturns() {
     }
   }
 
-  async function fetchReturnableOrders() {
+  async function fetchProducts() {
     try {
-      const res = await api.get('/orders/returnable');
-      const orders = res.returnableOrders || [];
-      setReturnableOrders(orders);
-      if (orders.length > 0 && !selectedOrderId) {
-        setSelectedOrderId(String(orders[0].id));
-        setSelectedProductId(String(orders[0].product_id));
-        setPaymentMethod(orders[0].payment_method || 'Prepaid');
-        setReturnQuantity(1);
+      const res = await api.get('/products');
+      const prods = res.products || [];
+      setProducts(prods);
+      if (prods.length > 0 && !selectedProductId) {
+        setSelectedProductId(String(prods[0].id));
       }
     } catch (err) {
-      console.error('Failed to load returnable orders:', err);
+      console.error('Failed to load products:', err);
     }
-  }
-
-  // When selected order changes, auto-load its product, payment method & reset quantity
-  function handleOrderChange(orderIdStr) {
-    setSelectedOrderId(orderIdStr);
-    const orderObj = returnableOrders.find(o => String(o.id) === orderIdStr);
-    if (orderObj) {
-      setSelectedProductId(String(orderObj.product_id));
-      setPaymentMethod(orderObj.payment_method || 'Prepaid');
-      setReturnQuantity(1);
-    }
-    setFormError('');
   }
 
   function openCreateModal() {
     setFormError('');
-    fetchReturnableOrders().then(() => {
+    setReturnQuantity(1);
+    setPaymentMethod('Prepaid');
+    fetchProducts().then(() => {
       setShowAddModal(true);
     });
   }
@@ -126,17 +112,11 @@ export default function StaffReturns() {
     e.preventDefault();
     setFormError('');
 
-    const orderIdNum = parseInt(selectedOrderId, 10);
+    const prodIdNum = parseInt(selectedProductId, 10);
     const returnQtyNum = parseInt(returnQuantity, 10);
 
-    if (!orderIdNum) {
-      setFormError('Please select an original order.');
-      return;
-    }
-
-    const orderObj = returnableOrders.find(o => o.id === orderIdNum);
-    if (!orderObj) {
-      setFormError('Selected order is not eligible for return.');
+    if (!prodIdNum) {
+      setFormError('Please select a product.');
       return;
     }
 
@@ -145,16 +125,10 @@ export default function StaffReturns() {
       return;
     }
 
-    if (returnQtyNum > orderObj.returnable_quantity) {
-      setFormError(`Cannot return ${returnQtyNum} units. Only ${orderObj.returnable_quantity} returnable units remain.`);
-      return;
-    }
-
     setSubmitting(true);
     try {
       const res = await api.post('/returns', {
-        order_id: orderIdNum,
-        product_id: parseInt(selectedProductId || orderObj.product_id, 10),
+        product_id: prodIdNum,
         payment_method: paymentMethod,
         return_quantity: returnQtyNum
       });
@@ -164,7 +138,6 @@ export default function StaffReturns() {
 
       setShowAddModal(false);
       fetchReturns();
-      fetchReturnableOrders();
     } catch (err) {
       setFormError(err.message || 'Failed to record return.');
     } finally {
@@ -184,8 +157,27 @@ export default function StaffReturns() {
     }, 0);
   }
 
-  const selectedOrderObj = returnableOrders.find(o => String(o.id) === String(selectedOrderId));
-  const maxReturnable = selectedOrderObj?.returnable_quantity || 1;
+  const selectedProductObj = products.find(p => String(p.id) === String(selectedProductId)) || (products.length > 0 ? products[0] : null);
+  const unitPrice = selectedProductObj?.price || 0;
+  const returnQtyNum = parseInt(returnQuantity, 10) || 0;
+  const refundAmount = Math.round(unitPrice * returnQtyNum * 100) / 100;
+
+  // Calculate estimated reversed incentive
+  let estReversedIncentive = 0;
+  if (selectedProductObj && returnQtyNum > 0) {
+    const isPrepaid = paymentMethod === 'Prepaid';
+    const type = isPrepaid ? selectedProductObj.prepaid_incentive_type : selectedProductObj.cod_incentive_type;
+    const basis = isPrepaid ? selectedProductObj.prepaid_incentive_basis : selectedProductObj.cod_incentive_basis;
+    const val = isPrepaid ? (selectedProductObj.prepaid_incentive_value || 0) : (selectedProductObj.cod_incentive_value || 0);
+
+    if (type === 'fixed') {
+      estReversedIncentive = basis === 'per_unit' ? val * returnQtyNum : val;
+    } else if (type === 'percentage') {
+      estReversedIncentive = (unitPrice * returnQtyNum) * (val / 100);
+    }
+    estReversedIncentive = Math.round(estReversedIncentive * 100) / 100;
+  }
+
   const hasActiveFilters = search || startDate || endDate || paymentMethodFilter !== 'all' || staffFilter !== 'all';
 
   return (
@@ -377,15 +369,13 @@ export default function StaffReturns() {
                       <div className="empty-state-desc" style={{ maxWidth: '360px' }}>
                         No product returns matching the selected filters were found.
                       </div>
-                      {returnableOrders.length > 0 && (
-                        <button
-                          className="btn btn-primary btn-sm"
-                          onClick={openCreateModal}
-                          style={{ marginTop: '12px' }}
-                        >
-                          <Plus size={14} /> Record Return
-                        </button>
-                      )}
+                      <button
+                        className="btn btn-primary btn-sm"
+                        onClick={openCreateModal}
+                        style={{ marginTop: '12px' }}
+                      >
+                        <Plus size={14} /> Record Return
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -501,120 +491,87 @@ export default function StaffReturns() {
                   </div>
                 )}
 
-                {returnableOrders.length === 0 ? (
-                  <div className="empty-state" style={{ padding: '24px 16px' }}>
-                    <div className="empty-state-title">No Returnable Orders</div>
-                    <div className="empty-state-desc">
-                      All confirmed orders have already been fully returned, or no eligible orders were found.
+                {/* Field 1: Product */}
+                <div className="form-group" style={{ marginBottom: '16px' }}>
+                  <label className="form-label" style={{ fontWeight: 600, marginBottom: '6px' }}>
+                    Product <span className="required">*</span>
+                  </label>
+                  <select
+                    className="form-control"
+                    value={selectedProductId}
+                    onChange={e => setSelectedProductId(e.target.value)}
+                    required
+                    style={{ fontSize: '13.5px' }}
+                  >
+                    <option value="" disabled>Select a product...</option>
+                    {products.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.code}) &bull; ₹{p.price.toLocaleString('en-IN')}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Field 2: Payment Method (Prepaid or COD) */}
+                <div className="form-group" style={{ marginBottom: '16px' }}>
+                  <label className="form-label" style={{ fontWeight: 600, marginBottom: '6px' }}>
+                    Payment Method <span className="required">*</span>
+                  </label>
+                  <select
+                    className="form-control"
+                    value={paymentMethod}
+                    onChange={e => setPaymentMethod(e.target.value)}
+                    required
+                    style={{ fontSize: '13.5px' }}
+                  >
+                    <option value="Prepaid">Prepaid</option>
+                    <option value="COD">Cash on Delivery (COD)</option>
+                  </select>
+                </div>
+
+                {/* Field 3: Return Quantity */}
+                <div className="form-group" style={{ marginBottom: '16px' }}>
+                  <label className="form-label" style={{ fontWeight: 600, marginBottom: '6px' }}>
+                    Return Quantity <span className="required">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    className="form-control"
+                    value={returnQuantity}
+                    onChange={e => {
+                      const val = parseInt(e.target.value, 10);
+                      setReturnQuantity(isNaN(val) ? '' : val);
+                    }}
+                    required
+                    style={{ fontSize: '14px' }}
+                  />
+                </div>
+
+                {/* Live Preview of Refund Amount and Incentive Reversal */}
+                {selectedProductObj && (
+                  <div
+                    style={{
+                      background: 'var(--bg-subtle)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-md)',
+                      padding: '12px 14px',
+                      fontSize: '13px'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Unit Price:</span>
+                      <strong>₹{unitPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Refund Amount:</span>
+                      <strong>₹{refundAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#b91c1c' }}>
+                      <span>Incentive Reversal:</span>
+                      <strong>-₹{estReversedIncentive.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
                     </div>
                   </div>
-                ) : (
-                  <>
-                    {/* Field 1: Original Order */}
-                    <div className="form-group" style={{ marginBottom: '16px' }}>
-                      <label className="form-label" style={{ fontWeight: 600, marginBottom: '6px' }}>
-                        Original Order <span className="required">*</span>
-                      </label>
-                      <select
-                        className="form-control"
-                        value={selectedOrderId}
-                        onChange={e => handleOrderChange(e.target.value)}
-                        required
-                        style={{ fontSize: '13.5px' }}
-                      >
-                        {returnableOrders.map(o => (
-                          <option key={o.id} value={o.id}>
-                            {o.order_number} &bull; {o.order_date} ({o.product_name} &bull; {o.payment_method})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Field 2: Product (Belonging to selected order) */}
-                    <div className="form-group" style={{ marginBottom: '16px' }}>
-                      <label className="form-label" style={{ fontWeight: 600, marginBottom: '6px' }}>
-                        Product <span className="required">*</span>
-                      </label>
-                      <select
-                        className="form-control"
-                        value={selectedProductId}
-                        onChange={e => setSelectedProductId(e.target.value)}
-                        required
-                        style={{ fontSize: '13.5px' }}
-                      >
-                        {selectedOrderObj && (
-                          <option value={selectedOrderObj.product_id}>
-                            {selectedOrderObj.product_name} ({selectedOrderObj.product_code})
-                          </option>
-                        )}
-                      </select>
-
-                      {/* Remaining returnable quantity indicator */}
-                      <div
-                        style={{
-                          marginTop: '6px',
-                          fontSize: '12.5px',
-                          color: 'var(--primary-700)',
-                          background: 'var(--primary-50)',
-                          padding: '6px 10px',
-                          borderRadius: 'var(--radius-sm)',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px'
-                        }}
-                      >
-                        <span>Remaining Returnable Quantity:</span>
-                        <strong style={{ fontSize: '13px' }}>{maxReturnable} units</strong>
-                      </div>
-                    </div>
-
-                    {/* Field 3: Payment Method (Prepaid or COD) */}
-                    <div className="form-group" style={{ marginBottom: '16px' }}>
-                      <label className="form-label" style={{ fontWeight: 600, marginBottom: '6px' }}>
-                        Payment Method <span className="required">*</span>
-                      </label>
-                      <select
-                        className="form-control"
-                        value={paymentMethod}
-                        onChange={e => setPaymentMethod(e.target.value)}
-                        required
-                        style={{ fontSize: '13.5px' }}
-                      >
-                        <option value="Prepaid">Prepaid</option>
-                        <option value="COD">Cash on Delivery (COD)</option>
-                      </select>
-                    </div>
-
-                    {/* Field 4: Return Quantity */}
-                    <div className="form-group" style={{ marginBottom: '10px' }}>
-                      <label className="form-label" style={{ fontWeight: 600, marginBottom: '6px' }}>
-                        Return Quantity <span className="required">*</span>
-                      </label>
-                      <input
-                        type="number"
-                        min="1"
-                        max={maxReturnable}
-                        className="form-control"
-                        value={returnQuantity}
-                        onChange={e => {
-                          const val = parseInt(e.target.value, 10);
-                          setReturnQuantity(isNaN(val) ? '' : val);
-                          if (val > maxReturnable) {
-                            setFormError(`Quantity cannot exceed remaining returnable quantity (${maxReturnable}).`);
-                          } else {
-                            setFormError('');
-                          }
-                        }}
-                        required
-                        style={{ fontSize: '14px' }}
-                      />
-                      {returnQuantity > maxReturnable && (
-                        <div style={{ color: 'var(--danger-text)', fontSize: '12px', marginTop: '4px' }}>
-                          Return quantity exceeds remaining returnable quantity ({maxReturnable}).
-                        </div>
-                      )}
-                    </div>
-                  </>
                 )}
               </div>
 
@@ -626,15 +583,13 @@ export default function StaffReturns() {
                 >
                   Cancel
                 </button>
-                {returnableOrders.length > 0 && (
-                  <button
-                    type="submit"
-                    className="btn btn-primary"
-                    disabled={submitting || returnQuantity > maxReturnable || returnQuantity < 1}
-                  >
-                    {submitting ? 'Saving...' : 'Save Return'}
-                  </button>
-                )}
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={submitting || !selectedProductId || returnQuantity < 1}
+                >
+                  {submitting ? 'Saving...' : 'Save Return'}
+                </button>
               </div>
             </form>
           </div>

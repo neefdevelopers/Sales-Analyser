@@ -189,7 +189,7 @@ function initSchema(db) {
     CREATE TABLE IF NOT EXISTS returns (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       return_number TEXT UNIQUE NOT NULL,
-      order_id INTEGER NOT NULL REFERENCES orders(id),
+      order_id INTEGER REFERENCES orders(id),
       staff_id INTEGER NOT NULL REFERENCES users(id),
       product_id INTEGER REFERENCES products(id),
       returned_by_staff_id INTEGER REFERENCES users(id),
@@ -210,6 +210,38 @@ function initSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_returns_order ON returns(order_id);
     CREATE INDEX IF NOT EXISTS idx_returns_staff ON returns(staff_id);
   `);
+
+  // Ensure returns table allows nullable order_id
+  try {
+    db.run(`
+      CREATE TABLE IF NOT EXISTS returns_temp (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        return_number TEXT UNIQUE NOT NULL,
+        order_id INTEGER REFERENCES orders(id),
+        staff_id INTEGER NOT NULL REFERENCES users(id),
+        product_id INTEGER REFERENCES products(id),
+        returned_by_staff_id INTEGER REFERENCES users(id),
+        payment_method TEXT,
+        return_quantity INTEGER NOT NULL CHECK(return_quantity > 0),
+        return_amount REAL NOT NULL,
+        return_date TEXT NOT NULL,
+        return_reason TEXT NOT NULL DEFAULT 'Product Return',
+        remarks TEXT,
+        reversed_incentive REAL NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      INSERT INTO returns_temp SELECT id, return_number, order_id, staff_id, product_id, returned_by_staff_id, payment_method, return_quantity, return_amount, return_date, return_reason, remarks, reversed_incentive, created_at, updated_at FROM returns;
+      DROP TABLE returns;
+      ALTER TABLE returns_temp RENAME TO returns;
+      CREATE INDEX IF NOT EXISTS idx_returns_order ON returns(order_id);
+      CREATE INDEX IF NOT EXISTS idx_returns_staff ON returns(staff_id);
+      CREATE INDEX IF NOT EXISTS idx_returns_returned_by ON returns(returned_by_staff_id);
+      CREATE INDEX IF NOT EXISTS idx_returns_product ON returns(product_id);
+    `);
+  } catch (e) {
+    // Ignore
+  }
 
   // Ensure returns table has product_id, returned_by_staff_id, and payment_method columns
   try {
