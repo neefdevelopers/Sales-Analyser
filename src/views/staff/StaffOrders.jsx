@@ -392,7 +392,7 @@ export default function StaffOrders() {
           </div>
         </div>
 
-        {/* Orders Table - Exactly 8 Columns */}
+        {/* Orders Table */}
         <div className="table-responsive">
           <table className="data-table">
             <thead>
@@ -400,7 +400,6 @@ export default function StaffOrders() {
                 <th>Order ID</th>
                 <th>Order Date</th>
                 <th>Sales Staff</th>
-                <th>Customer Name</th>
                 <th>Product</th>
                 <th style={{ textAlign: 'center' }}>Quantity</th>
                 <th>Payment Method</th>
@@ -410,13 +409,13 @@ export default function StaffOrders() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="8" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
+                  <td colSpan="7" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
                     Loading orders...
                   </td>
                 </tr>
               ) : orders.length === 0 ? (
                 <tr>
-                  <td colSpan="8">
+                  <td colSpan="7">
                     <div className="empty-state" style={{ padding: '36px 16px' }}>
                       <div className="empty-state-icon"><ShoppingCart size={28} /></div>
                       <div className="empty-state-title" style={{ fontSize: '16px' }}>No orders found</div>
@@ -450,10 +449,6 @@ export default function StaffOrders() {
                     <td>
                       <div><strong>{o.staff_name}</strong></div>
                       <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{o.staff_code}</div>
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 600 }}>{o.customer_name}</div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{o.customer_phone}</div>
                     </td>
                     <td>
                       <div><strong>{o.product_name}</strong></div>
