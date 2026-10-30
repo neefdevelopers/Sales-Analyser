@@ -1,26 +1,40 @@
 // src/App.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Sidebar from './components/Sidebar';
 import Navbar from './components/Navbar';
 import Login from './views/Login';
 
-import StaffDashboard from './views/staff/StaffDashboard';
+// Staff Views
 import StaffOrders from './views/staff/StaffOrders';
 import StaffReturns from './views/staff/StaffReturns';
-import StaffMyPerformance from './views/staff/StaffMyPerformance';
+import StaffMyRecords from './views/staff/StaffMyRecords';
 
 // Manager Views
-import ManagerDashboard from './views/manager/ManagerDashboard';
 import ProductManagement from './views/manager/ProductManagement';
 import StaffManagement from './views/manager/StaffManagement';
-import StaffPerformanceAnalysis from './views/manager/StaffPerformanceAnalysis';
 import ManagerOrders from './views/manager/ManagerOrders';
+import IncentiveRecords from './views/manager/IncentiveRecords';
 
 function MainApp() {
   const { user, loading } = useAuth();
-  const [currentView, setCurrentView] = useState('dashboard');
-  const [drilldownStaffId, setDrilldownStaffId] = useState(null);
+  const isManager = user?.role === 'brand_manager';
+  const [currentView, setCurrentView] = useState(isManager ? 'products' : 'orders');
+
+  // Keep view synchronized with active role
+  useEffect(() => {
+    if (user) {
+      if (user.role === 'brand_manager') {
+        if (!['products', 'staff', 'orders', 'returns', 'incentives'].includes(currentView)) {
+          setCurrentView('products');
+        }
+      } else {
+        if (!['orders', 'returns', 'my-records'].includes(currentView)) {
+          setCurrentView('orders');
+        }
+      }
+    }
+  }, [user?.role]);
 
   if (loading) {
     return (
@@ -37,60 +51,42 @@ function MainApp() {
     return <Login />;
   }
 
-  const isManager = user.role === 'brand_manager';
-
   const viewTitles = {
-    'dashboard': isManager ? 'Brand Manager Dashboard' : 'Sales Staff Dashboard',
     'products': 'Product Management & Incentives',
     'staff': 'Sales Staff Management',
     'orders': isManager ? 'All Staff Orders' : 'My Orders',
     'returns': isManager ? 'All Returns Audit' : 'Order Returns',
-    'my-performance': 'Personal Performance & Incentive Audit',
-    'staff-performance': 'Staff Performance Analysis'
+    'incentives': 'Incentive Records & Audit',
+    'my-records': 'My Records'
   };
 
   function renderView() {
     if (isManager) {
       switch (currentView) {
-        case 'dashboard':
-          return (
-            <ManagerDashboard
-              onNavigateToStaffPerformance={() => setCurrentView('staff-performance')}
-            />
-          );
         case 'products':
           return <ProductManagement />;
         case 'staff':
-          return (
-            <StaffManagement
-              onSelectStaffForPerformance={(sId) => {
-                setDrilldownStaffId(sId);
-                setCurrentView('staff-performance');
-              }}
-            />
-          );
+          return <StaffManagement />;
         case 'orders':
           return <ManagerOrders />;
         case 'returns':
           return <StaffReturns />;
-        case 'staff-performance':
-          return <StaffPerformanceAnalysis initialStaffId={drilldownStaffId} />;
+        case 'incentives':
+          return <IncentiveRecords />;
         default:
-          return <ManagerDashboard />;
+          return <ProductManagement />;
       }
     } else {
       // Sales Staff
       switch (currentView) {
-        case 'dashboard':
-          return <StaffDashboard />;
         case 'orders':
           return <StaffOrders />;
         case 'returns':
           return <StaffReturns />;
-        case 'my-performance':
-          return <StaffMyPerformance />;
+        case 'my-records':
+          return <StaffMyRecords />;
         default:
-          return <StaffDashboard />;
+          return <StaffOrders />;
       }
     }
   }

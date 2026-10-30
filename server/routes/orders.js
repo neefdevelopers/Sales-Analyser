@@ -13,10 +13,10 @@ export function normalizePhone(phone) {
   return phone.replace(/[^0-9]/g, '');
 }
 
-// GET orders list (with search, filter by staff, date range, pagination)
+// GET orders list (with search, filter by staff, product, payment method, date range, pagination)
 router.get('/', authenticate, (req, res) => {
   const isManager = req.user.role === 'brand_manager';
-  const { staffId, search, status, startDate, endDate, page = 1, limit = 50 } = req.query;
+  const { staffId, productId, paymentMethod, search, status, startDate, endDate, page = 1, limit = 50 } = req.query;
 
   let conditions = [];
   let params = [];
@@ -25,9 +25,19 @@ router.get('/', authenticate, (req, res) => {
   if (!isManager) {
     conditions.push('o.staff_id = ?');
     params.push(req.user.id);
-  } else if (staffId) {
+  } else if (staffId && staffId !== 'all') {
     conditions.push('o.staff_id = ?');
     params.push(parseInt(staffId, 10));
+  }
+
+  if (productId && productId !== 'all') {
+    conditions.push('o.product_id = ?');
+    params.push(parseInt(productId, 10));
+  }
+
+  if (paymentMethod && paymentMethod !== 'all') {
+    conditions.push('o.payment_method = ?');
+    params.push(paymentMethod);
   }
 
   if (search && search.trim()) {
@@ -127,6 +137,70 @@ router.get('/', authenticate, (req, res) => {
       page: parseInt(page, 10),
       limit: parseInt(limit, 10),
       totalPages: Math.ceil(total / parseInt(limit, 10))
+    }
+  });
+});
+
+// GET summary metrics for logged-in staff member (My Records page)
+router.get('/my-summary', authenticate, (req, res) => {
+  const staffId = req.user.id;
+  const { startDate, endDate } = req.query;
+
+  let dateCondOrders = '';
+  let dateCondReturns = '';
+  let paramsOrders = [staffId];
+  let paramsReturns = [staffId];
+
+  if (startDate) {
+    dateCondOrders += ' AND o.order_date >= ?';
+    paramsOrders.push(startDate);
+    dateCondReturns += ' AND r.return_date >= ?';
+    paramsReturns.push(startDate);
+  }
+  if (endDate) {
+    dateCondOrders += ' AND o.order_date <= ?';
+    paramsOrders.push(endDate);
+    dateCondReturns += ' AND r.return_date <= ?';
+    paramsReturns.push(endDate);
+  }
+
+  const orderStats = get(`
+    SELECT
+      COUNT(o.id) AS total_orders,
+      COALESCE(SUM(o.quantity), 0) AS total_quantity,
+      COALESCE(SUM(o.total_amount), 0) AS gross_sales,
+      COALESCE(SUM(o.incentive_amount), 0) AS gross_incentive
+    FROM orders o
+    WHERE o.staff_id = ? ${dateCondOrders}
+  `, paramsOrders);
+
+  const returnStats = get(`
+    SELECT
+      COUNT(DISTINCT r.order_id) AS returned_orders,
+      COUNT(r.id) AS total_returns_count,
+      COALESCE(SUM(r.return_quantity), 0) AS total_returned_quantity,
+      COALESCE(SUM(r.return_amount), 0) AS total_returned_amount,
+      COALESCE(SUM(r.reversed_incentive), 0) AS total_reversed_incentive
+    FROM returns r
+    WHERE r.staff_id = ? ${dateCondReturns}
+  `, paramsReturns);
+
+  const totalOrders = orderStats?.total_orders || 0;
+  const returnedOrders = returnStats?.returned_orders || 0;
+  const grossIncentive = Math.round((orderStats?.gross_incentive || 0) * 100) / 100;
+  const reversedIncentive = Math.round((returnStats?.total_reversed_incentive || 0) * 100) / 100;
+  const netIncentive = Math.max(0, Math.round((grossIncentive - reversedIncentive) * 100) / 100);
+
+  res.json({
+    summary: {
+      totalOrders,
+      returnedOrders,
+      grossIncentive,
+      reversedIncentive,
+      netIncentive,
+      grossSales: Math.round((orderStats?.gross_sales || 0) * 100) / 100,
+      totalQuantity: orderStats?.total_quantity || 0,
+      returnedQuantity: returnStats?.total_returned_quantity || 0
     }
   });
 });

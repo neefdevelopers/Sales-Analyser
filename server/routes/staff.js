@@ -36,13 +36,7 @@ router.get('/:id', authenticate, (req, res) => {
     return res.status(404).json({ error: 'Staff member not found.' });
   }
 
-  // Also fetch manager remarks for this staff member
-  const remarkRecord = get('SELECT remarks, updated_at FROM staff_performance_remarks WHERE staff_id = ?', [targetId]);
-
-  res.json({
-    staff,
-    performanceRemarks: remarkRecord?.remarks || ''
-  });
+  res.json({ staff });
 });
 
 // POST create new staff member (Brand Manager only)

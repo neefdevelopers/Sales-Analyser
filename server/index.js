@@ -10,8 +10,7 @@ import productRoutes from './routes/products.js';
 import staffRoutes from './routes/staff.js';
 import orderRoutes from './routes/orders.js';
 import returnRoutes from './routes/returns.js';
-import dashboardRoutes from './routes/dashboard.js';
-import performanceRoutes from './routes/performance.js';
+import incentiveRoutes from './routes/incentives.js';
 import systemRoutes from './routes/system.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -29,8 +28,7 @@ app.use('/api/products', productRoutes);
 app.use('/api/staff', staffRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/returns', returnRoutes);
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/performance', performanceRoutes);
+app.use('/api/incentives', incentiveRoutes);
 app.use('/api/system', systemRoutes);
 
 // Health check

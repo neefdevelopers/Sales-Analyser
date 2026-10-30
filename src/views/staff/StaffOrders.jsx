@@ -7,11 +7,13 @@ import {
   Search,
   Filter,
   CheckCircle,
-  AlertCircle,
-  Clock,
-  ArrowRight,
   Eye,
-  FileText
+  CreditCard,
+  User,
+  Phone,
+  MapPin,
+  Calendar,
+  Package
 } from 'lucide-react';
 
 export default function StaffOrders() {
@@ -23,9 +25,15 @@ export default function StaffOrders() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedOrderDetails, setSelectedOrderDetails] = useState(null);
 
-  // Form state - only product and quantity are required
+  // Form state
   const [selectedProductId, setSelectedProductId] = useState('');
   const [quantity, setQuantity] = useState(1);
+  const [paymentMethod, setPaymentMethod] = useState('Prepaid');
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerAddress, setCustomerAddress] = useState('');
+  const [orderDate, setOrderDate] = useState(new Date().toISOString().split('T')[0]);
+  const [remarks, setRemarks] = useState('');
 
   // Preview state
   const [preview, setPreview] = useState(null);
@@ -55,29 +63,31 @@ export default function StaffOrders() {
   async function fetchProducts() {
     try {
       const res = await api.get('/products');
-      setProducts(res.products || []);
-      if (res.products && res.products.length > 0 && !selectedProductId) {
-        setSelectedProductId(res.products[0].id);
+      const activeProducts = (res.products || []).filter(p => p.status === 'active');
+      setProducts(activeProducts);
+      if (activeProducts.length > 0 && !selectedProductId) {
+        setSelectedProductId(activeProducts[0].id);
       }
     } catch (err) {
       console.error('Failed to load products:', err);
     }
   }
 
-  // Update preview whenever product or quantity changes
+  // Update preview whenever product, quantity, or payment method changes
   useEffect(() => {
     if (selectedProductId && quantity > 0) {
       updateOrderPreview();
     } else {
       setPreview(null);
     }
-  }, [selectedProductId, quantity]);
+  }, [selectedProductId, quantity, paymentMethod]);
 
   async function updateOrderPreview() {
     try {
       const res = await api.post('/orders/preview', {
         product_id: parseInt(selectedProductId, 10),
-        quantity: parseInt(quantity, 10)
+        quantity: parseInt(quantity, 10),
+        payment_method: paymentMethod
       });
       setPreview(res);
       setFormError('');
@@ -87,23 +97,52 @@ export default function StaffOrders() {
     }
   }
 
+  function openCreateOrderModal() {
+    setFormError('');
+    setQuantity(1);
+    setPaymentMethod('Prepaid');
+    setCustomerName('');
+    setCustomerPhone('');
+    setCustomerAddress('');
+    setOrderDate(new Date().toISOString().split('T')[0]);
+    setRemarks('');
+    if (products.length > 0) {
+      setSelectedProductId(products[0].id);
+    }
+    setShowAddModal(true);
+  }
+
   async function handleCreateOrder(e) {
     e.preventDefault();
     setFormError('');
+
+    if (!customerName.trim()) {
+      setFormError('Customer name is required.');
+      return;
+    }
+    if (!customerPhone.trim() || customerPhone.replace(/\D/g, '').length < 7) {
+      setFormError('Please enter a valid phone number (at least 7 digits).');
+      return;
+    }
+
     setSubmitting(true);
 
     try {
       const res = await api.post('/orders', {
         product_id: parseInt(selectedProductId, 10),
-        quantity: parseInt(quantity, 10)
+        quantity: parseInt(quantity, 10),
+        payment_method: paymentMethod,
+        customer_name: customerName.trim(),
+        customer_phone: customerPhone.trim(),
+        customer_address: customerAddress.trim(),
+        order_date: orderDate,
+        remarks: remarks.trim()
       });
 
-      setNotification(`Order ${res.order.order_number} created successfully! Earned Incentive: ₹${res.order.incentive_amount}`);
+      setNotification(`Order ${res.order.order_number} created successfully! Calculated Incentive: ₹${res.order.incentive_amount}`);
       setTimeout(() => setNotification(''), 6000);
 
-      // Reset form
       setShowAddModal(false);
-      setQuantity(1);
       fetchOrders();
     } catch (err) {
       setFormError(err.message);
@@ -132,10 +171,7 @@ export default function StaffOrders() {
 
         <button
           className="btn btn-primary"
-          onClick={() => {
-            setShowAddModal(true);
-            setFormError('');
-          }}
+          onClick={openCreateOrderModal}
         >
           <Plus size={16} />
           <span>New Order</span>
@@ -186,7 +222,7 @@ export default function StaffOrders() {
                 <th>Qty</th>
                 <th>Total (₹)</th>
                 <th>Method</th>
-                <th>Staff Incentive</th>
+                <th>Calculated Incentive</th>
                 <th>Status</th>
                 <th>Returns</th>
                 <th>Action</th>
@@ -204,7 +240,7 @@ export default function StaffOrders() {
                       <div className="empty-state-icon"><ShoppingCart size={24} /></div>
                       <div className="empty-state-title">No orders found</div>
                       <div className="empty-state-desc">You have not created any orders matching the filters.</div>
-                      <button className="btn btn-primary btn-sm" onClick={() => setShowAddModal(true)}>
+                      <button className="btn btn-primary btn-sm" onClick={openCreateOrderModal}>
                         <Plus size={14} /> Create First Order
                       </button>
                     </div>
@@ -220,7 +256,7 @@ export default function StaffOrders() {
                     <td>
                       <div><strong>{o.customer_name}</strong></div>
                       <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                        {o.customer_phone === '9999999999' ? 'Direct' : o.customer_phone}
+                        {o.customer_phone}
                       </div>
                     </td>
                     <td>
@@ -228,7 +264,7 @@ export default function StaffOrders() {
                       <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>₹{o.unit_price} / unit</div>
                     </td>
                     <td><strong>{o.quantity}</strong></td>
-                    <td><strong>₹{o.total_amount.toLocaleString()}</strong></td>
+                    <td><strong>₹{Number(o.total_amount).toLocaleString()}</strong></td>
                     <td>
                       <span className={`badge ${o.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`}>
                         {o.payment_method}
@@ -236,7 +272,7 @@ export default function StaffOrders() {
                     </td>
                     <td>
                       <div style={{ color: 'var(--warning-text)', fontWeight: 700 }}>
-                        ₹{o.net_incentive}
+                        ₹{o.net_incentive ?? o.incentive_amount}
                       </div>
                       {o.reversed_incentive > 0 && (
                         <div style={{ fontSize: '10.5px', color: 'var(--danger-solid)' }}>
@@ -268,7 +304,7 @@ export default function StaffOrders() {
                         onClick={() => setSelectedOrderDetails(o)}
                         title="View Order Details"
                       >
-                        <Eye size={13} />
+                        <Eye size={13} /> Details
                       </button>
                     </td>
                   </tr>
@@ -279,74 +315,195 @@ export default function StaffOrders() {
         </div>
       </div>
 
-      {/* Add Order Modal - Only Product and Quantity */}
+      {/* Add Order Modal - Complete Order Entry */}
       {showAddModal && (
         <div className="modal-overlay">
-          <div className="modal-dialog" style={{ maxWidth: '480px' }}>
+          <div className="modal-dialog" style={{ maxWidth: '560px' }}>
             <div className="modal-header">
               <h3 className="modal-title">Create New Order</h3>
               <button className="modal-close" onClick={() => setShowAddModal(false)}>✕</button>
             </div>
 
             <form onSubmit={handleCreateOrder}>
-              <div className="modal-body" style={{ padding: '24px' }}>
+              <div className="modal-body" style={{ padding: '20px 24px' }}>
                 {formError && (
                   <div style={{ padding: '10px 14px', background: 'var(--danger-bg)', border: '1px solid var(--danger-border)', color: 'var(--danger-text)', borderRadius: 'var(--radius-md)', marginBottom: '16px', fontSize: '13px' }}>
                     {formError}
                   </div>
                 )}
 
-                <div className="form-group" style={{ marginBottom: '20px' }}>
-                  <label className="form-label" style={{ fontWeight: 600, fontSize: '13.5px', marginBottom: '8px', display: 'block' }}>
-                    Select Product <span className="required">*</span>
+                {/* Product Selection */}
+                <div className="form-group" style={{ marginBottom: '14px' }}>
+                  <label className="form-label" style={{ fontWeight: 600, fontSize: '13px', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Package size={15} color="var(--primary-600)" />
+                    <span>Select Product <span className="required">*</span></span>
                   </label>
                   <select
                     className="form-control"
                     value={selectedProductId}
                     onChange={e => setSelectedProductId(e.target.value)}
-                    style={{ fontSize: '14.5px', padding: '10px 14px', height: '46px', borderRadius: '8px' }}
+                    style={{ fontSize: '14px', padding: '8px 12px' }}
                     required
                   >
                     {products.map(p => (
                       <option key={p.id} value={p.id}>
-                        {p.name}
+                        {p.name} — ₹{p.price}
                       </option>
                     ))}
                   </select>
                 </div>
 
-                <div className="form-group" style={{ marginBottom: '20px' }}>
-                  <label className="form-label" style={{ fontWeight: 600, fontSize: '13.5px', marginBottom: '8px', display: 'block' }}>
-                    Quantity <span className="required">*</span>
+                {/* Quantity and Payment Method */}
+                <div className="form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 600, fontSize: '13px', marginBottom: '6px', display: 'block' }}>
+                      Quantity <span className="required">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      className="form-control"
+                      value={quantity}
+                      onChange={e => setQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                      style={{ fontSize: '14px', padding: '8px 12px', fontWeight: 600 }}
+                      required
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 600, fontSize: '13px', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <CreditCard size={15} color="var(--primary-600)" />
+                      <span>Payment Method <span className="required">*</span></span>
+                    </label>
+                    <select
+                      className="form-control"
+                      value={paymentMethod}
+                      onChange={e => setPaymentMethod(e.target.value)}
+                      style={{ fontSize: '14px', padding: '8px 12px' }}
+                      required
+                    >
+                      <option value="Prepaid">Prepaid</option>
+                      <option value="COD">Cash on Delivery (COD)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Customer Details */}
+                <div className="form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 600, fontSize: '13px', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <User size={15} color="var(--primary-600)" />
+                      <span>Customer Name <span className="required">*</span></span>
+                    </label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="e.g. Rahul Sharma"
+                      value={customerName}
+                      onChange={e => setCustomerName(e.target.value)}
+                      style={{ fontSize: '13.5px', padding: '8px 12px' }}
+                      required
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 600, fontSize: '13px', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Phone size={15} color="var(--primary-600)" />
+                      <span>Phone Number <span className="required">*</span></span>
+                    </label>
+                    <input
+                      type="tel"
+                      className="form-control"
+                      placeholder="10-digit mobile number"
+                      value={customerPhone}
+                      onChange={e => setCustomerPhone(e.target.value)}
+                      style={{ fontSize: '13.5px', padding: '8px 12px' }}
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* Customer Address */}
+                <div className="form-group" style={{ marginBottom: '14px' }}>
+                  <label className="form-label" style={{ fontWeight: 600, fontSize: '13px', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <MapPin size={15} color="var(--primary-600)" />
+                    <span>Customer Address</span>
                   </label>
                   <input
-                    type="number"
-                    min="1"
+                    type="text"
                     className="form-control"
-                    value={quantity}
-                    onChange={e => setQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                    style={{ fontSize: '15px', padding: '10px 14px', height: '46px', borderRadius: '8px', fontWeight: 600 }}
-                    required
+                    placeholder="Delivery street address, area, city"
+                    value={customerAddress}
+                    onChange={e => setCustomerAddress(e.target.value)}
+                    style={{ fontSize: '13.5px', padding: '8px 12px' }}
                   />
                 </div>
 
-                {/* Live Staff Incentive Preview */}
+                {/* Order Date and Remarks */}
+                <div className="form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '16px' }}>
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 600, fontSize: '13px', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Calendar size={15} color="var(--primary-600)" />
+                      <span>Order Date <span className="required">*</span></span>
+                    </label>
+                    <input
+                      type="date"
+                      className="form-control"
+                      value={orderDate}
+                      onChange={e => setOrderDate(e.target.value)}
+                      style={{ fontSize: '13.5px', padding: '8px 12px' }}
+                      required
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 600, fontSize: '13px', marginBottom: '6px', display: 'block' }}>
+                      Remarks (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="Special instructions"
+                      value={remarks}
+                      onChange={e => setRemarks(e.target.value)}
+                      style={{ fontSize: '13.5px', padding: '8px 12px' }}
+                    />
+                  </div>
+                </div>
+
+                {/* Live Order & Incentive Calculation Preview */}
                 {preview && (
-                  <div className="preview-box" style={{ marginTop: '16px', padding: '16px 20px', borderRadius: '10px', background: '#f8fafc', border: '1px solid var(--border-color)' }}>
+                  <div className="preview-box" style={{ padding: '16px 20px', borderRadius: '10px', background: '#f8fafc', border: '1px solid var(--border-color)' }}>
                     <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <CheckCircle size={14} color="var(--primary-600)" />
-                      <span>Order Incentive Preview</span>
+                      <span>Order & Incentive Calculation Preview</span>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
                       <div>
-                        <div className="preview-item-label" style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginBottom: '4px' }}>Quantity</div>
-                        <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-main)' }}>
-                          {preview.quantity} {preview.quantity === 1 ? 'unit' : 'units'}
+                        <div className="preview-item-label" style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '3px' }}>Unit Price</div>
+                        <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-main)' }}>
+                          ₹{preview.unit_price}
                         </div>
                       </div>
                       <div>
-                        <div className="preview-item-label" style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginBottom: '4px' }}>Staff Incentive</div>
-                        <div style={{ fontSize: '20px', fontWeight: 800, color: '#16a34a' }}>
+                        <div className="preview-item-label" style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '3px' }}>Total Amount</div>
+                        <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--primary-700)' }}>
+                          ₹{preview.total_amount?.toLocaleString()}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="preview-item-label" style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '3px' }}>Applied Rule</div>
+                        <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-main)' }}>
+                          {preview.estimated_incentive?.type === 'fixed'
+                            ? `Fixed ₹${preview.estimated_incentive?.rate}`
+                            : `${preview.estimated_incentive?.rate}%`}
+                          {' / '}
+                          {preview.estimated_incentive?.basis === 'per_unit' ? 'unit' : 'order'}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="preview-item-label" style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '3px' }}>Estimated Incentive</div>
+                        <div style={{ fontSize: '18px', fontWeight: 800, color: '#16a34a' }}>
                           ₹{preview.estimated_incentive?.amount ?? 0}
                         </div>
                       </div>
@@ -382,7 +539,7 @@ export default function StaffOrders() {
                   <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Customer</div>
                   <div style={{ fontWeight: 700, fontSize: '15px' }}>{selectedOrderDetails.customer_name}</div>
                   <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                    {selectedOrderDetails.customer_phone === '9999999999' ? 'Direct Order' : `Phone: ${selectedOrderDetails.customer_phone}`}
+                    Phone: {selectedOrderDetails.customer_phone}
                   </div>
                   {selectedOrderDetails.customer_address && (
                     <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
@@ -404,20 +561,20 @@ export default function StaffOrders() {
                   <div>
                     <div className="preview-item-label">Gross Amount</div>
                     <div className="preview-item-val" style={{ color: 'var(--text-main)', fontSize: '16px' }}>
-                      ₹{selectedOrderDetails.total_amount}
+                      ₹{selectedOrderDetails.total_amount?.toLocaleString()}
                     </div>
                   </div>
                   <div>
-                    <div className="preview-item-label">Payment</div>
+                    <div className="preview-item-label">Payment Method</div>
                     <div style={{ fontWeight: 700 }}>{selectedOrderDetails.payment_method}</div>
                   </div>
                   <div>
-                    <div className="preview-item-label">Snapshotted Incentive</div>
+                    <div className="preview-item-label">Calculated Incentive</div>
                     <div className="preview-item-val" style={{ color: '#d97706' }}>
                       ₹{selectedOrderDetails.incentive_amount}
                     </div>
                     <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                      Rule: {selectedOrderDetails.incentive_type} ({selectedOrderDetails.incentive_basis})
+                      Rule: {selectedOrderDetails.incentive_type === 'fixed' ? `Fixed ₹${selectedOrderDetails.incentive_rate}` : `${selectedOrderDetails.incentive_rate}%`} ({selectedOrderDetails.incentive_basis})
                     </div>
                   </div>
                   <div>
@@ -428,6 +585,17 @@ export default function StaffOrders() {
                   </div>
                 </div>
               </div>
+
+              {selectedOrderDetails.returned_quantity > 0 && (
+                <div style={{ marginTop: '14px', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: 'var(--radius-md)' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: '#b91c1c' }}>Return Adjustments Recorded:</div>
+                  <div style={{ fontSize: '12.5px', color: '#991b1b', marginTop: '4px' }}>
+                    Returned Quantity: <strong>{selectedOrderDetails.returned_quantity} units</strong> (Refund: ₹{selectedOrderDetails.returned_amount})
+                    {' | '}Reversed Incentive: <strong>-₹{selectedOrderDetails.reversed_incentive}</strong>
+                    {' | '}Net Staff Incentive: <strong>₹{selectedOrderDetails.net_incentive}</strong>
+                  </div>
+                </div>
+              )}
 
               {selectedOrderDetails.remarks && (
                 <div style={{ marginTop: '12px' }}>

@@ -1,60 +1,99 @@
 // src/views/manager/ManagerOrders.jsx
 import React, { useState, useEffect } from 'react';
 import { api } from '../../api';
-import { ShoppingCart, Search, Filter, Eye } from 'lucide-react';
+import { ShoppingCart, Search, Filter, Eye, Calendar, Package, CreditCard, RotateCcw } from 'lucide-react';
 
 export default function ManagerOrders() {
   const [orders, setOrders] = useState([]);
   const [staffList, setStaffList] = useState([]);
+  const [productList, setProductList] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Filters
   const [search, setSearch] = useState('');
   const [staffId, setStaffId] = useState('all');
+  const [productId, setProductId] = useState('all');
+  const [paymentMethod, setPaymentMethod] = useState('all');
   const [status, setStatus] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
   const [selectedOrder, setSelectedOrder] = useState(null);
 
   useEffect(() => {
-    fetchStaffList();
+    fetchMetadata();
   }, []);
 
   useEffect(() => {
     fetchOrders();
-  }, [staffId, status]);
+  }, [staffId, productId, paymentMethod, status, startDate, endDate]);
 
-  async function fetchStaffList() {
+  async function fetchMetadata() {
     try {
-      const res = await api.get('/staff');
-      setStaffList(res.staff || []);
+      const [staffRes, prodRes] = await Promise.all([
+        api.get('/staff'),
+        api.get('/products?all=true')
+      ]);
+      setStaffList(staffRes.staff || []);
+      setProductList(prodRes.products || []);
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load filter metadata:', err);
     }
   }
 
   async function fetchOrders() {
     setLoading(true);
     try {
-      let queryStr = `?status=${status}`;
-      if (staffId !== 'all') queryStr += `&staffId=${staffId}`;
-      if (search) queryStr += `&search=${encodeURIComponent(search)}`;
+      let params = [];
+      if (status !== 'all') params.push(`status=${status}`);
+      if (staffId !== 'all') params.push(`staffId=${staffId}`);
+      if (productId !== 'all') params.push(`productId=${productId}`);
+      if (paymentMethod !== 'all') params.push(`paymentMethod=${paymentMethod}`);
+      if (startDate) params.push(`startDate=${startDate}`);
+      if (endDate) params.push(`endDate=${endDate}`);
+      if (search && search.trim()) params.push(`search=${encodeURIComponent(search.trim())}`);
+
+      const queryStr = params.length > 0 ? '?' + params.join('&') : '';
       const res = await api.get(`/orders${queryStr}`);
       setOrders(res.orders || []);
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load orders:', err);
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleResetFilters() {
+    setSearch('');
+    setStaffId('all');
+    setProductId('all');
+    setPaymentMethod('all');
+    setStatus('all');
+    setStartDate('');
+    setEndDate('');
   }
 
   return (
     <div className="page-body">
       <div className="page-header">
         <div>
-          <h2 className="page-title">All Orders (Brand Manager)</h2>
+          <h2 className="page-title">All Staff Orders</h2>
+          <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '2px' }}>
+            Monitor, search, and audit all orders created by sales staff.
+          </p>
         </div>
+
+        {(staffId !== 'all' || productId !== 'all' || paymentMethod !== 'all' || status !== 'all' || startDate || endDate || search) && (
+          <button className="btn btn-secondary btn-sm" onClick={handleResetFilters}>
+            Reset Filters
+          </button>
+        )}
       </div>
 
       <div className="table-card">
-        <div className="table-toolbar">
-          <div className="search-input-wrap">
+        {/* Filter Toolbar */}
+        <div className="table-toolbar" style={{ flexWrap: 'wrap', gap: '10px' }}>
+          <div className="search-input-wrap" style={{ minWidth: '240px', flex: 1 }}>
             <Search size={16} />
             <input
               type="text"
@@ -66,10 +105,11 @@ export default function ManagerOrders() {
             />
           </div>
 
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            {/* Staff Filter */}
             <select
               className="form-control"
-              style={{ width: 'auto', padding: '6px 12px', fontSize: '13px' }}
+              style={{ width: 'auto', padding: '6px 10px', fontSize: '12.5px' }}
               value={staffId}
               onChange={e => setStaffId(e.target.value)}
             >
@@ -79,9 +119,35 @@ export default function ManagerOrders() {
               ))}
             </select>
 
+            {/* Product Filter */}
             <select
               className="form-control"
-              style={{ width: 'auto', padding: '6px 12px', fontSize: '13px' }}
+              style={{ width: 'auto', padding: '6px 10px', fontSize: '12.5px' }}
+              value={productId}
+              onChange={e => setProductId(e.target.value)}
+            >
+              <option value="all">All Products</option>
+              {productList.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+
+            {/* Payment Method */}
+            <select
+              className="form-control"
+              style={{ width: 'auto', padding: '6px 10px', fontSize: '12.5px' }}
+              value={paymentMethod}
+              onChange={e => setPaymentMethod(e.target.value)}
+            >
+              <option value="all">All Payments</option>
+              <option value="Prepaid">Prepaid</option>
+              <option value="COD">COD</option>
+            </select>
+
+            {/* Status */}
+            <select
+              className="form-control"
+              style={{ width: 'auto', padding: '6px 10px', fontSize: '12.5px' }}
               value={status}
               onChange={e => setStatus(e.target.value)}
             >
@@ -91,9 +157,31 @@ export default function ManagerOrders() {
               <option value="Pending">Pending</option>
               <option value="Cancelled">Cancelled</option>
             </select>
+
+            {/* Date Range */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <input
+                type="date"
+                className="form-control"
+                style={{ width: 'auto', padding: '5px 8px', fontSize: '12px' }}
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+                title="Start Date"
+              />
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>-</span>
+              <input
+                type="date"
+                className="form-control"
+                style={{ width: 'auto', padding: '5px 8px', fontSize: '12px' }}
+                value={endDate}
+                onChange={e => setEndDate(e.target.value)}
+                title="End Date"
+              />
+            </div>
           </div>
         </div>
 
+        {/* Orders Table */}
         <div className="table-responsive">
           <table className="data-table">
             <thead>
@@ -106,7 +194,7 @@ export default function ManagerOrders() {
                 <th>Qty</th>
                 <th>Total (₹)</th>
                 <th>Method</th>
-                <th>Incentive</th>
+                <th>Calculated Incentive</th>
                 <th>Status</th>
                 <th>Returns</th>
                 <th>Details</th>
@@ -123,6 +211,7 @@ export default function ManagerOrders() {
                     <div className="empty-state">
                       <div className="empty-state-icon"><ShoppingCart size={24} /></div>
                       <div className="empty-state-title">No orders found</div>
+                      <div className="empty-state-desc">No orders matched the specified filters.</div>
                     </div>
                   </td>
                 </tr>
@@ -138,19 +227,29 @@ export default function ManagerOrders() {
                     <td>
                       <div>{o.customer_name}</div>
                       <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                        {o.customer_phone === '9999999999' ? 'Direct' : o.customer_phone}
+                        {o.customer_phone}
                       </div>
                     </td>
-                    <td>{o.product_name}</td>
+                    <td>
+                      <div>{o.product_name}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>₹{o.unit_price} / unit</div>
+                    </td>
                     <td><strong>{o.quantity}</strong></td>
-                    <td><strong>₹{o.total_amount.toLocaleString()}</strong></td>
+                    <td><strong>₹{Number(o.total_amount).toLocaleString()}</strong></td>
                     <td>
                       <span className={`badge ${o.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`}>
                         {o.payment_method}
                       </span>
                     </td>
                     <td>
-                      <span style={{ color: '#d97706', fontWeight: 700 }}>₹{o.net_incentive}</span>
+                      <div style={{ color: 'var(--warning-text)', fontWeight: 700 }}>
+                        ₹{o.net_incentive ?? o.incentive_amount}
+                      </div>
+                      {o.reversed_incentive > 0 && (
+                        <div style={{ fontSize: '10.5px', color: 'var(--danger-solid)' }}>
+                          -₹{o.reversed_incentive} rev.
+                        </div>
+                      )}
                     </td>
                     <td>
                       <span className={`badge ${
@@ -169,7 +268,11 @@ export default function ManagerOrders() {
                       )}
                     </td>
                     <td>
-                      <button className="btn btn-secondary btn-sm" onClick={() => setSelectedOrder(o)}>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => setSelectedOrder(o)}
+                        title="View Complete Order Details"
+                      >
                         <Eye size={13} />
                       </button>
                     </td>
@@ -197,12 +300,18 @@ export default function ManagerOrders() {
                   <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
                     Customer: <strong>{selectedOrder.customer_name}</strong> ({selectedOrder.customer_phone})
                   </div>
+                  {selectedOrder.customer_address && (
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                      Address: {selectedOrder.customer_address}
+                    </div>
+                  )}
                 </div>
 
                 <div>
                   <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Product</div>
                   <div style={{ fontWeight: 700 }}>{selectedOrder.product_name} ({selectedOrder.product_code})</div>
                   <div style={{ fontSize: '12px' }}>Qty: <strong>{selectedOrder.quantity}</strong> @ ₹{selectedOrder.unit_price}</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Order Date: {selectedOrder.order_date}</div>
                 </div>
               </div>
 
@@ -210,17 +319,21 @@ export default function ManagerOrders() {
                 <div className="preview-grid">
                   <div>
                     <div className="preview-item-label">Total Amount</div>
-                    <div className="preview-item-val" style={{ color: 'var(--primary-600)' }}>₹{selectedOrder.total_amount}</div>
+                    <div className="preview-item-val" style={{ color: 'var(--primary-600)' }}>
+                      ₹{Number(selectedOrder.total_amount).toLocaleString()}
+                    </div>
                   </div>
                   <div>
                     <div className="preview-item-label">Payment Method</div>
                     <div style={{ fontWeight: 700 }}>{selectedOrder.payment_method}</div>
                   </div>
                   <div>
-                    <div className="preview-item-label">Saved Incentive Snapshot</div>
-                    <div className="preview-item-val" style={{ color: '#d97706' }}>₹{selectedOrder.incentive_amount}</div>
+                    <div className="preview-item-label">Calculated Incentive</div>
+                    <div className="preview-item-val" style={{ color: '#d97706' }}>
+                      ₹{selectedOrder.incentive_amount}
+                    </div>
                     <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                      Rule: {selectedOrder.incentive_type} ({selectedOrder.incentive_basis})
+                      Rule: {selectedOrder.incentive_type === 'fixed' ? `Fixed ₹${selectedOrder.incentive_rate}` : `${selectedOrder.incentive_rate}%`} ({selectedOrder.incentive_basis})
                     </div>
                   </div>
                   <div>
@@ -229,6 +342,17 @@ export default function ManagerOrders() {
                   </div>
                 </div>
               </div>
+
+              {selectedOrder.returned_quantity > 0 && (
+                <div style={{ marginTop: '14px', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: 'var(--radius-md)' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: '#b91c1c' }}>Return Adjustments:</div>
+                  <div style={{ fontSize: '12.5px', color: '#991b1b', marginTop: '4px' }}>
+                    Returned Quantity: <strong>{selectedOrder.returned_quantity} units</strong> (Refund: ₹{selectedOrder.returned_amount})
+                    {' | '}Reversed Incentive: <strong>-₹{selectedOrder.reversed_incentive}</strong>
+                    {' | '}Net Staff Incentive: <strong>₹{selectedOrder.net_incentive}</strong>
+                  </div>
+                </div>
+              )}
 
               {selectedOrder.remarks && (
                 <div style={{ marginTop: '12px' }}>

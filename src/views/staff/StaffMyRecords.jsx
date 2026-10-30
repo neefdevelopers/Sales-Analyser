@@ -1,0 +1,398 @@
+// src/views/staff/StaffMyRecords.jsx
+import React, { useState, useEffect } from 'react';
+import { api } from '../../api';
+import {
+  ShoppingCart,
+  RotateCcw,
+  Award,
+  Calendar,
+  Search,
+  Filter,
+  CheckCircle,
+  FileText
+} from 'lucide-react';
+
+export default function StaffMyRecords() {
+  const [activeTab, setActiveTab] = useState('orders'); // 'orders' | 'returns'
+  const [summary, setSummary] = useState(null);
+  const [orders, setOrders] = useState([]);
+  const [returns, setReturns] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Date filters
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    fetchData();
+  }, [startDate, endDate]);
+
+  async function fetchData() {
+    setLoading(true);
+    try {
+      let queryParams = [];
+      if (startDate) queryParams.push(`startDate=${startDate}`);
+      if (endDate) queryParams.push(`endDate=${endDate}`);
+      const qs = queryParams.length > 0 ? '?' + queryParams.join('&') : '';
+
+      const [summaryRes, ordersRes, returnsRes] = await Promise.all([
+        api.get(`/orders/my-summary${qs}`),
+        api.get(`/orders${qs}`),
+        api.get(`/returns${qs}`)
+      ]);
+
+      setSummary(summaryRes.summary || {});
+      setOrders(ordersRes.orders || []);
+      setReturns(returnsRes.returns || []);
+    } catch (err) {
+      console.error('Failed to load my records:', err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleResetFilters() {
+    setStartDate('');
+    setEndDate('');
+    setSearch('');
+  }
+
+  // Filtered orders & returns by search term
+  const filteredOrders = orders.filter(o => {
+    if (!search.trim()) return true;
+    const term = search.toLowerCase();
+    return (
+      o.order_number?.toLowerCase().includes(term) ||
+      o.customer_name?.toLowerCase().includes(term) ||
+      o.product_name?.toLowerCase().includes(term)
+    );
+  });
+
+  const filteredReturns = returns.filter(r => {
+    if (!search.trim()) return true;
+    const term = search.toLowerCase();
+    return (
+      r.return_number?.toLowerCase().includes(term) ||
+      r.order_number?.toLowerCase().includes(term) ||
+      r.customer_name?.toLowerCase().includes(term) ||
+      r.product_name?.toLowerCase().includes(term)
+    );
+  });
+
+  return (
+    <div className="page-body">
+      {/* Header */}
+      <div className="page-header">
+        <div>
+          <h2 className="page-title">My Records</h2>
+          <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '2px' }}>
+            View your personal orders, product returns, and total earned incentives.
+          </p>
+        </div>
+
+        {/* Date Filter Bar */}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Calendar size={15} color="var(--text-muted)" />
+            <input
+              type="date"
+              className="form-control"
+              style={{ width: 'auto', padding: '6px 10px', fontSize: '12.5px' }}
+              value={startDate}
+              onChange={e => setStartDate(e.target.value)}
+            />
+            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>to</span>
+            <input
+              type="date"
+              className="form-control"
+              style={{ width: 'auto', padding: '6px 10px', fontSize: '12.5px' }}
+              value={endDate}
+              onChange={e => setEndDate(e.target.value)}
+            />
+          </div>
+
+          {(startDate || endDate) && (
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={handleResetFilters}
+            >
+              Reset
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 3 Summary Cards */}
+      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: '24px' }}>
+        {/* Card 1: Total Orders */}
+        <div className="stat-card">
+          <div className="stat-card-header">
+            <div>
+              <div className="stat-title">My Total Orders</div>
+              <div className="stat-value">{summary?.totalOrders ?? 0}</div>
+            </div>
+            <div className="stat-icon-wrap" style={{ background: '#eff6ff', color: '#2563eb' }}>
+              <ShoppingCart size={22} />
+            </div>
+          </div>
+          <div className="stat-desc" style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
+            Total Gross Sales: <strong>₹{summary?.grossSales?.toLocaleString() ?? 0}</strong> ({summary?.totalQuantity ?? 0} units)
+          </div>
+        </div>
+
+        {/* Card 2: Returned Orders */}
+        <div className="stat-card">
+          <div className="stat-card-header">
+            <div>
+              <div className="stat-title">My Returned Orders</div>
+              <div className="stat-value" style={{ color: summary?.returnedOrders > 0 ? '#dc2626' : 'var(--text-main)' }}>
+                {summary?.returnedOrders ?? 0}
+              </div>
+            </div>
+            <div className="stat-icon-wrap" style={{ background: '#fef2f2', color: '#dc2626' }}>
+              <RotateCcw size={22} />
+            </div>
+          </div>
+          <div className="stat-desc" style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
+            Returned Units: <strong>{summary?.returnedQuantity ?? 0} units</strong>
+          </div>
+        </div>
+
+        {/* Card 3: Total Incentives */}
+        <div className="stat-card">
+          <div className="stat-card-header">
+            <div>
+              <div className="stat-title">My Total Incentives</div>
+              <div className="stat-value" style={{ color: '#16a34a' }}>
+                ₹{summary?.netIncentive?.toLocaleString() ?? 0}
+              </div>
+            </div>
+            <div className="stat-icon-wrap" style={{ background: '#f0fdf4', color: '#16a34a' }}>
+              <Award size={22} />
+            </div>
+          </div>
+          <div className="stat-desc" style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
+            Earned: ₹{summary?.grossIncentive ?? 0} | Reversed: -₹{summary?.reversedIncentive ?? 0}
+          </div>
+        </div>
+      </div>
+
+      {/* Tab Navigation: Order History & Return History */}
+      <div className="table-card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-subtle)', padding: '0 16px' }}>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '14px 18px',
+                border: 'none',
+                background: 'transparent',
+                fontWeight: activeTab === 'orders' ? 700 : 500,
+                color: activeTab === 'orders' ? 'var(--primary-600)' : 'var(--text-muted)',
+                borderBottom: activeTab === 'orders' ? '2px solid var(--primary-600)' : '2px solid transparent',
+                cursor: 'pointer',
+                fontSize: '14px'
+              }}
+              onClick={() => setActiveTab('orders')}
+            >
+              <ShoppingCart size={16} />
+              <span>Order History ({orders.length})</span>
+            </button>
+
+            <button
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '14px 18px',
+                border: 'none',
+                background: 'transparent',
+                fontWeight: activeTab === 'returns' ? 700 : 500,
+                color: activeTab === 'returns' ? 'var(--primary-600)' : 'var(--text-muted)',
+                borderBottom: activeTab === 'returns' ? '2px solid var(--primary-600)' : '2px solid transparent',
+                cursor: 'pointer',
+                fontSize: '14px'
+              }}
+              onClick={() => setActiveTab('returns')}
+            >
+              <RotateCcw size={16} />
+              <span>Return History ({returns.length})</span>
+            </button>
+          </div>
+
+          <div className="search-input-wrap" style={{ maxWidth: '280px', margin: '8px 0' }}>
+            <Search size={15} />
+            <input
+              type="text"
+              className="search-input"
+              placeholder={`Search ${activeTab === 'orders' ? 'orders' : 'returns'}...`}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{ padding: '6px 10px 6px 32px', fontSize: '13px' }}
+            />
+          </div>
+        </div>
+
+        {/* Tab 1: Order History */}
+        {activeTab === 'orders' && (
+          <div className="table-responsive">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Order #</th>
+                  <th>Order Date</th>
+                  <th>Customer</th>
+                  <th>Product</th>
+                  <th>Quantity</th>
+                  <th>Total (₹)</th>
+                  <th>Payment</th>
+                  <th>Incentive Earned</th>
+                  <th>Status</th>
+                  <th>Return Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan="10" style={{ textAlign: 'center', padding: '32px' }}>Loading order records...</td>
+                  </tr>
+                ) : filteredOrders.length === 0 ? (
+                  <tr>
+                    <td colSpan="10">
+                      <div className="empty-state">
+                        <div className="empty-state-icon"><ShoppingCart size={24} /></div>
+                        <div className="empty-state-title">No orders found</div>
+                        <div className="empty-state-desc">You have no order history matching the selected period.</div>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredOrders.map(o => (
+                    <tr key={o.id}>
+                      <td><strong style={{ color: 'var(--primary-700)' }}>{o.order_number}</strong></td>
+                      <td>{o.order_date}</td>
+                      <td>
+                        <div><strong>{o.customer_name}</strong></div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{o.customer_phone}</div>
+                      </td>
+                      <td>
+                        <div>{o.product_name}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>₹{o.unit_price} / unit</div>
+                      </td>
+                      <td><strong>{o.quantity}</strong></td>
+                      <td><strong>₹{Number(o.total_amount).toLocaleString()}</strong></td>
+                      <td>
+                        <span className={`badge ${o.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`}>
+                          {o.payment_method}
+                        </span>
+                      </td>
+                      <td>
+                        <div style={{ color: 'var(--warning-text)', fontWeight: 700 }}>
+                          ₹{o.net_incentive ?? o.incentive_amount}
+                        </div>
+                        {o.reversed_incentive > 0 && (
+                          <div style={{ fontSize: '10.5px', color: 'var(--danger-solid)' }}>
+                            -₹{o.reversed_incentive} rev.
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        <span className={`badge ${
+                          o.status === 'Delivered' ? 'badge-success' :
+                          o.status === 'Confirmed' ? 'badge-info' :
+                          o.status === 'Pending' ? 'badge-warning' : 'badge-danger'
+                        }`}>
+                          {o.status}
+                        </span>
+                      </td>
+                      <td>
+                        {o.returned_quantity > 0 ? (
+                          <span className="badge badge-danger">
+                            {o.returned_quantity} returned
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '12px', color: 'var(--text-subtle)' }}>None</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Tab 2: Return History */}
+        {activeTab === 'returns' && (
+          <div className="table-responsive">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Return #</th>
+                  <th>Return Date</th>
+                  <th>Original Order</th>
+                  <th>Customer</th>
+                  <th>Product</th>
+                  <th>Returned Qty</th>
+                  <th>Refund Amount</th>
+                  <th>Incentive Reversed</th>
+                  <th>Return Reason</th>
+                  <th>Remarks</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan="10" style={{ textAlign: 'center', padding: '32px' }}>Loading return records...</td>
+                  </tr>
+                ) : filteredReturns.length === 0 ? (
+                  <tr>
+                    <td colSpan="10">
+                      <div className="empty-state">
+                        <div className="empty-state-icon"><RotateCcw size={24} /></div>
+                        <div className="empty-state-title">No returns found</div>
+                        <div className="empty-state-desc">You have no return history matching the selected period.</div>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredReturns.map(r => (
+                    <tr key={r.id}>
+                      <td><strong style={{ color: 'var(--primary-700)' }}>{r.return_number}</strong></td>
+                      <td>{r.return_date}</td>
+                      <td><span className="badge badge-neutral">{r.order_number}</span></td>
+                      <td>
+                        <div><strong>{r.customer_name}</strong></div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{r.customer_phone}</div>
+                      </td>
+                      <td>
+                        <div>{r.product_name}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>₹{r.unit_price} / unit</div>
+                      </td>
+                      <td><strong>{r.return_quantity}</strong></td>
+                      <td style={{ color: 'var(--danger-text)', fontWeight: 700 }}>
+                        ₹{Number(r.return_amount).toLocaleString()}
+                      </td>
+                      <td style={{ color: 'var(--danger-solid)', fontWeight: 700 }}>
+                        -₹{r.reversed_incentive}
+                      </td>
+                      <td>
+                        <span className="badge badge-warning">{r.return_reason}</span>
+                      </td>
+                      <td style={{ fontSize: '12px', color: 'var(--text-muted)', maxWidth: '180px' }}>
+                        {r.return_remarks || '—'}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

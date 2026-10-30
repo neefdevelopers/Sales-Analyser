@@ -20,22 +20,20 @@ export default function Sidebar({ currentView, setCurrentView }) {
 
   const isManager = user?.role === 'brand_manager';
 
-  // Role 1: Sales Staff Navigation
+  // Role 1: Sales Staff Navigation (1. Orders, 2. Returns, 3. My Records)
   const staffNavItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'orders', label: 'Orders', icon: ShoppingCart },
     { id: 'returns', label: 'Returns', icon: RotateCcw },
-    { id: 'my-performance', label: 'My Performance', icon: Award }
+    { id: 'my-records', label: 'My Records', icon: Award }
   ];
 
-  // Role 2: Brand Manager Navigation
+  // Role 2: Brand Manager Navigation (1. Products, 2. Staff, 3. Orders, 4. Returns, 5. Incentive Records)
   const managerNavItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'products', label: 'Product Management', icon: Package },
     { id: 'staff', label: 'Staff Management', icon: Users },
     { id: 'orders', label: 'Orders', icon: ShoppingCart },
     { id: 'returns', label: 'Returns', icon: RotateCcw },
-    { id: 'staff-performance', label: 'Staff Performance', icon: BarChart3 }
+    { id: 'incentives', label: 'Incentive Records', icon: Award }
   ];
 
   const navItems = isManager ? managerNavItems : staffNavItems;

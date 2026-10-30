@@ -14,7 +14,7 @@ import {
   UserX
 } from 'lucide-react';
 
-export default function StaffManagement({ onSelectStaffForPerformance }) {
+export default function StaffManagement() {
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -194,6 +194,7 @@ export default function StaffManagement({ onSelectStaffForPerformance }) {
           <table className="data-table">
             <thead>
               <tr>
+                <th>Staff ID</th>
                 <th>Staff Name</th>
                 <th>Login Username</th>
                 <th>Account Status</th>
@@ -204,11 +205,11 @@ export default function StaffManagement({ onSelectStaffForPerformance }) {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="5" style={{ textAlign: 'center', padding: '32px' }}>Loading staff accounts...</td>
+                  <td colSpan="6" style={{ textAlign: 'center', padding: '32px' }}>Loading staff accounts...</td>
                 </tr>
               ) : filteredStaff.length === 0 ? (
                 <tr>
-                  <td colSpan="5">
+                  <td colSpan="6">
                     <div className="empty-state">
                       <div className="empty-state-icon"><Users size={24} /></div>
                       <div className="empty-state-title">No staff members found</div>
@@ -222,6 +223,9 @@ export default function StaffManagement({ onSelectStaffForPerformance }) {
               ) : (
                 filteredStaff.map((s) => (
                   <tr key={s.id}>
+                    <td>
+                      <strong style={{ color: 'var(--primary-700)' }}>{s.staff_id}</strong>
+                    </td>
                     <td>
                       <strong>{s.name}</strong>
                     </td>

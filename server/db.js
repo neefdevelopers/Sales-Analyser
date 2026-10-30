@@ -173,7 +173,6 @@ function initSchema(db) {
       order_date TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'Confirmed' CHECK(status IN ('Confirmed', 'Delivered', 'Pending', 'Cancelled')),
       remarks TEXT,
-      enquiry_id INTEGER,
       incentive_type TEXT NOT NULL,
       incentive_basis TEXT NOT NULL,
       incentive_rate REAL NOT NULL,
@@ -197,14 +196,6 @@ function initSchema(db) {
       updated_at TEXT NOT NULL
     );
 
-    CREATE TABLE IF NOT EXISTS staff_performance_remarks (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      staff_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
-      manager_id INTEGER NOT NULL REFERENCES users(id),
-      remarks TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-
     CREATE INDEX IF NOT EXISTS idx_orders_staff ON orders(staff_id);
     CREATE INDEX IF NOT EXISTS idx_orders_date ON orders(order_date);
     CREATE INDEX IF NOT EXISTS idx_orders_cust ON orders(customer_id);
@@ -215,6 +206,7 @@ function initSchema(db) {
   // Safely drop removed modules tables if they exist
   try {
     db.run(`
+      DROP TABLE IF EXISTS staff_performance_remarks;
       DROP TABLE IF EXISTS daily_activities;
       DROP TABLE IF EXISTS calls;
       DROP TABLE IF EXISTS enquiries;
