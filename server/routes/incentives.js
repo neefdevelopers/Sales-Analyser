@@ -248,6 +248,35 @@ router.get('/staff/:staffId/monthly', authenticate, requireRole('brand_manager')
     returnedQuantity: detailedOrders.reduce((sum, o) => sum + o.returned_quantity, 0)
   };
 
+  // Fetch all return records for this staff member's orders in the selected month
+  const staffReturns = query(`
+    SELECT
+      r.id,
+      r.return_number,
+      r.return_date,
+      r.return_quantity,
+      r.return_amount,
+      r.reversed_incentive,
+      COALESCE(r.payment_method, o.payment_method) AS payment_method,
+      r.return_reason,
+      r.remarks,
+      o.id AS order_id,
+      o.order_number,
+      o.order_date,
+      p.name AS product_name,
+      p.code AS product_code,
+      c.name AS customer_name,
+      c.phone AS customer_phone
+    FROM returns r
+    JOIN orders o ON r.order_id = o.id
+    JOIN products p ON COALESCE(r.product_id, o.product_id) = p.id
+    JOIN customers c ON o.customer_id = c.id
+    WHERE o.staff_id = ?
+      AND o.order_date >= ?
+      AND o.order_date <= ?
+    ORDER BY r.return_date DESC, r.id DESC
+  `, [staff.id, startDate, endDate]);
+
   res.json({
     staff: {
       id: staff.id,
@@ -264,7 +293,8 @@ router.get('/staff/:staffId/monthly', authenticate, requireRole('brand_manager')
       endDate
     },
     summary,
-    orders: detailedOrders
+    orders: detailedOrders,
+    returns: staffReturns
   });
 });
 

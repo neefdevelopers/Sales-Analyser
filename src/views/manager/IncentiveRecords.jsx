@@ -51,8 +51,12 @@ export default function IncentiveRecords() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
-  // Complete Order Details Modal
+  // Modals for audit inspection
   const [selectedOrderModal, setSelectedOrderModal] = useState(null);
+  const [selectedReturnModal, setSelectedReturnModal] = useState(null);
+
+  // Tab state in staff detail view: 'orders' | 'returns' | 'both'
+  const [detailTab, setDetailTab] = useState('orders');
 
   // Fetch current business time on mount to initialize default month/year
   useEffect(() => {
@@ -193,15 +197,30 @@ export default function IncentiveRecords() {
       netIncentive: 0
     };
     const orders = staffDetailData?.orders || [];
+    const returns = staffDetailData?.returns || [];
 
-    // Filter orders by search if user types
+    // Filter orders by search
     const filteredOrders = orders.filter(o => {
       if (!search.trim()) return true;
       const term = search.trim().toLowerCase();
       return (
         o.order_number.toLowerCase().includes(term) ||
         o.product_name.toLowerCase().includes(term) ||
-        o.customer_name.toLowerCase().includes(term)
+        o.customer_name.toLowerCase().includes(term) ||
+        (o.payment_method && o.payment_method.toLowerCase().includes(term))
+      );
+    });
+
+    // Filter returns by search
+    const filteredReturns = returns.filter(r => {
+      if (!search.trim()) return true;
+      const term = search.trim().toLowerCase();
+      return (
+        r.return_number.toLowerCase().includes(term) ||
+        r.order_number.toLowerCase().includes(term) ||
+        r.product_name.toLowerCase().includes(term) ||
+        (r.payment_method && r.payment_method.toLowerCase().includes(term)) ||
+        (r.customer_name && r.customer_name.toLowerCase().includes(term))
       );
     });
 
@@ -327,126 +346,322 @@ export default function IncentiveRecords() {
           </div>
         </div>
 
-        {/* Order-Wise Incentive Table Card */}
-        <div className="table-card">
-          <div className="table-toolbar">
-            <div className="search-input-wrap">
-              <Search size={16} />
-              <input
-                type="text"
-                className="search-input"
-                placeholder="Search orders by #, customer, product..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-              />
-            </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-              Showing <strong>{filteredOrders.length}</strong> of <strong>{orders.length}</strong> orders for {staff?.name}
-            </div>
+        {/* Table Selector & Search Toolbar */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+          <div style={{ display: 'inline-flex', background: '#f1f5f9', padding: '4px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+            <button
+              type="button"
+              onClick={() => setDetailTab('orders')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 16px',
+                borderRadius: 'var(--radius-sm)',
+                border: 'none',
+                background: detailTab === 'orders' ? '#ffffff' : 'transparent',
+                color: detailTab === 'orders' ? 'var(--primary-700)' : 'var(--text-muted)',
+                fontWeight: detailTab === 'orders' ? 700 : 500,
+                boxShadow: detailTab === 'orders' ? 'var(--shadow-xs)' : 'none',
+                cursor: 'pointer',
+                fontSize: '13.5px',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <ShoppingCart size={15} />
+              <span>Orders ({orders.length})</span>
+              <span className="badge badge-warning" style={{ fontSize: '11px', padding: '2px 6px' }}>
+                ₹{summary.grossIncentive?.toLocaleString()}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDetailTab('returns')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 16px',
+                borderRadius: 'var(--radius-sm)',
+                border: 'none',
+                background: detailTab === 'returns' ? '#ffffff' : 'transparent',
+                color: detailTab === 'returns' ? '#dc2626' : 'var(--text-muted)',
+                fontWeight: detailTab === 'returns' ? 700 : 500,
+                boxShadow: detailTab === 'returns' ? 'var(--shadow-xs)' : 'none',
+                cursor: 'pointer',
+                fontSize: '13.5px',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <RotateCcw size={15} />
+              <span>Returns ({returns.length})</span>
+              {summary.returnAdjustments > 0 && (
+                <span className="badge badge-danger" style={{ fontSize: '11px', padding: '2px 6px' }}>
+                  -₹{summary.returnAdjustments?.toLocaleString()}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDetailTab('both')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 14px',
+                borderRadius: 'var(--radius-sm)',
+                border: 'none',
+                background: detailTab === 'both' ? '#ffffff' : 'transparent',
+                color: detailTab === 'both' ? 'var(--primary-700)' : 'var(--text-muted)',
+                fontWeight: detailTab === 'both' ? 700 : 500,
+                boxShadow: detailTab === 'both' ? 'var(--shadow-xs)' : 'none',
+                cursor: 'pointer',
+                fontSize: '13px',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <span>Both Tables</span>
+            </button>
           </div>
 
-          <div className="table-responsive">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Order ID</th>
-                  <th>Date</th>
-                  <th>Product</th>
-                  <th>Payment Method</th>
-                  <th>Quantity</th>
-                  <th>Order Incentive</th>
-                  <th>Return Adjustment</th>
-                  <th>Net Incentive</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
+          <div className="search-input-wrap" style={{ minWidth: '280px' }}>
+            <Search size={15} />
+            <input
+              type="text"
+              className="search-input"
+              placeholder={detailTab === 'returns' ? 'Search returns by #, order, product...' : 'Search by order #, product, customer...'}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {/* TABLE 1: ORDERS & EARNED INCENTIVES */}
+        {(detailTab === 'orders' || detailTab === 'both') && (
+          <div className="table-card" style={{ marginBottom: detailTab === 'both' ? '24px' : '0' }}>
+            <div className="table-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <ShoppingCart size={15} />
+                </div>
+                <strong style={{ fontSize: '14.5px' }}>Orders &amp; Earned Incentives</strong>
+                <span className="badge badge-info" style={{ fontSize: '11px' }}>
+                  {filteredOrders.length} {filteredOrders.length === 1 ? 'Order' : 'Orders'}
+                </span>
+              </div>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                Total Order Incentive: <strong style={{ color: '#d97706' }}>₹{summary.grossIncentive?.toLocaleString()}</strong>
+              </div>
+            </div>
+
+            <div className="table-responsive">
+              <table className="data-table">
+                <thead>
                   <tr>
-                    <td colSpan="9" style={{ textAlign: 'center', padding: '32px' }}>Loading order incentives...</td>
+                    <th>Order ID</th>
+                    <th>Date</th>
+                    <th>Product</th>
+                    <th>Payment Method</th>
+                    <th>Quantity</th>
+                    <th>Order Amount</th>
+                    <th>Earned Incentive</th>
+                    <th>Action</th>
                   </tr>
-                ) : filteredOrders.length === 0 ? (
-                  <tr>
-                    <td colSpan="9">
-                      <div className="empty-state">
-                        <div className="empty-state-icon"><ShoppingCart size={24} /></div>
-                        <div className="empty-state-title">No orders found</div>
-                        <div className="empty-state-desc">This staff member has no eligible orders in {currentMonthName} {currentYear}.</div>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  filteredOrders.map(o => (
-                    <tr
-                      key={o.id}
-                      className="table-row-clickable"
-                      onClick={() => setSelectedOrderModal(o)}
-                    >
-                      <td>
-                        <strong style={{ color: 'var(--primary-700)' }}>{o.order_number}</strong>
-                      </td>
-                      <td>{o.order_date}</td>
-                      <td>
-                        <div><strong>{o.product_name}</strong></div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                          {o.product_code} (₹{o.unit_price}/unit)
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan="8" style={{ textAlign: 'center', padding: '32px' }}>Loading orders...</td>
+                    </tr>
+                  ) : filteredOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan="8">
+                        <div className="empty-state">
+                          <div className="empty-state-icon"><ShoppingCart size={24} /></div>
+                          <div className="empty-state-title">No orders found</div>
+                          <div className="empty-state-desc">This staff member has no eligible orders in {currentMonthName} {currentYear}.</div>
                         </div>
                       </td>
-                      <td>
-                        <span className={`badge ${o.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`}>
-                          {o.payment_method}
-                        </span>
-                      </td>
-                      <td>
-                        <strong>{o.quantity}</strong>
-                        {o.returned_quantity > 0 && (
-                          <span style={{ fontSize: '11px', color: 'var(--danger-text)', marginLeft: '4px' }}>
-                            (-{o.returned_quantity} ret.)
-                          </span>
-                        )}
-                      </td>
-                      <td style={{ color: '#d97706', fontWeight: 700 }}>
-                        ₹{o.order_incentive}
-                      </td>
-                      <td style={{ color: o.return_adjustment > 0 ? '#dc2626' : 'var(--text-muted)', fontWeight: o.return_adjustment > 0 ? 700 : 400 }}>
-                        {o.return_adjustment > 0 ? `-₹${o.return_adjustment}` : '₹0'}
-                      </td>
-                      <td style={{ color: '#16a34a', fontWeight: 800, fontSize: '14px' }}>
-                        ₹{o.net_incentive}
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedOrderModal(o);
-                          }}
-                          title="View Complete Order Details"
-                        >
-                          <Eye size={13} />
-                        </button>
-                      </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    filteredOrders.map(o => (
+                      <tr
+                        key={o.id}
+                        className="table-row-clickable"
+                        onClick={() => setSelectedOrderModal(o)}
+                      >
+                        <td>
+                          <strong style={{ color: 'var(--primary-700)' }}>{o.order_number}</strong>
+                        </td>
+                        <td>{o.order_date}</td>
+                        <td>
+                          <div><strong>{o.product_name}</strong></div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                            {o.product_code} (₹{o.unit_price}/unit)
+                          </div>
+                        </td>
+                        <td>
+                          <span className={`badge ${o.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`}>
+                            {o.payment_method}
+                          </span>
+                        </td>
+                        <td>
+                          <strong>{o.quantity}</strong>
+                          {o.returned_quantity > 0 && (
+                            <span style={{ fontSize: '11px', color: 'var(--danger-text)', marginLeft: '4px' }}>
+                              (-{o.returned_quantity} ret.)
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          ₹{Number(o.total_amount).toLocaleString()}
+                        </td>
+                        <td style={{ color: '#d97706', fontWeight: 700 }}>
+                          ₹{o.order_incentive}
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedOrderModal(o);
+                            }}
+                            title="View Complete Order Details"
+                          >
+                            <Eye size={13} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
+        )}
 
-          {/* Reconciliation Footer Strip */}
-          {orders.length > 0 && (
-            <div style={{ padding: '14px 20px', background: '#f8fafc', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: 'var(--text-muted)' }}>
-                <CheckCircle2 size={16} color="#16a34a" />
-                <span>Reconciliation Status: <strong>Order-level and staff-level totals match 100%</strong></span>
+        {/* TABLE 2: PRODUCT RETURNS & INCENTIVE ADJUSTMENTS */}
+        {(detailTab === 'returns' || detailTab === 'both') && (
+          <div className="table-card">
+            <div className="table-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#fef2f2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <RotateCcw size={15} />
+                </div>
+                <strong style={{ fontSize: '14.5px' }}>Product Returns &amp; Incentive Adjustments</strong>
+                <span className="badge badge-danger" style={{ fontSize: '11px' }}>
+                  {filteredReturns.length} {filteredReturns.length === 1 ? 'Return' : 'Returns'}
+                </span>
               </div>
-              <div style={{ fontSize: '13px' }}>
-                Gross: <strong>₹{summary.grossIncentive?.toLocaleString()}</strong> &minus; Returns: <strong>₹{summary.returnAdjustments?.toLocaleString()}</strong> = Net: <strong style={{ color: '#16a34a' }}>₹{summary.netIncentive?.toLocaleString()}</strong>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                Total Return Adjustments: <strong style={{ color: '#dc2626' }}>{summary.returnAdjustments > 0 ? `-₹${summary.returnAdjustments?.toLocaleString()}` : '₹0'}</strong>
               </div>
             </div>
-          )}
-        </div>
+
+            <div className="table-responsive">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Return ID</th>
+                    <th>Return Date</th>
+                    <th>Original Order</th>
+                    <th>Product</th>
+                    <th>Payment Method</th>
+                    <th>Return Quantity</th>
+                    <th>Refund Amount</th>
+                    <th>Incentive Reversed</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan="9" style={{ textAlign: 'center', padding: '32px' }}>Loading return records...</td>
+                    </tr>
+                  ) : filteredReturns.length === 0 ? (
+                    <tr>
+                      <td colSpan="9">
+                        <div className="empty-state">
+                          <div className="empty-state-icon" style={{ background: '#fef2f2', color: '#dc2626' }}>
+                            <RotateCcw size={24} />
+                          </div>
+                          <div className="empty-state-title">No product returns</div>
+                          <div className="empty-state-desc">No returns recorded against this staff member's orders in {currentMonthName} {currentYear}.</div>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredReturns.map(r => (
+                      <tr
+                        key={r.id}
+                        className="table-row-clickable"
+                        onClick={() => setSelectedReturnModal(r)}
+                      >
+                        <td>
+                          <strong style={{ color: '#dc2626' }}>{r.return_number}</strong>
+                        </td>
+                        <td>{r.return_date}</td>
+                        <td>
+                          <strong style={{ color: 'var(--primary-700)' }}>{r.order_number}</strong>
+                          {r.order_date && (
+                            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{r.order_date}</div>
+                          )}
+                        </td>
+                        <td>
+                          <div><strong>{r.product_name}</strong></div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{r.product_code}</div>
+                        </td>
+                        <td>
+                          <span className={`badge ${r.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`}>
+                            {r.payment_method || 'Prepaid'}
+                          </span>
+                        </td>
+                        <td>
+                          <strong>{r.return_quantity}</strong> units
+                        </td>
+                        <td>
+                          ₹{Number(r.return_amount).toLocaleString()}
+                        </td>
+                        <td style={{ color: '#dc2626', fontWeight: 700 }}>
+                          -₹{r.reversed_incentive}
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedReturnModal(r);
+                            }}
+                            title="View Return Details"
+                          >
+                            <Eye size={13} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Reconciliation Summary Bar */}
+        {(orders.length > 0 || returns.length > 0) && (
+          <div style={{ marginTop: '16px', padding: '14px 20px', background: '#f8fafc', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: 'var(--text-muted)' }}>
+              <CheckCircle2 size={16} color="#16a34a" />
+              <span>Reconciliation: <strong>{orders.length} orders</strong> earned gross incentives, balanced against <strong>{returns.length} return adjustments</strong>.</span>
+            </div>
+            <div style={{ fontSize: '13px' }}>
+              Gross Earned: <strong>₹{summary.grossIncentive?.toLocaleString()}</strong> &minus; Return Deductions: <strong style={{ color: '#dc2626' }}>₹{summary.returnAdjustments?.toLocaleString()}</strong> = Net Incentive: <strong style={{ color: '#16a34a', fontSize: '15px' }}>₹{summary.netIncentive?.toLocaleString()}</strong>
+            </div>
+          </div>
+        )}
 
         {/* Complete Order Details Modal */}
         {selectedOrderModal && (
@@ -555,6 +770,75 @@ export default function IncentiveRecords() {
               </div>
               <div className="modal-footer">
                 <button className="btn btn-secondary" onClick={() => setSelectedOrderModal(null)}>Close</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Return Record Audit Modal */}
+        {selectedReturnModal && (
+          <div className="modal-overlay">
+            <div className="modal-dialog" style={{ maxWidth: '580px' }}>
+              <div className="modal-header">
+                <h3 className="modal-title">Return Audit: {selectedReturnModal.return_number}</h3>
+                <button className="modal-close" onClick={() => setSelectedReturnModal(null)}>✕</button>
+              </div>
+              <div className="modal-body">
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                  <div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Associated Order</div>
+                    <div style={{ fontWeight: 700, fontSize: '15px', color: 'var(--primary-700)' }}>{selectedReturnModal.order_number}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Order Date: {selectedReturnModal.order_date}</div>
+                    {selectedReturnModal.customer_name && (
+                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        Customer: {selectedReturnModal.customer_name} ({selectedReturnModal.customer_phone})
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Returned Product</div>
+                    <div style={{ fontWeight: 700, fontSize: '15px' }}>{selectedReturnModal.product_name}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>SKU: {selectedReturnModal.product_code}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                      Return Date: {selectedReturnModal.return_date}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="preview-box" style={{ marginBottom: '16px' }}>
+                  <div className="preview-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+                    <div>
+                      <div className="preview-item-label">Return Qty</div>
+                      <div className="preview-item-val">{selectedReturnModal.return_quantity} units</div>
+                    </div>
+                    <div>
+                      <div className="preview-item-label">Payment</div>
+                      <div style={{ fontWeight: 700 }}>{selectedReturnModal.payment_method || 'Prepaid'}</div>
+                    </div>
+                    <div>
+                      <div className="preview-item-label">Refund Amount</div>
+                      <div className="preview-item-val" style={{ color: '#dc2626' }}>
+                        ₹{Number(selectedReturnModal.return_amount).toLocaleString()}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="preview-item-label">Incentive Reversal</div>
+                      <div className="preview-item-val" style={{ color: '#dc2626' }}>
+                        -₹{selectedReturnModal.reversed_incentive}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: 'var(--radius-sm)', fontSize: '12.5px', marginBottom: '8px' }}>
+                  <div><strong>Reason:</strong> {selectedReturnModal.return_reason || 'Product Return'}</div>
+                  {selectedReturnModal.remarks && (
+                    <div style={{ marginTop: '4px' }}><strong>Remarks:</strong> {selectedReturnModal.remarks}</div>
+                  )}
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button className="btn btn-secondary" onClick={() => setSelectedReturnModal(null)}>Close</button>
               </div>
             </div>
           </div>
