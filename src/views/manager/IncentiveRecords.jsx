@@ -99,7 +99,6 @@ export default function IncentiveRecords() {
       'Order Quantity',
       'Net Quantity',
       'Total Amount',
-      'Applied Rule',
       'Earned Incentive',
       'Return Adjustment',
       'Final Incentive'
@@ -116,7 +115,6 @@ export default function IncentiveRecords() {
       r.order_quantity,
       r.net_quantity,
       r.total_amount,
-      `"${r.applied_rule}"`,
       r.earned_incentive,
       r.return_adjustment,
       r.final_incentive
@@ -380,7 +378,6 @@ export default function IncentiveRecords() {
                 <th>Product</th>
                 <th>Payment</th>
                 <th>Order Qty</th>
-                <th>Applied Incentive Rule</th>
                 <th>Earned Incentive</th>
                 <th>Return Adjustment</th>
                 <th>Final Incentive</th>
@@ -389,11 +386,11 @@ export default function IncentiveRecords() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="10" style={{ textAlign: 'center', padding: '32px' }}>Loading incentive records...</td>
+                  <td colSpan="9" style={{ textAlign: 'center', padding: '32px' }}>Loading incentive records...</td>
                 </tr>
               ) : records.length === 0 ? (
                 <tr>
-                  <td colSpan="10">
+                  <td colSpan="9">
                     <div className="empty-state">
                       <div className="empty-state-icon"><Award size={24} /></div>
                       <div className="empty-state-title">No incentive records found</div>
@@ -430,9 +427,6 @@ export default function IncentiveRecords() {
                           (-{r.returned_quantity} ret.)
                         </span>
                       )}
-                    </td>
-                    <td>
-                      <span className="badge badge-info">{r.applied_rule}</span>
                     </td>
                     <td style={{ color: 'var(--warning-text)', fontWeight: 700 }}>
                       ₹{r.earned_incentive}
