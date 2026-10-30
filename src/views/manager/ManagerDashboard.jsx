@@ -126,7 +126,6 @@ export default function ManagerDashboard({ onNavigateToStaffPerformance }) {
       <div className="page-header">
         <div>
           <h2 className="page-title">Brand Manager Dashboard</h2>
-          <p className="page-subtitle">Consolidated business performance, team activity, and conversion analytics</p>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>

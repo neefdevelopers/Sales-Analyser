@@ -130,7 +130,6 @@ export default function ProductManagement() {
       <div className="page-header">
         <div>
           <h2 className="page-title">Product Management</h2>
-          <p className="page-subtitle">Configure brand products and staff sales incentives for Prepaid and COD orders</p>
         </div>
 
         <button className="btn btn-primary" onClick={openCreateModal}>

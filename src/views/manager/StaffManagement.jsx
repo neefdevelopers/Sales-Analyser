@@ -167,7 +167,6 @@ export default function StaffManagement({ onSelectStaffForPerformance }) {
       <div className="page-header">
         <div>
           <h2 className="page-title">Staff Management</h2>
-          <p className="page-subtitle">Create and manage sales staff accounts, assign unique staff IDs, and handle credentials</p>
         </div>
 
         <button className="btn btn-primary" onClick={openCreateModal}>

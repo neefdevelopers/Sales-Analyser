@@ -245,11 +245,6 @@ export default function DailyActivity() {
           <h2 className="page-title" style={{ fontSize: '26px' }}>
             {isManager ? 'Daily Activity Audit Hub' : 'Daily Activity Logging'}
           </h2>
-          <p className="page-subtitle" style={{ fontSize: '14px', marginTop: '4px' }}>
-            {isManager
-              ? 'Review and verify daily total call counts, connection rates, and customer enquiries logged by staff.'
-              : 'Record your daily total calls, connected calls, and enquiries without logging individual customer entries.'}
-          </p>
         </div>
 
         {/* 9:30 AM Cutoff Pill with breathing room */}

@@ -160,7 +160,6 @@ export default function StaffCalls() {
       <div className="page-header">
         <div>
           <h2 className="page-title">Call Logs</h2>
-          <p className="page-subtitle">Record and review customer conversations, call outcomes, and follow-ups</p>
         </div>
 
         <button className="btn btn-primary" onClick={openCreateModal}>

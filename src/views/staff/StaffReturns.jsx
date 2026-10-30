@@ -133,7 +133,6 @@ export default function StaffReturns() {
       <div className="page-header">
         <div>
           <h2 className="page-title">Order Returns</h2>
-          <p className="page-subtitle">Process partial and full product returns with automatic incentive adjustment</p>
         </div>
 
         <button

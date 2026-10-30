@@ -49,7 +49,6 @@ export default function ManagerOrders() {
       <div className="page-header">
         <div>
           <h2 className="page-title">All Orders (Brand Manager)</h2>
-          <p className="page-subtitle">Inspect orders placed by all authorized sales staff across products and payment methods</p>
         </div>
       </div>
 

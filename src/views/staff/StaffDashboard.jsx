@@ -169,7 +169,6 @@ export default function StaffDashboard() {
       <div className="page-header">
         <div>
           <h2 className="page-title">Personal Sales Dashboard</h2>
-          <p className="page-subtitle">Track your individual orders, returns, incentive earnings, and daily activity</p>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>

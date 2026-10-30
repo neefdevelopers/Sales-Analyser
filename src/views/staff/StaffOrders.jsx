@@ -128,7 +128,6 @@ export default function StaffOrders() {
       <div className="page-header">
         <div>
           <h2 className="page-title">My Orders</h2>
-          <p className="page-subtitle">Create and track your customer orders and earned staff incentives</p>
         </div>
 
         <button

@@ -149,7 +149,6 @@ export default function StaffEnquiries({ onNavigateToOrder }) {
       <div className="page-header">
         <div>
           <h2 className="page-title">Customer Enquiries</h2>
-          <p className="page-subtitle">Track customer interest, follow-ups, and convert enquiries directly into orders</p>
         </div>
 
         <button className="btn btn-primary" onClick={openCreateModal}>

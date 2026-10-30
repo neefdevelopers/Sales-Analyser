@@ -56,7 +56,6 @@ export default function StaffMyPerformance() {
       <div className="page-header">
         <div>
           <h2 className="page-title">My Performance & Incentive Audit</h2>
-          <p className="page-subtitle">Detailed breakdown of your sales figures, payment methods, and manager remarks</p>
         </div>
 
         <form onSubmit={handleFilterSubmit} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>

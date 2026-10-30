@@ -142,7 +142,6 @@ export default function StaffPerformanceAnalysis({ initialStaffId }) {
       <div className="page-header">
         <div>
           <h2 className="page-title">Staff Sales Performance Analysis</h2>
-          <p className="page-subtitle">Detailed metric breakdown per sales staff member, incentive audit, and manager remarks</p>
         </div>
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
