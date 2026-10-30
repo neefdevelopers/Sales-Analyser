@@ -926,9 +926,6 @@ export default function IncentiveRecords() {
               onChange={e => setSearch(e.target.value)}
             />
           </div>
-          <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-            Showing <strong>{filteredStaff.length}</strong> active sales staff &bull; Click any staff row to inspect detailed orders
-          </div>
         </div>
 
         <div className="table-responsive">
