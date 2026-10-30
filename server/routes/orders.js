@@ -88,7 +88,6 @@ router.get('/', authenticate, (req, res) => {
       o.order_date,
       o.status,
       o.remarks,
-      o.enquiry_id,
       o.incentive_type,
       o.incentive_basis,
       o.incentive_rate,
@@ -237,8 +236,7 @@ router.post('/', authenticate, (req, res) => {
     quantity,
     payment_method = 'Prepaid',
     order_date,
-    remarks = '',
-    enquiry_id = null
+    remarks = ''
   } = req.body;
 
   // 1. Basic validation - only product and quantity are strictly required from staff
@@ -317,10 +315,10 @@ router.post('/', authenticate, (req, res) => {
         `INSERT INTO orders (
           order_number, staff_id, customer_id, product_id,
           quantity, unit_price, total_amount, payment_method,
-          order_date, status, remarks, enquiry_id,
+          order_date, status, remarks,
           incentive_type, incentive_basis, incentive_rate, incentive_amount,
           created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Confirmed', ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Confirmed', ?, ?, ?, ?, ?, ?, ?)`,
         [
           orderNumber,
           staffId,
@@ -332,7 +330,6 @@ router.post('/', authenticate, (req, res) => {
           finalPaymentMethod,
           orderDateStr,
           remarks ? remarks.trim() : null,
-          enquiry_id || null,
           incentive.type,
           incentive.basis,
           incentive.rate,
@@ -342,18 +339,7 @@ router.post('/', authenticate, (req, res) => {
         ]
       );
 
-      const newOrderId = orderRes.lastInsertRowid;
-
-      // If linked to an enquiry, mark enquiry converted
-      if (enquiry_id) {
-        run("UPDATE enquiries SET status = 'Converted', converted_order_id = ?, updated_at = ? WHERE id = ?", [
-          newOrderId,
-          now,
-          enquiry_id
-        ]);
-      }
-
-      return newOrderId;
+      return orderRes.lastInsertRowid;
     });
 
     const createdOrder = get(`

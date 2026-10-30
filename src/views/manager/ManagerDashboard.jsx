@@ -8,12 +8,7 @@ import {
   Users,
   Package,
   Award,
-  PhoneCall,
-  HelpCircle,
-  Clock,
-  UserCheck,
-  CheckCircle2,
-  AlertTriangle,
+  DollarSign,
   ArrowUpRight
 } from 'lucide-react';
 import {
@@ -28,7 +23,7 @@ import {
   Legend,
   Filler
 } from 'chart.js';
-import { Line, Bar } from 'react-chartjs-2';
+import { Line } from 'react-chartjs-2';
 
 ChartJS.register(
   CategoryScale,
@@ -95,7 +90,6 @@ export default function ManagerDashboard({ onNavigateToStaffPerformance }) {
   const kpis = data?.kpis || {};
   const topStaff = data?.topStaff || [];
   const topProducts = data?.topProducts || [];
-  const staffActivity = data?.staffActivity || [];
   const salesTrend = data?.salesTrend || [];
 
   const trendChartData = {
@@ -190,8 +184,20 @@ export default function ManagerDashboard({ onNavigateToStaffPerformance }) {
         </div>
       </div>
 
-      {/* KPI Cards Grid */}
+      {/* KPI Cards Grid - Exclusively Sales & Performance */}
       <div className="kpi-grid">
+        {/* Total Orders */}
+        <div className="kpi-card">
+          <div className="kpi-header">
+            <span className="kpi-title">Total Orders</span>
+            <div className="kpi-icon-wrap" style={{ background: '#e0e7ff', color: '#4f46e5' }}>
+              <ShoppingCart size={18} />
+            </div>
+          </div>
+          <div className="kpi-value">{kpis.totalOrders || 0}</div>
+          <div className="kpi-subtext">Booked in period</div>
+        </div>
+
         {/* Gross Sales */}
         <div className="kpi-card">
           <div className="kpi-header">
@@ -201,7 +207,19 @@ export default function ManagerDashboard({ onNavigateToStaffPerformance }) {
             </div>
           </div>
           <div className="kpi-value">₹{(kpis.grossSales || 0).toLocaleString()}</div>
-          <div className="kpi-subtext">Total Orders: <strong>{kpis.totalOrders || 0}</strong></div>
+          <div className="kpi-subtext">Total order amount</div>
+        </div>
+
+        {/* Total Returns */}
+        <div className="kpi-card">
+          <div className="kpi-header">
+            <span className="kpi-title">Total Returns</span>
+            <div className="kpi-icon-wrap" style={{ background: '#fee2e2', color: '#dc2626' }}>
+              <RotateCcw size={18} />
+            </div>
+          </div>
+          <div className="kpi-value">{kpis.totalReturns || 0} <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>({kpis.totalReturnedQuantity || 0} units)</span></div>
+          <div className="kpi-subtext">Refund Value: ₹{(kpis.totalReturnedAmount || 0).toLocaleString()}</div>
         </div>
 
         {/* Net Sales */}
@@ -216,28 +234,16 @@ export default function ManagerDashboard({ onNavigateToStaffPerformance }) {
           <div className="kpi-subtext">Deducted: ₹{(kpis.totalReturnedAmount || 0).toLocaleString()}</div>
         </div>
 
-        {/* Returns */}
-        <div className="kpi-card">
-          <div className="kpi-header">
-            <span className="kpi-title">Total Returns</span>
-            <div className="kpi-icon-wrap" style={{ background: '#fee2e2', color: '#dc2626' }}>
-              <RotateCcw size={18} />
-            </div>
-          </div>
-          <div className="kpi-value">{kpis.totalReturns || 0} <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>({kpis.totalReturnedQuantity || 0} units)</span></div>
-          <div className="kpi-subtext">Refund Value: ₹{(kpis.totalReturnedAmount || 0).toLocaleString()}</div>
-        </div>
-
         {/* Unique Customers */}
         <div className="kpi-card">
           <div className="kpi-header">
-            <span className="kpi-title">Unique Customers</span>
+            <span className="kpi-title">Total Customers</span>
             <div className="kpi-icon-wrap" style={{ background: '#e0f2fe', color: '#0284c7' }}>
               <Users size={18} />
             </div>
           </div>
           <div className="kpi-value">{kpis.totalCustomers || 0}</div>
-          <div className="kpi-subtext">Verified normalized phone</div>
+          <div className="kpi-subtext">Distinct phone reach</div>
         </div>
 
         {/* Products Sold */}
@@ -250,30 +256,6 @@ export default function ManagerDashboard({ onNavigateToStaffPerformance }) {
           </div>
           <div className="kpi-value">{kpis.netQuantitySold || 0} <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-muted)' }}>net units</span></div>
           <div className="kpi-subtext">Gross: {kpis.grossQuantitySold || 0} units</div>
-        </div>
-
-        {/* Call Connection % */}
-        <div className="kpi-card">
-          <div className="kpi-header">
-            <span className="kpi-title">Call Connection %</span>
-            <div className="kpi-icon-wrap" style={{ background: '#f3e8ff', color: '#7c3aed' }}>
-              <PhoneCall size={18} />
-            </div>
-          </div>
-          <div className="kpi-value">{kpis.connectedCallPercentage || 0}%</div>
-          <div className="kpi-subtext">Total Calls Logged: {kpis.totalCalls || 0}</div>
-        </div>
-
-        {/* Enquiry Conversion % */}
-        <div className="kpi-card">
-          <div className="kpi-header">
-            <span className="kpi-title">Enquiry Conversion %</span>
-            <div className="kpi-icon-wrap" style={{ background: '#fef3c7', color: '#d97706' }}>
-              <HelpCircle size={18} />
-            </div>
-          </div>
-          <div className="kpi-value">{kpis.enquiryConversionPercentage || 0}%</div>
-          <div className="kpi-subtext">Total Enquiries: {kpis.totalEnquiries || 0}</div>
         </div>
 
         {/* Total Net Incentives */}
@@ -312,7 +294,7 @@ export default function ManagerDashboard({ onNavigateToStaffPerformance }) {
       </div>
 
       {/* Top Staff and Top Products Grids */}
-      <div className="charts-grid" style={{ marginBottom: '24px' }}>
+      <div className="charts-grid">
         {/* Top Performing Staff Leaderboard */}
         <div className="table-card">
           <div className="table-toolbar">
@@ -396,55 +378,6 @@ export default function ManagerDashboard({ onNavigateToStaffPerformance }) {
               </tbody>
             </table>
           </div>
-        </div>
-      </div>
-
-      {/* Staff Activity & Pending Daily Entries (Today) */}
-      <div className="table-card">
-        <div className="table-toolbar">
-          <h3 style={{ fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Clock size={16} color="var(--primary-600)" />
-            <span>Today's Staff Activity & Pending Entry Status</span>
-          </h3>
-          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-            Cutoff deadline: 09:30 AM tomorrow
-          </span>
-        </div>
-        <div className="table-responsive">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Staff ID</th>
-                <th>Staff Name</th>
-                <th>Calls Logged Today</th>
-                <th>Enquiries Logged Today</th>
-                <th>Orders Today</th>
-                <th>Daily Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {staffActivity.map((s) => (
-                <tr key={s.id}>
-                  <td><strong>{s.staff_id}</strong></td>
-                  <td>{s.name}</td>
-                  <td><strong>{s.calls_today}</strong> calls</td>
-                  <td><strong>{s.enquiries_today}</strong> enquiries</td>
-                  <td><strong>{s.orders_today}</strong> orders</td>
-                  <td>
-                    {s.is_pending ? (
-                      <span className="badge badge-warning">
-                        <AlertTriangle size={12} /> Pending Entries
-                      </span>
-                    ) : (
-                      <span className="badge badge-success">
-                        <CheckCircle2 size={12} /> Active Today
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       </div>
     </div>

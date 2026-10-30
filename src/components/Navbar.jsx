@@ -6,18 +6,18 @@ import { Clock, Shield } from 'lucide-react';
 
 export default function Navbar({ currentViewTitle }) {
   const { user } = useAuth();
-  const [deadlineInfo, setDeadlineInfo] = useState(null);
+  const [timeInfo, setTimeInfo] = useState(null);
 
   useEffect(() => {
-    fetchDeadlineStatus();
-    const interval = setInterval(fetchDeadlineStatus, 30000); // Check every 30s
+    fetchServerTime();
+    const interval = setInterval(fetchServerTime, 30000); // Check every 30s
     return () => clearInterval(interval);
   }, []);
 
-  async function fetchDeadlineStatus() {
+  async function fetchServerTime() {
     try {
-      const data = await api.get('/system/deadline-status');
-      setDeadlineInfo(data);
+      const data = await api.get('/system/time');
+      setTimeInfo(data);
     } catch (err) {
       // Ignore
     }
@@ -51,9 +51,9 @@ export default function Navbar({ currentViewTitle }) {
         >
           <Clock size={14} color="var(--primary-600)" />
           <span>Timezone: <strong>Asia/Kolkata</strong></span>
-          {deadlineInfo && (
+          {timeInfo && (
             <span style={{ color: 'var(--text-main)', borderLeft: '1px solid var(--border-subtle)', paddingLeft: '8px' }}>
-              {deadlineInfo.currentTime}
+              {timeInfo.currentTime}
             </span>
           )}
         </div>

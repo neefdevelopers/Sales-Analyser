@@ -24,7 +24,6 @@ function resolveDateRange(filter, customStart, customEnd) {
 
   if (filter === 'this_week') {
     const d = new Date(Date.UTC(nowInfo.year, nowInfo.month - 1, nowInfo.day));
-    // Day 0 is Sunday, day 1 is Monday
     const dayOfWeek = d.getUTCDay();
     const diff = d.getUTCDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1);
     const monday = new Date(d.setUTCDate(diff)).toISOString().split('T')[0];
@@ -41,7 +40,6 @@ function resolveDateRange(filter, customStart, customEnd) {
     return { startDate: customStart, endDate: customEnd };
   }
 
-  // Default to this month
   const mStr = String(nowInfo.month).padStart(2, '0');
   return { startDate: `${nowInfo.year}-${mStr}-01`, endDate: todayStr };
 }
@@ -51,8 +49,6 @@ router.get('/staff', authenticate, (req, res) => {
   const staffId = req.user.id;
   const { filter = 'this_month', startDate: customStart, endDate: customEnd } = req.query;
   const { startDate, endDate } = resolveDateRange(filter, customStart, customEnd);
-
-  const todayStr = getNowInBusinessTimezone().dateStr;
 
   // 1. Orders & Sales KPI
   const orderKpi = get(`
@@ -78,25 +74,6 @@ router.get('/staff', authenticate, (req, res) => {
     WHERE r.staff_id = ? AND r.return_date >= ? AND r.return_date <= ?
   `, [staffId, startDate, endDate]);
 
-  // 3. Daily Activities KPI (Total Calls & Enquiries counts)
-  const actKpi = get(`
-    SELECT
-      COALESCE(SUM(total_calls), 0) AS total_calls,
-      COALESCE(SUM(connected_calls), 0) AS connected_calls,
-      COALESCE(SUM(total_enquiries), 0) AS total_enquiries
-    FROM daily_activities
-    WHERE staff_id = ? AND activity_date >= ? AND activity_date <= ?
-  `, [staffId, startDate, endDate]);
-
-  // 4. Today's Activity Summary
-  const todaySummary = get(`
-    SELECT
-      (SELECT COALESCE(total_calls, 0) FROM daily_activities WHERE staff_id = ? AND activity_date = ?) AS calls_today,
-      (SELECT COALESCE(total_enquiries, 0) FROM daily_activities WHERE staff_id = ? AND activity_date = ?) AS enquiries_today,
-      (SELECT COUNT(*) FROM orders WHERE staff_id = ? AND order_date = ?) AS orders_today,
-      (SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE staff_id = ? AND order_date = ?) AS sales_today
-  `, [staffId, todayStr, staffId, todayStr, staffId, todayStr, staffId, todayStr]);
-
   // Net calculations
   const grossSales = orderKpi?.gross_sales || 0;
   const returnedAmount = returnKpi?.total_returned_amount || 0;
@@ -110,7 +87,7 @@ router.get('/staff', authenticate, (req, res) => {
   const reversedIncentive = returnKpi?.total_reversed_incentive || 0;
   const netIncentive = Math.max(0, Math.round((grossIncentive - reversedIncentive) * 100) / 100);
 
-  // 5. Chart: Daily orders & sales
+  // 3. Chart: Daily orders & sales
   const dailyOrders = query(`
     SELECT
       o.order_date AS date,
@@ -126,7 +103,7 @@ router.get('/staff', authenticate, (req, res) => {
     net_sales: Math.max(0, Math.round((row.gross_sales - row.return_amount) * 100) / 100)
   }));
 
-  // 6. Chart: Orders by Product
+  // 4. Chart: Orders by Product
   const ordersByProduct = query(`
     SELECT
       p.name AS product_name,
@@ -141,19 +118,7 @@ router.get('/staff', authenticate, (req, res) => {
     ORDER BY total_quantity DESC
   `, [staffId, startDate, endDate]);
 
-  // 7. Chart: Calls & Enquiries over time from daily_activities
-  const activityOverTime = query(`
-    SELECT
-      activity_date AS date,
-      total_calls AS calls,
-      total_enquiries AS enquiries,
-      connected_calls
-    FROM daily_activities
-    WHERE staff_id = ? AND activity_date >= ? AND activity_date <= ?
-    ORDER BY activity_date ASC
-  `, [staffId, startDate, endDate]);
-
-  // 9. Chart: Order status distribution
+  // 5. Chart: Order status distribution
   const orderStatusDist = query(`
     SELECT status, COUNT(*) AS count
     FROM orders
@@ -161,7 +126,7 @@ router.get('/staff', authenticate, (req, res) => {
     GROUP BY status
   `, [staffId, startDate, endDate]);
 
-  // 10. Chart: Returns over time
+  // 6. Chart: Returns over time
   const returnsOverTime = query(`
     SELECT
       return_date AS date,
@@ -179,9 +144,7 @@ router.get('/staff', authenticate, (req, res) => {
     kpis: {
       totalOrders: orderKpi?.total_orders || 0,
       totalReturnedOrders: returnKpi?.total_return_orders || 0,
-      totalEnquiries: actKpi?.total_enquiries || 0,
-      totalCalls: actKpi?.total_calls || 0,
-      connectedCalls: actKpi?.connected_calls || 0,
+      totalReturnedQuantity: returnedQty,
       totalCustomers: orderKpi?.total_customers || 0,
       grossQuantitySold: grossQty,
       netQuantitySold: netQty,
@@ -189,18 +152,11 @@ router.get('/staff', authenticate, (req, res) => {
       netSales,
       grossIncentive: Math.round(grossIncentive * 100) / 100,
       reversedIncentive: Math.round(reversedIncentive * 100) / 100,
-      netIncentive,
-      todaySummary: {
-        calls: todaySummary?.calls_today || 0,
-        enquiries: todaySummary?.enquiries_today || 0,
-        orders: todaySummary?.orders_today || 0,
-        sales: todaySummary?.sales_today || 0
-      }
+      netIncentive
     },
     charts: {
       dailyOrders,
       ordersByProduct,
-      activityOverTime,
       orderStatusDist,
       returnsOverTime
     }
@@ -212,14 +168,10 @@ router.get('/manager', authenticate, requireRole('brand_manager'), (req, res) =>
   const { filter = 'this_month', staffId, startDate: customStart, endDate: customEnd } = req.query;
   const { startDate, endDate } = resolveDateRange(filter, customStart, customEnd);
 
-  const todayStr = getNowInBusinessTimezone().dateStr;
-
   let staffConditionOrders = '';
   let staffConditionReturns = '';
-  let staffConditionAct = '';
   let paramsOrders = [startDate, endDate];
   let paramsReturns = [startDate, endDate];
-  let paramsAct = [startDate, endDate];
 
   if (staffId && staffId !== 'all') {
     const sId = parseInt(staffId, 10);
@@ -227,8 +179,6 @@ router.get('/manager', authenticate, requireRole('brand_manager'), (req, res) =>
     paramsOrders.push(sId);
     staffConditionReturns = ' AND r.staff_id = ?';
     paramsReturns.push(sId);
-    staffConditionAct = ' AND da.staff_id = ?';
-    paramsAct.push(sId);
   }
 
   // 1. Orders KPI
@@ -255,16 +205,6 @@ router.get('/manager', authenticate, requireRole('brand_manager'), (req, res) =>
     WHERE r.return_date >= ? AND r.return_date <= ? ${staffConditionReturns}
   `, paramsReturns);
 
-  // 3. Daily Activities KPI (Total Calls & Enquiries counts)
-  const actKpi = get(`
-    SELECT
-      COALESCE(SUM(da.total_calls), 0) AS total_calls,
-      COALESCE(SUM(da.connected_calls), 0) AS connected_calls,
-      COALESCE(SUM(da.total_enquiries), 0) AS total_enquiries
-    FROM daily_activities da
-    WHERE da.activity_date >= ? AND da.activity_date <= ? ${staffConditionAct}
-  `, paramsAct);
-
   const grossSales = orderKpi?.gross_sales || 0;
   const returnAmount = returnKpi?.total_returned_amount || 0;
   const netSales = Math.max(0, Math.round((grossSales - returnAmount) * 100) / 100);
@@ -277,14 +217,7 @@ router.get('/manager', authenticate, requireRole('brand_manager'), (req, res) =>
   const reversedIncentive = returnKpi?.total_reversed_incentive || 0;
   const totalIncentives = Math.max(0, Math.round((grossIncentive - reversedIncentive) * 100) / 100);
 
-  const totalCalls = actKpi?.total_calls || 0;
-  const connectedCalls = actKpi?.connected_calls || 0;
-  const connectedPercentage = totalCalls > 0 ? Math.round((connectedCalls / totalCalls) * 1000) / 10 : 0;
-
-  const totalEnquiries = actKpi?.total_enquiries || 0;
-  const conversionPercentage = totalEnquiries > 0 && orderKpi?.total_orders ? Math.round((orderKpi.total_orders / totalEnquiries) * 1000) / 10 : 0;
-
-  // 5. Top-performing staff
+  // 3. Top-performing staff
   const topStaff = query(`
     SELECT
       u.id,
@@ -298,55 +231,35 @@ router.get('/manager', authenticate, requireRole('brand_manager'), (req, res) =>
     LEFT JOIN orders o ON u.id = o.staff_id AND o.order_date >= ? AND o.order_date <= ?
     WHERE u.role = 'sales_staff' AND u.status = 'active'
     GROUP BY u.id
-    ORDER BY (gross_sales - return_amount) DESC
+    ORDER BY gross_sales DESC
+    LIMIT 5
   `, [startDate, endDate, startDate, endDate, startDate, endDate]).map(s => ({
     ...s,
-    net_sales: Math.max(0, Math.round((s.gross_sales - s.return_amount) * 100) / 100),
-    net_incentive: Math.max(0, Math.round(s.net_incentive * 100) / 100)
-  }));
+    net_sales: Math.max(0, Math.round((s.gross_sales - s.return_amount) * 100) / 100)
+  })).sort((a, b) => b.net_sales - a.net_sales);
 
-  // 6. Top-selling products
+  // 4. Top-selling products
   const topProducts = query(`
     SELECT
       p.id,
       p.name,
       p.code,
       p.price,
-      COUNT(DISTINCT o.id) AS orders_count,
       COALESCE(SUM(o.quantity), 0) AS gross_quantity,
-      COALESCE((SELECT SUM(r.return_quantity) FROM returns r JOIN orders o2 ON r.order_id = o2.id WHERE o2.product_id = p.id AND r.return_date >= ? AND r.return_date <= ?), 0) AS returned_quantity,
+      COALESCE((SELECT SUM(r.return_quantity) FROM returns r JOIN orders o2 ON r.order_id = o2.id WHERE o2.product_id = p.id AND r.return_date >= ? AND r.return_date <= ?), 0) AS return_quantity,
       COALESCE(SUM(o.total_amount), 0) AS gross_sales
     FROM products p
-    LEFT JOIN orders o ON p.id = o.product_id AND o.order_date >= ? AND o.order_date <= ?
+    LEFT JOIN orders o ON p.id = o.product_id AND o.order_date >= ? AND o.order_date <= ? ${staffConditionOrders}
+    WHERE p.status = 'active'
     GROUP BY p.id
-    ORDER BY (gross_quantity - returned_quantity) DESC
-  `, [startDate, endDate, startDate, endDate]).map(p => ({
+    ORDER BY gross_sales DESC
+    LIMIT 5
+  `, [startDate, endDate, startDate, endDate, ...(staffId && staffId !== 'all' ? [parseInt(staffId, 10)] : [])]).map(p => ({
     ...p,
-    net_quantity: Math.max(0, p.gross_quantity - p.returned_quantity)
+    net_quantity: Math.max(0, p.gross_quantity - p.return_quantity)
   }));
 
-  // 7. Staff Activity Status & Pending Daily Entries (Today)
-  const staffActivity = query(`
-    SELECT
-      u.id,
-      u.staff_id,
-      u.name,
-      (SELECT COALESCE(total_calls, 0) FROM daily_activities WHERE staff_id = u.id AND activity_date = ?) AS calls_today,
-      (SELECT COALESCE(total_enquiries, 0) FROM daily_activities WHERE staff_id = u.id AND activity_date = ?) AS enquiries_today,
-      (SELECT COUNT(*) FROM orders WHERE staff_id = u.id AND order_date = ?) AS orders_today
-    FROM users u
-    WHERE u.role = 'sales_staff' AND u.status = 'active'
-    ORDER BY u.name ASC
-  `, [todayStr, todayStr, todayStr]).map(s => {
-    const isPending = s.calls_today === 0 && s.enquiries_today === 0;
-    return {
-      ...s,
-      is_pending: isPending,
-      status: isPending ? 'Pending Entries' : 'Active'
-    };
-  });
-
-  // 8. Consolidated Daily Trend Chart
+  // 5. Sales trend
   const salesTrend = query(`
     SELECT
       o.order_date AS date,
@@ -368,21 +281,16 @@ router.get('/manager', authenticate, requireRole('brand_manager'), (req, res) =>
       totalOrders: orderKpi?.total_orders || 0,
       grossSales: Math.round(grossSales * 100) / 100,
       totalReturns: returnKpi?.total_returns || 0,
+      totalReturnedAmount: Math.round(returnAmount * 100) / 100,
       totalReturnedQuantity: returnedQty,
-      totalReturnedAmount: returnAmount,
       netSales,
       totalCustomers: orderKpi?.total_customers || 0,
       grossQuantitySold: grossQty,
       netQuantitySold: netQty,
-      totalEnquiries,
-      totalCalls,
-      connectedCallPercentage: connectedPercentage,
-      enquiryConversionPercentage: conversionPercentage,
       totalIncentives
     },
     topStaff,
     topProducts,
-    staffActivity,
     salesTrend
   });
 });

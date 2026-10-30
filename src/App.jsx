@@ -5,7 +5,6 @@ import Sidebar from './components/Sidebar';
 import Navbar from './components/Navbar';
 import Login from './views/Login';
 
-import DailyActivity from './views/DailyActivity';
 import StaffDashboard from './views/staff/StaffDashboard';
 import StaffOrders from './views/staff/StaffOrders';
 import StaffReturns from './views/staff/StaffReturns';
@@ -46,7 +45,6 @@ function MainApp() {
     'staff': 'Sales Staff Management',
     'orders': isManager ? 'All Staff Orders' : 'My Orders',
     'returns': isManager ? 'All Returns Audit' : 'Order Returns',
-    'daily-activity': isManager ? 'Daily Activity Audit' : 'Daily Activity Count',
     'my-performance': 'Personal Performance & Incentive Audit',
     'staff-performance': 'Staff Performance Analysis'
   };
@@ -75,8 +73,6 @@ function MainApp() {
           return <ManagerOrders />;
         case 'returns':
           return <StaffReturns />;
-        case 'daily-activity':
-          return <DailyActivity />;
         case 'staff-performance':
           return <StaffPerformanceAnalysis initialStaffId={drilldownStaffId} />;
         default:
@@ -91,8 +87,6 @@ function MainApp() {
           return <StaffOrders />;
         case 'returns':
           return <StaffReturns />;
-        case 'daily-activity':
-          return <DailyActivity />;
         case 'my-performance':
           return <StaffMyPerformance />;
         default:

@@ -5,15 +5,13 @@ import {
   LayoutDashboard,
   ShoppingCart,
   RotateCcw,
-  ClipboardCheck,
   Award,
   Package,
   Users,
   BarChart3,
   LogOut,
   ChevronDown,
-  UserCheck,
-  ShieldAlert
+  UserCheck
 } from 'lucide-react';
 
 export default function Sidebar({ currentView, setCurrentView }) {
@@ -27,7 +25,6 @@ export default function Sidebar({ currentView, setCurrentView }) {
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'orders', label: 'Orders', icon: ShoppingCart },
     { id: 'returns', label: 'Returns', icon: RotateCcw },
-    { id: 'daily-activity', label: 'Daily Activity', icon: ClipboardCheck },
     { id: 'my-performance', label: 'My Performance', icon: Award }
   ];
 
@@ -38,7 +35,6 @@ export default function Sidebar({ currentView, setCurrentView }) {
     { id: 'staff', label: 'Staff Management', icon: Users },
     { id: 'orders', label: 'Orders', icon: ShoppingCart },
     { id: 'returns', label: 'Returns', icon: RotateCcw },
-    { id: 'daily-activity', label: 'Daily Activity', icon: ClipboardCheck },
     { id: 'staff-performance', label: 'Staff Performance', icon: BarChart3 }
   ];
 

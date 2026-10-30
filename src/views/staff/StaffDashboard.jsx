@@ -4,16 +4,11 @@ import { api } from '../../api';
 import {
   ShoppingCart,
   RotateCcw,
-  HelpCircle,
-  PhoneCall,
   Users,
   Package,
   Award,
-  Calendar,
-  Filter,
-  CheckCircle2,
   TrendingUp,
-  Clock
+  DollarSign
 } from 'lucide-react';
 import {
   Chart as ChartJS,
@@ -128,29 +123,7 @@ export default function StaffDashboard() {
     ]
   };
 
-  // 3. Activity Over Time (Calls vs Enquiries)
-  const activityLabels = (charts.activityOverTime || []).map(a => a.date);
-  const activityChartData = {
-    labels: activityLabels,
-    datasets: [
-      {
-        label: 'Calls Logged',
-        data: (charts.activityOverTime || []).map(a => a.calls),
-        borderColor: '#0284c7',
-        backgroundColor: '#0284c7',
-        tension: 0.3
-      },
-      {
-        label: 'Enquiries Created',
-        data: (charts.activityOverTime || []).map(a => a.enquiries),
-        borderColor: '#8b5cf6',
-        backgroundColor: '#8b5cf6',
-        tension: 0.3
-      }
-    ]
-  };
-
-  // 4. Order Status Distribution
+  // 3. Order Status Distribution
   const statusLabels = (charts.orderStatusDist || []).map(s => s.status);
   const statusChartData = {
     labels: statusLabels,
@@ -219,7 +192,7 @@ export default function StaffDashboard() {
         </div>
       </div>
 
-      {/* KPI Cards Grid */}
+      {/* KPI Cards Grid - Focused on Sales & Performance */}
       <div className="kpi-grid">
         {/* Total Orders */}
         <div className="kpi-card">
@@ -231,7 +204,35 @@ export default function StaffDashboard() {
           </div>
           <div className="kpi-value">{kpis.totalOrders || 0}</div>
           <div className="kpi-subtext">
-            <span>Gross Sales: <strong>₹{(kpis.grossSales || 0).toLocaleString()}</strong></span>
+            <span>Orders booked in period</span>
+          </div>
+        </div>
+
+        {/* Gross Sales */}
+        <div className="kpi-card">
+          <div className="kpi-header">
+            <span className="kpi-title">Gross Sales</span>
+            <div className="kpi-icon-wrap" style={{ background: '#e0f2fe', color: '#0284c7' }}>
+              <DollarSign size={18} />
+            </div>
+          </div>
+          <div className="kpi-value">₹{(kpis.grossSales || 0).toLocaleString()}</div>
+          <div className="kpi-subtext">
+            <span>Total order values</span>
+          </div>
+        </div>
+
+        {/* Total Returns */}
+        <div className="kpi-card">
+          <div className="kpi-header">
+            <span className="kpi-title">Returned Orders</span>
+            <div className="kpi-icon-wrap" style={{ background: '#fee2e2', color: '#dc2626' }}>
+              <RotateCcw size={18} />
+            </div>
+          </div>
+          <div className="kpi-value">{kpis.totalReturnedOrders || 0}</div>
+          <div className="kpi-subtext">
+            <span>Returned Qty: <strong>{kpis.totalReturnedQuantity || 0} units</strong></span>
           </div>
         </div>
 
@@ -249,52 +250,10 @@ export default function StaffDashboard() {
           </div>
         </div>
 
-        {/* Earned Incentive */}
+        {/* Total Customers */}
         <div className="kpi-card">
           <div className="kpi-header">
-            <span className="kpi-title">Earned Net Incentive</span>
-            <div className="kpi-icon-wrap" style={{ background: '#fef3c7', color: '#d97706' }}>
-              <Award size={18} />
-            </div>
-          </div>
-          <div className="kpi-value" style={{ color: '#d97706' }}>₹{(kpis.netIncentive || 0).toLocaleString()}</div>
-          <div className="kpi-subtext">
-            <span>Gross: ₹{(kpis.grossIncentive || 0).toLocaleString()} | Rev: ₹{(kpis.reversedIncentive || 0).toLocaleString()}</span>
-          </div>
-        </div>
-
-        {/* Returns */}
-        <div className="kpi-card">
-          <div className="kpi-header">
-            <span className="kpi-title">Returns</span>
-            <div className="kpi-icon-wrap" style={{ background: '#fee2e2', color: '#dc2626' }}>
-              <RotateCcw size={18} />
-            </div>
-          </div>
-          <div className="kpi-value">{kpis.totalReturnedOrders || 0} orders</div>
-          <div className="kpi-subtext">
-            <span>Returned Qty: <strong>{kpis.totalReturnedQuantity || 0} units</strong></span>
-          </div>
-        </div>
-
-        {/* Total Products Sold */}
-        <div className="kpi-card">
-          <div className="kpi-header">
-            <span className="kpi-title">Products Sold</span>
-            <div className="kpi-icon-wrap" style={{ background: '#f1f5f9', color: '#475569' }}>
-              <Package size={18} />
-            </div>
-          </div>
-          <div className="kpi-value">{kpis.netQuantitySold || 0} <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-muted)' }}>net units</span></div>
-          <div className="kpi-subtext">
-            <span>Gross Qty: {kpis.grossQuantitySold || 0} units</span>
-          </div>
-        </div>
-
-        {/* Unique Customers */}
-        <div className="kpi-card">
-          <div className="kpi-header">
-            <span className="kpi-title">Unique Customers</span>
+            <span className="kpi-title">Total Customers</span>
             <div className="kpi-icon-wrap" style={{ background: '#e0f2fe', color: '#0284c7' }}>
               <Users size={18} />
             </div>
@@ -305,33 +264,31 @@ export default function StaffDashboard() {
           </div>
         </div>
 
-        {/* Calls & Enquiries */}
+        {/* Total Products Sold */}
         <div className="kpi-card">
           <div className="kpi-header">
-            <span className="kpi-title">Calls & Enquiries</span>
-            <div className="kpi-icon-wrap" style={{ background: '#f3e8ff', color: '#7c3aed' }}>
-              <PhoneCall size={18} />
+            <span className="kpi-title">Product Qty Sold</span>
+            <div className="kpi-icon-wrap" style={{ background: '#f1f5f9', color: '#475569' }}>
+              <Package size={18} />
             </div>
           </div>
-          <div className="kpi-value">{kpis.totalCalls || 0} <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>calls / {kpis.totalEnquiries || 0} enq</span></div>
+          <div className="kpi-value">{kpis.netQuantitySold || 0} <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-muted)' }}>net units</span></div>
           <div className="kpi-subtext">
-            <span>Activity logged in period</span>
+            <span>Gross Qty: {kpis.grossQuantitySold || 0} units</span>
           </div>
         </div>
 
-        {/* Today's Activity Summary */}
-        <div className="kpi-card" style={{ background: 'linear-gradient(135deg, #ffffff, #f8fafc)' }}>
+        {/* Total Earned Incentives */}
+        <div className="kpi-card">
           <div className="kpi-header">
-            <span className="kpi-title">Today's Activity</span>
-            <div className="kpi-icon-wrap" style={{ background: '#ecfdf5', color: '#059669' }}>
-              <CheckCircle2 size={18} />
+            <span className="kpi-title">Earned Net Incentive</span>
+            <div className="kpi-icon-wrap" style={{ background: '#fef3c7', color: '#d97706' }}>
+              <Award size={18} />
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginTop: '2px' }}>
-            <div style={{ fontSize: '12px' }}>Calls: <strong>{kpis.todaySummary?.calls || 0}</strong></div>
-            <div style={{ fontSize: '12px' }}>Enq: <strong>{kpis.todaySummary?.enquiries || 0}</strong></div>
-            <div style={{ fontSize: '12px' }}>Orders: <strong>{kpis.todaySummary?.orders || 0}</strong></div>
-            <div style={{ fontSize: '12px' }}>Sales: <strong>₹{(kpis.todaySummary?.sales || 0).toLocaleString()}</strong></div>
+          <div className="kpi-value" style={{ color: '#d97706' }}>₹{(kpis.netIncentive || 0).toLocaleString()}</div>
+          <div className="kpi-subtext">
+            <span>Gross: ₹{(kpis.grossIncentive || 0).toLocaleString()} | Rev: ₹{(kpis.reversedIncentive || 0).toLocaleString()}</span>
           </div>
         </div>
       </div>
@@ -394,28 +351,6 @@ export default function StaffDashboard() {
               />
             ) : (
               <div className="empty-state" style={{ height: '100%' }}>No product breakdown available</div>
-            )}
-          </div>
-        </div>
-
-        {/* Calls & Enquiries Over Time */}
-        <div className="chart-card">
-          <div className="chart-header">
-            <h3 className="chart-title">Daily Calls & Enquiries</h3>
-            <span className="badge badge-neutral">Activity Volume</span>
-          </div>
-          <div className="chart-container">
-            {charts.activityOverTime && charts.activityOverTime.length > 0 ? (
-              <Line
-                data={activityChartData}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
-                }}
-              />
-            ) : (
-              <div className="empty-state" style={{ height: '100%' }}>No call/enquiry activity recorded in this period</div>
             )}
           </div>
         </div>

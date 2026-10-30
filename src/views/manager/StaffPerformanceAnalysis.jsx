@@ -5,21 +5,14 @@ import {
   BarChart3,
   Search,
   Download,
-  Filter,
   Eye,
   CheckCircle,
-  AlertTriangle,
-  ArrowUpDown,
   CreditCard,
   Package,
   MessageSquare,
   Save,
-  Clock,
-  PhoneCall,
-  HelpCircle,
   ShoppingCart,
-  RotateCcw,
-  ClipboardCheck
+  RotateCcw
 } from 'lucide-react';
 
 export default function StaffPerformanceAnalysis({ initialStaffId }) {
@@ -33,7 +26,6 @@ export default function StaffPerformanceAnalysis({ initialStaffId }) {
 
   // Drilldown modal state
   const [selectedStaffDetail, setSelectedStaffDetail] = useState(null);
-  const [drilldownLoading, setDrilldownLoading] = useState(false);
   const [managerRemarkInput, setManagerRemarkInput] = useState('');
   const [savingRemark, setSavingRemark] = useState(false);
   const [activeTab, setActiveTab] = useState('orders');
@@ -81,7 +73,6 @@ export default function StaffPerformanceAnalysis({ initialStaffId }) {
   }
 
   async function openStaffDrilldown(staffId) {
-    setDrilldownLoading(true);
     try {
       let queryStr = '';
       if (startDate) queryStr += `?startDate=${startDate}`;
@@ -93,8 +84,6 @@ export default function StaffPerformanceAnalysis({ initialStaffId }) {
       setActiveTab('orders');
     } catch (err) {
       alert('Failed to load staff performance details: ' + err.message);
-    } finally {
-      setDrilldownLoading(false);
     }
   }
 
@@ -201,23 +190,19 @@ export default function StaffPerformanceAnalysis({ initialStaffId }) {
                 <th className="sortable" onClick={() => handleSort('net_sales')}>Net Sales</th>
                 <th className="sortable" onClick={() => handleSort('total_customers')}>Customers</th>
                 <th className="sortable" onClick={() => handleSort('net_quantity')}>Net Qty</th>
-                <th className="sortable" onClick={() => handleSort('total_enquiries')}>Enquiries</th>
-                <th className="sortable" onClick={() => handleSort('enquiry_conversion_rate')}>Enq Conv %</th>
-                <th className="sortable" onClick={() => handleSort('total_calls')}>Calls (Conn %)</th>
-                <th className="sortable" onClick={() => handleSort('net_incentive')}>Net Incentive</th>
-                <th>Daily Activity</th>
-                <th>Remarks</th>
+                <th className="sortable" onClick={() => handleSort('net_incentive')}>Total Incentive</th>
+                <th>Manager Remarks</th>
                 <th>Action</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="14" style={{ textAlign: 'center', padding: '32px' }}>Loading performance data...</td>
+                  <td colSpan="10" style={{ textAlign: 'center', padding: '32px' }}>Loading performance data...</td>
                 </tr>
               ) : performance.length === 0 ? (
                 <tr>
-                  <td colSpan="14">
+                  <td colSpan="10">
                     <div className="empty-state">
                       <div className="empty-state-icon"><BarChart3 size={24} /></div>
                       <div className="empty-state-title">No staff records match filter</div>
@@ -249,25 +234,10 @@ export default function StaffPerformanceAnalysis({ initialStaffId }) {
                     </td>
                     <td>{s.total_customers}</td>
                     <td><strong>{s.net_quantity}</strong> <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>({s.gross_quantity}g)</span></td>
-                    <td>{s.total_enquiries}</td>
-                    <td>
-                      <span className={`badge ${s.enquiry_conversion_rate > 30 ? 'badge-success' : 'badge-neutral'}`}>
-                        {s.enquiry_conversion_rate}%
-                      </span>
-                    </td>
-                    <td>
-                      <div>{s.total_calls} calls</div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{s.call_connection_rate}% conn</div>
-                    </td>
                     <td>
                       <strong style={{ color: '#d97706' }}>₹{s.net_incentive.toLocaleString()}</strong>
                     </td>
-                    <td>
-                      <span className={`badge ${s.daily_activity?.today_logged ? 'badge-success' : 'badge-warning'}`}>
-                        {s.daily_activity?.summary}
-                      </span>
-                    </td>
-                    <td style={{ fontSize: '12px', color: 'var(--text-muted)', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <td style={{ fontSize: '12px', color: 'var(--text-muted)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {s.manager_remarks || '—'}
                     </td>
                     <td>
@@ -388,12 +358,11 @@ export default function StaffPerformanceAnalysis({ initialStaffId }) {
                 </div>
               </div>
 
-              {/* Sub-Tabs for Orders, Returns, Daily Activities */}
+              {/* Sub-Tabs for Orders and Returns */}
               <div style={{ display: 'flex', gap: '4px', borderBottom: '1px solid var(--border-subtle)', marginBottom: '16px' }}>
                 {[
                   { id: 'orders', label: `Orders (${(selectedStaffDetail.orders || []).length})`, icon: ShoppingCart },
-                  { id: 'returns', label: `Returns (${(selectedStaffDetail.returns || []).length})`, icon: RotateCcw },
-                  { id: 'daily-activities', label: `Daily Activities (${(selectedStaffDetail.dailyActivities || []).length})`, icon: ClipboardCheck }
+                  { id: 'returns', label: `Returns (${(selectedStaffDetail.returns || []).length})`, icon: RotateCcw }
                 ].map((t) => {
                   const Icon = t.icon;
                   const isActive = activeTab === t.id;
@@ -471,76 +440,33 @@ export default function StaffPerformanceAnalysis({ initialStaffId }) {
                       <tr>
                         <th>Return #</th>
                         <th>Date</th>
-                        <th>Orig Order #</th>
+                        <th>Linked Order</th>
                         <th>Customer</th>
                         <th>Product</th>
                         <th>Qty</th>
-                        <th>Refund Value</th>
-                        <th>Reversed Inc</th>
+                        <th>Refund Amount</th>
+                        <th>Reversed Inc.</th>
                         <th>Reason</th>
-                        <th>Return Remarks</th>
                       </tr>
                     </thead>
                     <tbody>
                       {(selectedStaffDetail.returns || []).map(r => (
                         <tr key={r.id}>
-                          <td><strong style={{ color: 'var(--danger-text)' }}>{r.return_number}</strong></td>
+                          <td><strong>{r.return_number}</strong></td>
                           <td>{r.return_date}</td>
                           <td>{r.order_number}</td>
                           <td>{r.customer_name}</td>
                           <td>{r.product_name}</td>
-                          <td><span className="badge badge-danger">{r.return_quantity}</span></td>
+                          <td><strong>{r.return_quantity}</strong></td>
                           <td>₹{r.return_amount.toLocaleString()}</td>
                           <td style={{ color: 'var(--danger-solid)', fontWeight: 700 }}>-₹{r.reversed_incentive}</td>
                           <td><span className="badge badge-warning">{r.return_reason}</span></td>
-                          <td style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{r.remarks || '—'}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
               )}
-
-              {/* Tab 3: Daily Activity Logs */}
-              {activeTab === 'daily-activities' && (
-                <div className="table-responsive">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Date</th>
-                        <th>Total Calls</th>
-                        <th>Connected Calls</th>
-                        <th>Connection Rate</th>
-                        <th>Total Enquiries</th>
-                        <th>Staff Remarks</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(selectedStaffDetail.dailyActivities || []).map(act => {
-                        const rate = act.total_calls > 0 ? Math.round((act.connected_calls / act.total_calls) * 1000) / 10 : 0;
-                        return (
-                          <tr key={act.id}>
-                            <td><strong>{act.activity_date}</strong></td>
-                            <td style={{ fontWeight: 700, color: 'var(--primary-700)' }}>{act.total_calls}</td>
-                            <td>{act.connected_calls}</td>
-                            <td>
-                              <span className={`badge ${rate >= 60 ? 'badge-success' : 'badge-neutral'}`}>
-                                {rate}%
-                              </span>
-                            </td>
-                            <td style={{ fontWeight: 700, color: '#8b5cf6' }}>{act.total_enquiries}</td>
-                            <td style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{act.remarks || '—'}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setSelectedStaffDetail(null)}>Close</button>
             </div>
           </div>
         </div>
