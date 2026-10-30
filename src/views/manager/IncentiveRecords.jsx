@@ -233,9 +233,6 @@ export default function IncentiveRecords() {
                 {currentMonthName} {currentYear}
               </span>
             </div>
-            <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '3px', margin: 0 }}>
-              Order-wise breakdown and return adjustments for orders created in {currentMonthName} {currentYear}.
-            </p>
           </div>
 
           {/* Month / Year Selector in Detail View */}
@@ -597,9 +594,6 @@ export default function IncentiveRecords() {
                 Monthly Staff Summary
               </span>
             </div>
-            <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '3px', margin: 0 }}>
-              Staff-wise incentive earnings and return adjustments for orders placed in {currentMonthName} {currentYear}.
-            </p>
           </div>
         </div>
 

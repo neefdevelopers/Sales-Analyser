@@ -204,11 +204,6 @@ export default function StaffReturns() {
       <div className="page-header">
         <div>
           <h2 className="page-title">{isManager ? 'Returns Audit' : 'Returns'}</h2>
-          <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '2px', margin: 0 }}>
-            {isManager
-              ? 'View all customer product return records across all staff.'
-              : 'Record product returns and review your processed return history.'}
-          </p>
         </div>
 
         <button

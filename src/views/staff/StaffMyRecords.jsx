@@ -86,9 +86,6 @@ export default function StaffMyRecords() {
       <div className="page-header">
         <div>
           <h2 className="page-title">My Records</h2>
-          <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '2px' }}>
-            View your personal orders, product returns, and total earned incentives.
-          </p>
         </div>
 
         {/* Date Filter Bar */}

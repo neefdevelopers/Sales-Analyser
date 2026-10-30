@@ -229,11 +229,6 @@ export default function StaffOrders() {
       <div className="page-header">
         <div>
           <h2 className="page-title">{isManager ? 'All Orders' : 'Orders'}</h2>
-          <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '2px', margin: 0 }}>
-            {isManager
-              ? 'View all customer orders created across all sales staff.'
-              : 'Add new customer orders and manage your order history.'}
-          </p>
         </div>
 
         <button
