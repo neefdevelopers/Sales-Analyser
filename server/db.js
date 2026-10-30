@@ -300,45 +300,6 @@ function seedDatabase(db) {
     ('Zenith Pro Headphone (Legacy)', 'PRD-ZEN-05', 3499.00, 'inactive', 'fixed', 'per_unit', 120.0, 'fixed', 'per_unit', 80.0, ?, ?);
   `, [now, now, now, now, now, now, now, now, now, now]);
 
-  // 3. Seed Customers
-  db.run(`
-    INSERT INTO customers (name, phone, address, created_at, updated_at) VALUES
-    ('Amit Kumar', '9876543210', '124 MG Road, Indiranagar, Bengaluru, Karnataka', ?, ?),
-    ('Sneha Reddy', '9812345678', 'Plot 45, Banjara Hills, Hyderabad, Telangana', ?, ?),
-    ('Rohan Mehta', '9723456789', 'B-12 Sea View Apartments, Bandra West, Mumbai', ?, ?),
-    ('Ananya Iyer', '9654321098', '78 Anna Salai, T. Nagar, Chennai, Tamil Nadu', ?, ?),
-    ('Karan Kapoor', '9543210987', '56 Connaught Place, New Delhi', ?, ?);
-  `, [now, now, now, now, now, now, now, now, now, now]);
-
-  // 4. Seed Orders (with snapshot incentive fields!)
-  db.run(`
-    INSERT INTO orders (order_number, staff_id, customer_id, product_id, quantity, unit_price, total_amount, payment_method, order_date, status, remarks, incentive_type, incentive_basis, incentive_rate, incentive_amount, created_at, updated_at) VALUES
-    ('ORD-20261028-0001', 2, 1, 1, 1, 4999.00, 4999.00, 'Prepaid', ?, 'Delivered', 'Paid via UPI, priority shipping requested.', 'percentage', 'per_order', 5.0, 249.95, ?, ?),
-    ('ORD-20261028-0002', 2, 2, 2, 2, 1999.00, 3998.00, 'COD', ?, 'Delivered', 'Customer verified phone OTP on delivery.', 'fixed', 'per_unit', 100.0, 200.00, ?, ?),
-    ('ORD-20261028-0003', 3, 3, 2, 2, 1999.00, 3998.00, 'Prepaid', ?, 'Delivered', 'Prepaid credit card payment.', 'fixed', 'per_unit', 150.0, 300.00, ?, ?),
-    ('ORD-20261029-0004', 3, 4, 3, 1, 8999.00, 8999.00, 'COD', ?, 'Confirmed', 'Dispatched from central warehouse.', 'percentage', 'per_unit', 5.0, 449.95, ?, ?),
-    ('ORD-20261029-0005', 2, 5, 4, 3, 1499.00, 4497.00, 'Prepaid', ?, 'Confirmed', 'Bulk order for corporate fitness challenge.', 'fixed', 'per_unit', 100.0, 300.00, ?, ?);
-  `, [
-    yesterday, now, now,
-    yesterday, now, now,
-    yesterday, now, now,
-    today, now, now,
-    today, now, now
-  ]);
-
-  // 5. Seed Sample Return
-  db.run(`
-    INSERT INTO returns (return_number, order_id, staff_id, return_quantity, return_amount, return_date, return_reason, remarks, reversed_incentive, created_at, updated_at) VALUES
-    ('RET-20261029-0001', 2, 2, 1, 1999.00, ?, 'Defective item', 'Left earbud volume lower than right, verified with QA.', 100.00, ?, ?);
-  `, [today, now, now]);
-
-  // 6. Seed Manager Observation Remarks
-  db.run(`
-    INSERT INTO staff_performance_remarks (staff_id, manager_id, remarks, updated_at) VALUES
-    (2, 1, 'Consistent performer with high customer engagement. Follow up on returns turnaround.', ?),
-    (3, 1, 'Excellent sales performance on premium audio products this month.', ?);
-  `, [now, now]);
-
-  console.log('Database seeded successfully!');
+  console.log('Database initialized with default staff and product configurations!');
 }
 
