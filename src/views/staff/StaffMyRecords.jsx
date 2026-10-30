@@ -124,56 +124,56 @@ export default function StaffMyRecords() {
       </div>
 
       {/* 3 Summary Cards */}
-      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: '24px' }}>
+      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
         {/* Card 1: Total Orders */}
-        <div className="stat-card">
-          <div className="stat-card-header">
-            <div>
-              <div className="stat-title">My Total Orders</div>
-              <div className="stat-value">{summary?.totalOrders ?? 0}</div>
-            </div>
-            <div className="stat-icon-wrap" style={{ background: '#eff6ff', color: '#2563eb' }}>
-              <ShoppingCart size={22} />
+        <div className="kpi-card-premium" style={{ '--card-accent': '#3b82f6' }}>
+          <div className="kpi-header">
+            <span className="kpi-title">My Total Orders</span>
+            <div className="kpi-icon-wrap" style={{ background: '#eff6ff', color: '#2563eb' }}>
+              <ShoppingCart size={20} />
             </div>
           </div>
-          <div className="stat-desc" style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
-            Total Gross Sales: <strong>₹{summary?.grossSales?.toLocaleString() ?? 0}</strong> ({summary?.totalQuantity ?? 0} units)
+          <div>
+            <div className="kpi-value">{summary?.totalOrders ?? 0}</div>
+            <div className="kpi-subtext">
+              Total Gross Sales: <strong>₹{summary?.grossSales?.toLocaleString() ?? 0}</strong> ({summary?.totalQuantity ?? 0} units)
+            </div>
           </div>
         </div>
 
         {/* Card 2: Returned Orders */}
-        <div className="stat-card">
-          <div className="stat-card-header">
-            <div>
-              <div className="stat-title">My Returned Orders</div>
-              <div className="stat-value" style={{ color: summary?.returnedOrders > 0 ? '#dc2626' : 'var(--text-main)' }}>
-                {summary?.returnedOrders ?? 0}
-              </div>
-            </div>
-            <div className="stat-icon-wrap" style={{ background: '#fef2f2', color: '#dc2626' }}>
-              <RotateCcw size={22} />
+        <div className="kpi-card-premium" style={{ '--card-accent': '#ef4444' }}>
+          <div className="kpi-header">
+            <span className="kpi-title">My Returned Orders</span>
+            <div className="kpi-icon-wrap" style={{ background: '#fef2f2', color: '#dc2626' }}>
+              <RotateCcw size={20} />
             </div>
           </div>
-          <div className="stat-desc" style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
-            Returned Units: <strong>{summary?.returnedQuantity ?? 0} units</strong>
+          <div>
+            <div className="kpi-value" style={{ color: summary?.returnedOrders > 0 ? '#dc2626' : 'var(--text-main)' }}>
+              {summary?.returnedOrders ?? 0}
+            </div>
+            <div className="kpi-subtext">
+              Returned Units: <strong>{summary?.returnedQuantity ?? 0} units</strong>
+            </div>
           </div>
         </div>
 
-        {/* Card 3: Total Incentives */}
-        <div className="stat-card">
-          <div className="stat-card-header">
-            <div>
-              <div className="stat-title">My Total Incentives</div>
-              <div className="stat-value" style={{ color: '#16a34a' }}>
-                ₹{summary?.netIncentive?.toLocaleString() ?? 0}
-              </div>
-            </div>
-            <div className="stat-icon-wrap" style={{ background: '#f0fdf4', color: '#16a34a' }}>
-              <Award size={22} />
+        {/* Card 3: Total Incentives (Hero) */}
+        <div className="kpi-card-premium kpi-card-hero">
+          <div className="kpi-header">
+            <span className="kpi-title" style={{ color: '#166534', fontWeight: 800 }}>My Total Incentives</span>
+            <div className="kpi-icon-wrap" style={{ background: '#dcfce7', color: '#16a34a' }}>
+              <Award size={20} />
             </div>
           </div>
-          <div className="stat-desc" style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
-            Earned: ₹{summary?.grossIncentive ?? 0} | Reversed: -₹{summary?.reversedIncentive ?? 0}
+          <div>
+            <div className="kpi-value" style={{ color: '#15803d', fontSize: '28px' }}>
+              ₹{summary?.netIncentive?.toLocaleString() ?? 0}
+            </div>
+            <div className="kpi-subtext" style={{ color: '#166534' }}>
+              Earned: ₹{summary?.grossIncentive ?? 0} | Reversed: -₹{summary?.reversedIncentive ?? 0}
+            </div>
           </div>
         </div>
       </div>

@@ -10,7 +10,11 @@ import {
   Users,
   Package,
   CreditCard,
-  RotateCcw
+  RotateCcw,
+  ShoppingCart,
+  TrendingUp,
+  CheckCircle2,
+  Sparkles
 } from 'lucide-react';
 
 export default function IncentiveRecords() {
@@ -131,85 +135,158 @@ export default function IncentiveRecords() {
 
   return (
     <div className="page-body">
-      {/* Header */}
-      <div className="page-header">
-        <div>
-          <h2 className="page-title">Incentive Records</h2>
-          <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '2px' }}>
-            Audit product-specific staff incentive calculations and return reversals.
-          </p>
+      {/* Premium Header Session */}
+      <div className="page-header" style={{ marginBottom: '16px', alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div
+            style={{
+              width: '46px',
+              height: '46px',
+              borderRadius: '12px',
+              background: 'linear-gradient(135deg, var(--primary-600), #4f46e5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'white',
+              boxShadow: '0 4px 12px rgba(79, 70, 229, 0.22)',
+              flexShrink: 0
+            }}
+          >
+            <Award size={24} />
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <h2 className="page-title" style={{ margin: 0, fontSize: '22px' }}>Incentive Records</h2>
+              <span className="badge badge-info" style={{ fontSize: '11px', padding: '3px 8px' }}>
+                Prepaid & COD Engine
+              </span>
+            </div>
+            <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '3px', margin: 0 }}>
+              Audit product-specific staff incentive calculations and return reversals.
+            </p>
+          </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           {(staffId !== 'all' || productId !== 'all' || paymentMethod !== 'all' || startDate || endDate || search) && (
-            <button className="btn btn-secondary btn-sm" onClick={handleResetFilters}>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={handleResetFilters}
+              style={{ padding: '7px 12px', fontSize: '12.5px' }}
+            >
               Reset Filters
             </button>
           )}
 
           <button
-            className="btn btn-secondary btn-sm"
+            className="btn btn-primary btn-sm"
             onClick={handleExportCsv}
             disabled={records.length === 0}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '8px 14px',
+              fontSize: '13px',
+              boxShadow: '0 2px 6px rgba(14, 165, 233, 0.22)'
+            }}
           >
-            <Download size={14} />
+            <Download size={15} />
             <span>Export CSV</span>
           </button>
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '20px' }}>
-        <div className="stat-card">
-          <div className="stat-card-header">
-            <div>
-              <div className="stat-title">Orders with Incentive</div>
-              <div className="stat-value">{summary?.totalOrders ?? 0}</div>
+      {/* Real-time Calculation Flow Strip */}
+      <div className="calc-breakdown-bar">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)', fontWeight: 600 }}>
+          <Sparkles size={15} color="var(--primary-600)" />
+          <span>Formula Audit:</span>
+        </div>
+        <div className="calc-step">
+          <span style={{ color: 'var(--text-muted)' }}>Gross Earned:</span>
+          <strong style={{ color: '#d97706' }}>₹{summary?.totalEarnedIncentive?.toLocaleString() ?? 0}</strong>
+        </div>
+        <span className="calc-operator">−</span>
+        <div className="calc-step">
+          <span style={{ color: 'var(--text-muted)' }}>Return Reversals:</span>
+          <strong style={{ color: '#dc2626' }}>₹{summary?.totalReturnAdjustment?.toLocaleString() ?? 0}</strong>
+        </div>
+        <span className="calc-operator">=</span>
+        <div className="calc-step" style={{ background: '#ecfdf5', padding: '3px 10px', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
+          <span style={{ color: '#166534', fontWeight: 600 }}>Final Net Incentive:</span>
+          <strong style={{ color: '#16a34a', fontSize: '14px' }}>₹{summary?.totalFinalIncentive?.toLocaleString() ?? 0}</strong>
+        </div>
+      </div>
+
+      {/* KPI Cards Grid */}
+      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '22px' }}>
+        {/* Card 1: Orders with Incentive */}
+        <div className="kpi-card-premium" style={{ '--card-accent': '#3b82f6' }}>
+          <div className="kpi-header">
+            <span className="kpi-title">Orders with Incentive</span>
+            <div className="kpi-icon-wrap" style={{ background: '#eff6ff', color: '#2563eb' }}>
+              <ShoppingCart size={19} />
             </div>
-            <div className="stat-icon-wrap" style={{ background: '#eff6ff', color: '#2563eb' }}>
-              <Award size={20} />
+          </div>
+          <div>
+            <div className="kpi-value">{summary?.totalOrders ?? 0}</div>
+            <div className="kpi-subtext">
+              <span>Orders with snapshotted rules</span>
             </div>
           </div>
         </div>
 
-        <div className="stat-card">
-          <div className="stat-card-header">
-            <div>
-              <div className="stat-title">Gross Earned Incentive</div>
-              <div className="stat-value" style={{ color: '#d97706' }}>
-                ₹{summary?.totalEarnedIncentive?.toLocaleString() ?? 0}
-              </div>
+        {/* Card 2: Gross Earned Incentive */}
+        <div className="kpi-card-premium" style={{ '--card-accent': '#f59e0b' }}>
+          <div className="kpi-header">
+            <span className="kpi-title">Gross Earned Incentive</span>
+            <div className="kpi-icon-wrap" style={{ background: '#fef3c7', color: '#d97706' }}>
+              <TrendingUp size={19} />
             </div>
-            <div className="stat-icon-wrap" style={{ background: '#fef3c7', color: '#d97706' }}>
-              <Award size={20} />
+          </div>
+          <div>
+            <div className="kpi-value" style={{ color: '#b45309' }}>
+              ₹{summary?.totalEarnedIncentive?.toLocaleString() ?? 0}
+            </div>
+            <div className="kpi-subtext">
+              <span>Calculated at order creation</span>
             </div>
           </div>
         </div>
 
-        <div className="stat-card">
-          <div className="stat-card-header">
-            <div>
-              <div className="stat-title">Return Adjustments</div>
-              <div className="stat-value" style={{ color: '#dc2626' }}>
-                -₹{summary?.totalReturnAdjustment?.toLocaleString() ?? 0}
-              </div>
+        {/* Card 3: Return Adjustments */}
+        <div className="kpi-card-premium" style={{ '--card-accent': '#ef4444' }}>
+          <div className="kpi-header">
+            <span className="kpi-title">Return Adjustments</span>
+            <div className="kpi-icon-wrap" style={{ background: '#fef2f2', color: '#dc2626' }}>
+              <RotateCcw size={19} />
             </div>
-            <div className="stat-icon-wrap" style={{ background: '#fef2f2', color: '#dc2626' }}>
-              <RotateCcw size={20} />
+          </div>
+          <div>
+            <div className="kpi-value" style={{ color: '#dc2626' }}>
+              {summary?.totalReturnAdjustment > 0 ? `-₹${summary?.totalReturnAdjustment?.toLocaleString()}` : '₹0'}
+            </div>
+            <div className="kpi-subtext">
+              <span>Proportional returns reversed</span>
             </div>
           </div>
         </div>
 
-        <div className="stat-card">
-          <div className="stat-card-header">
-            <div>
-              <div className="stat-title">Total Final Incentive</div>
-              <div className="stat-value" style={{ color: '#16a34a' }}>
-                ₹{summary?.totalFinalIncentive?.toLocaleString() ?? 0}
-              </div>
+        {/* Card 4: Total Final Incentive (Hero) */}
+        <div className="kpi-card-premium kpi-card-hero">
+          <div className="kpi-header">
+            <span className="kpi-title" style={{ color: '#166534', fontWeight: 800 }}>Total Final Incentive</span>
+            <div className="kpi-icon-wrap" style={{ background: '#dcfce7', color: '#16a34a' }}>
+              <CheckCircle2 size={20} />
             </div>
-            <div className="stat-icon-wrap" style={{ background: '#f0fdf4', color: '#16a34a' }}>
-              <Award size={20} />
+          </div>
+          <div>
+            <div className="kpi-value" style={{ color: '#15803d', fontSize: '28px' }}>
+              ₹{summary?.totalFinalIncentive?.toLocaleString() ?? 0}
+            </div>
+            <div className="kpi-subtext" style={{ color: '#166534' }}>
+              <span>Net payable staff earnings</span>
             </div>
           </div>
         </div>
