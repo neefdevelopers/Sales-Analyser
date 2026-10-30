@@ -312,19 +312,15 @@ router.post('/', authenticate, (req, res) => {
     order_date
   } = req.body;
 
-  // 1. Validation for all required fields
-  if (!customer_name || !customer_name.trim()) {
-    return res.status(400).json({ error: 'Customer name is required.' });
+  // 1. Validation for required fields (customer details are optional)
+  if (!product_id) {
+    return res.status(400).json({ error: 'Product selection is required.' });
   }
 
-  const cleanPhone = normalizePhone(customer_phone);
-  if (!cleanPhone || cleanPhone.length < 7) {
-    return res.status(400).json({ error: 'Valid customer phone number (at least 7 digits) is required.' });
-  }
-
-  if (!customer_address || !customer_address.trim()) {
-    return res.status(400).json({ error: 'Customer address is required.' });
-  }
+  const custName = (customer_name && customer_name.trim()) ? customer_name.trim() : 'Direct Customer';
+  const rawPhone = customer_phone ? normalizePhone(customer_phone) : '';
+  const cleanPhone = (rawPhone && rawPhone.length >= 7) ? rawPhone : '0000000000';
+  const custAddress = (customer_address && customer_address.trim()) ? customer_address.trim() : 'Direct Order';
 
   if (!product_id) {
     return res.status(400).json({ error: 'Product selection is required.' });
@@ -373,16 +369,18 @@ router.post('/', authenticate, (req, res) => {
 
       if (customer) {
         customerId = customer.id;
-        run('UPDATE customers SET name = ?, address = ?, updated_at = ? WHERE id = ?', [
-          customer_name.trim(),
-          customer_address.trim(),
-          now,
-          customerId
-        ]);
+        if (customer_name || customer_address) {
+          run('UPDATE customers SET name = ?, address = ?, updated_at = ? WHERE id = ?', [
+            custName,
+            custAddress,
+            now,
+            customerId
+          ]);
+        }
       } else {
         const custRes = run(
           'INSERT INTO customers (name, phone, address, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
-          [customer_name.trim(), cleanPhone, customer_address.trim(), now, now]
+          [custName, cleanPhone, custAddress, now, now]
         );
         customerId = custRes.lastInsertRowid;
       }

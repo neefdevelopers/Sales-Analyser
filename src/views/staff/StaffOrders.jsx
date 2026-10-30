@@ -38,11 +38,8 @@ export default function StaffOrders() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalOrders, setTotalOrders] = useState(0);
 
-  // Add Order Modal State (6 Fields)
+  // Add Order Modal State (Product, Quantity, Payment Method)
   const [showAddModal, setShowAddModal] = useState(false);
-  const [customerName, setCustomerName] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
-  const [customerAddress, setCustomerAddress] = useState('');
   const [selectedProductId, setSelectedProductId] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [paymentMethod, setPaymentMethod] = useState('Prepaid');
@@ -139,9 +136,6 @@ export default function StaffOrders() {
 
   function openCreateOrderModal() {
     setFormError('');
-    setCustomerName('');
-    setCustomerPhone('');
-    setCustomerAddress('');
     setQuantity(1);
     setPaymentMethod('Prepaid');
     if (products.length > 0) {
@@ -154,19 +148,6 @@ export default function StaffOrders() {
     e.preventDefault();
     setFormError('');
 
-    if (!customerName.trim()) {
-      setFormError('Customer name is required.');
-      return;
-    }
-    const cleanPhone = customerPhone.replace(/\D/g, '');
-    if (!cleanPhone || cleanPhone.length < 7) {
-      setFormError('Please enter a valid phone number (at least 7 digits).');
-      return;
-    }
-    if (!customerAddress.trim()) {
-      setFormError('Customer address is required.');
-      return;
-    }
     if (!selectedProductId) {
       setFormError('Please select a product.');
       return;
@@ -180,9 +161,6 @@ export default function StaffOrders() {
     setSubmitting(true);
     try {
       const res = await api.post('/orders', {
-        customer_name: customerName.trim(),
-        customer_phone: cleanPhone,
-        customer_address: customerAddress.trim(),
         product_id: parseInt(selectedProductId, 10),
         quantity: qtyNum,
         payment_method: paymentMethod
@@ -539,50 +517,7 @@ export default function StaffOrders() {
                   </div>
                 )}
 
-                {/* Field 1: Customer Name */}
-                <div className="form-group" style={{ marginBottom: '14px' }}>
-                  <label className="form-label" style={{ fontWeight: 600, marginBottom: '6px' }}>
-                    Customer Name <span className="required">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    placeholder="Enter customer full name"
-                    value={customerName}
-                    onChange={e => setCustomerName(e.target.value)}
-                    required
-                  />
-                </div>
 
-                {/* Field 2: Customer Phone Number */}
-                <div className="form-group" style={{ marginBottom: '14px' }}>
-                  <label className="form-label" style={{ fontWeight: 600, marginBottom: '6px' }}>
-                    Customer Phone Number <span className="required">*</span>
-                  </label>
-                  <input
-                    type="tel"
-                    className="form-control"
-                    placeholder="e.g. 9876543210"
-                    value={customerPhone}
-                    onChange={e => setCustomerPhone(e.target.value)}
-                    required
-                  />
-                </div>
-
-                {/* Field 3: Customer Address */}
-                <div className="form-group" style={{ marginBottom: '14px' }}>
-                  <label className="form-label" style={{ fontWeight: 600, marginBottom: '6px' }}>
-                    Customer Address <span className="required">*</span>
-                  </label>
-                  <textarea
-                    className="form-control"
-                    rows="2"
-                    placeholder="Enter complete delivery street address"
-                    value={customerAddress}
-                    onChange={e => setCustomerAddress(e.target.value)}
-                    required
-                  />
-                </div>
 
                 {/* Field 4: Product Selection */}
                 <div className="form-group" style={{ marginBottom: '14px' }}>
@@ -736,28 +671,30 @@ export default function StaffOrders() {
                 </div>
               </div>
 
-              {/* Customer Info Card */}
-              <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '14px 16px', marginBottom: '16px' }}>
-                <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Customer Information
+              {/* Customer Info Card (if available) */}
+              {selectedOrderDetails.customer_phone && selectedOrderDetails.customer_phone !== '0000000000' && (
+                <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '14px 16px', marginBottom: '16px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Customer Information
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <div>
+                      <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Name: </span>
+                      <strong>{selectedOrderDetails.customer_name}</strong>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Phone: </span>
+                      <strong>{selectedOrderDetails.customer_phone}</strong>
+                    </div>
+                  </div>
+                  {selectedOrderDetails.customer_address && (
+                    <div style={{ marginTop: '8px', fontSize: '12.5px' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Address: </span>
+                      <span>{selectedOrderDetails.customer_address}</span>
+                    </div>
+                  )}
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                  <div>
-                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Name: </span>
-                    <strong>{selectedOrderDetails.customer_name}</strong>
-                  </div>
-                  <div>
-                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Phone: </span>
-                    <strong>{selectedOrderDetails.customer_phone}</strong>
-                  </div>
-                </div>
-                {selectedOrderDetails.customer_address && (
-                  <div style={{ marginTop: '8px', fontSize: '12.5px' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Address: </span>
-                    <span>{selectedOrderDetails.customer_address}</span>
-                  </div>
-                )}
-              </div>
+              )}
 
               {/* Product & Payment Card */}
               <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '14px 16px', marginBottom: '16px' }}>
