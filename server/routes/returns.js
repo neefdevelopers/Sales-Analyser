@@ -9,12 +9,12 @@ const router = Router();
  * 1. GET Returns List
  * Brand Manager sees all returns.
  * Sales Staff sees only their own returns.
- * Columns: Return ID, Return Date, Returned By (Staff), Product, Returned Quantity.
- * Supports search and date filters.
+ * Columns: Return ID, Return Date, Returned By (Staff), Product, Payment Method, Returned Quantity.
+ * Supports search, date, and payment method filters.
  */
 router.get('/', authenticate, (req, res) => {
   const isManager = req.user.role === 'brand_manager';
-  const { staffId, search, startDate, endDate, page = 1, limit = 50 } = req.query;
+  const { staffId, search, startDate, endDate, paymentMethod, page = 1, limit = 50 } = req.query;
 
   let conditions = [];
   let params = [];
@@ -28,10 +28,15 @@ router.get('/', authenticate, (req, res) => {
     params.push(parseInt(staffId, 10), parseInt(staffId, 10));
   }
 
+  if (paymentMethod && paymentMethod !== 'all') {
+    conditions.push('COALESCE(r.payment_method, o.payment_method) = ?');
+    params.push(paymentMethod);
+  }
+
   if (search && search.trim()) {
-    conditions.push('(r.return_number LIKE ? OR p.name LIKE ? OR p.code LIKE ? OR u_ret.name LIKE ? OR u_ret.staff_id LIKE ?)');
+    conditions.push('(r.return_number LIKE ? OR p.name LIKE ? OR p.code LIKE ? OR u_ret.name LIKE ? OR u_ret.staff_id LIKE ? OR COALESCE(r.payment_method, o.payment_method) LIKE ?)');
     const term = `%${search.trim()}%`;
-    params.push(term, term, term, term, term);
+    params.push(term, term, term, term, term, term);
   }
 
   if (startDate) {
@@ -69,6 +74,7 @@ router.get('/', authenticate, (req, res) => {
       r.staff_id,
       r.product_id,
       r.returned_by_staff_id,
+      COALESCE(r.payment_method, o.payment_method) AS payment_method,
       r.created_at,
       p.name AS product_name,
       p.code AS product_code,
@@ -149,6 +155,7 @@ router.post('/preview', authenticate, (req, res) => {
   res.json({
     order_id: order.id,
     order_number: order.order_number,
+    payment_method: order.payment_method,
     original_quantity: order.quantity,
     already_returned_quantity: order.already_returned_qty,
     remaining_returnable_quantity: remaining,
@@ -164,6 +171,7 @@ router.post('/preview', authenticate, (req, res) => {
  * Input:
  * - order_id (required)
  * - product_id (optional, automatically resolved from order)
+ * - payment_method (optional, Prepaid or COD, defaults to order payment method)
  * - return_quantity (required, positive integer)
  * 
  * Automatically captures logged-in user as returned_by_staff_id.
@@ -175,6 +183,7 @@ router.post('/', authenticate, (req, res) => {
   const {
     order_id,
     product_id,
+    payment_method,
     return_quantity
   } = req.body;
 
@@ -229,6 +238,11 @@ router.post('/', authenticate, (req, res) => {
         throw new Error('Selected product does not belong to the selected original order.');
       }
 
+      // Payment method: Prepaid or COD
+      const finalPaymentMethod = (payment_method && ['Prepaid', 'COD'].includes(payment_method))
+        ? payment_method
+        : (order.payment_method || 'Prepaid');
+
       // Calculate refund amount and reversed incentive automatically using business rules
       const returnAmount = Math.round(order.unit_price * returnQty * 100) / 100;
       let reversedIncentive = 0;
@@ -247,17 +261,18 @@ router.post('/', authenticate, (req, res) => {
 
       const result = run(
         `INSERT INTO returns (
-          return_number, order_id, staff_id, product_id, returned_by_staff_id,
+          return_number, order_id, staff_id, product_id, returned_by_staff_id, payment_method,
           return_quantity, return_amount, return_date,
           return_reason, remarks, reversed_incentive,
           created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           returnNumber,
           order.id,
           order.staff_id, // Attributed to original earning staff member
           resolvedProductId,
           req.user.id, // Logged in user who processed the return
+          finalPaymentMethod,
           returnQty,
           returnAmount,
           todayDate,
@@ -283,11 +298,13 @@ router.post('/', authenticate, (req, res) => {
         r.order_id,
         r.staff_id,
         r.product_id,
+        COALESCE(r.payment_method, o.payment_method) AS payment_method,
         p.name AS product_name,
         p.code AS product_code,
         u.name AS returned_by_name,
         u.staff_id AS returned_by_code
       FROM returns r
+      JOIN orders o ON r.order_id = o.id
       JOIN products p ON r.product_id = p.id
       JOIN users u ON r.returned_by_staff_id = u.id
       WHERE r.id = ?

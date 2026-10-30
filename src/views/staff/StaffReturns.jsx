@@ -6,7 +6,6 @@ import {
   RotateCcw,
   Plus,
   Search,
-  Calendar,
   CheckCircle,
   AlertCircle,
   ChevronLeft,
@@ -28,6 +27,7 @@ export default function StaffReturns() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [staffFilter, setStaffFilter] = useState('all');
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState('all');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalReturns, setTotalReturns] = useState(0);
@@ -36,6 +36,7 @@ export default function StaffReturns() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState('');
   const [selectedProductId, setSelectedProductId] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('Prepaid');
   const [returnQuantity, setReturnQuantity] = useState(1);
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -44,7 +45,7 @@ export default function StaffReturns() {
   // Initial fetch and trigger on filters
   useEffect(() => {
     fetchReturns();
-  }, [page, staffFilter, startDate, endDate]);
+  }, [page, staffFilter, paymentMethodFilter, startDate, endDate]);
 
   useEffect(() => {
     fetchReturnableOrders();
@@ -70,6 +71,7 @@ export default function StaffReturns() {
       params.push('limit=25');
       if (search.trim()) params.push(`search=${encodeURIComponent(search.trim())}`);
       if (isManager && staffFilter !== 'all') params.push(`staffId=${staffFilter}`);
+      if (paymentMethodFilter !== 'all') params.push(`paymentMethod=${paymentMethodFilter}`);
       if (startDate) params.push(`startDate=${startDate}`);
       if (endDate) params.push(`endDate=${endDate}`);
 
@@ -93,6 +95,7 @@ export default function StaffReturns() {
       if (orders.length > 0 && !selectedOrderId) {
         setSelectedOrderId(String(orders[0].id));
         setSelectedProductId(String(orders[0].product_id));
+        setPaymentMethod(orders[0].payment_method || 'Prepaid');
         setReturnQuantity(1);
       }
     } catch (err) {
@@ -100,12 +103,13 @@ export default function StaffReturns() {
     }
   }
 
-  // When selected order changes, auto-load its product & reset quantity
+  // When selected order changes, auto-load its product, payment method & reset quantity
   function handleOrderChange(orderIdStr) {
     setSelectedOrderId(orderIdStr);
     const orderObj = returnableOrders.find(o => String(o.id) === orderIdStr);
     if (orderObj) {
       setSelectedProductId(String(orderObj.product_id));
+      setPaymentMethod(orderObj.payment_method || 'Prepaid');
       setReturnQuantity(1);
     }
     setFormError('');
@@ -151,6 +155,7 @@ export default function StaffReturns() {
       const res = await api.post('/returns', {
         order_id: orderIdNum,
         product_id: parseInt(selectedProductId || orderObj.product_id, 10),
+        payment_method: paymentMethod,
         return_quantity: returnQtyNum
       });
 
@@ -171,9 +176,9 @@ export default function StaffReturns() {
     setSearch('');
     setStartDate('');
     setEndDate('');
+    setPaymentMethodFilter('all');
     setStaffFilter('all');
     setPage(1);
-    // fetch with clean filters
     setTimeout(() => {
       fetchReturns();
     }, 0);
@@ -181,6 +186,7 @@ export default function StaffReturns() {
 
   const selectedOrderObj = returnableOrders.find(o => String(o.id) === String(selectedOrderId));
   const maxReturnable = selectedOrderObj?.returnable_quantity || 1;
+  const hasActiveFilters = search || startDate || endDate || paymentMethodFilter !== 'all' || staffFilter !== 'all';
 
   return (
     <div className="page-body">
@@ -227,14 +233,14 @@ export default function StaffReturns() {
             gap: '12px'
           }}
         >
-          {/* Search by Return ID, Product, Staff */}
-          <div style={{ display: 'flex', gap: '10px', flex: '1 1 300px', flexWrap: 'wrap' }}>
-            <div className="search-input-wrap" style={{ minWidth: '240px', flex: 1 }}>
+          {/* Search by Return ID, Product, Staff, Payment Method */}
+          <div style={{ display: 'flex', gap: '10px', flex: '1 1 260px', flexWrap: 'wrap' }}>
+            <div className="search-input-wrap" style={{ minWidth: '220px', flex: 1 }}>
               <Search size={16} />
               <input
                 type="text"
                 className="search-input"
-                placeholder="Search Return ID, Product, or Staff..."
+                placeholder="Search Return ID, Product, Staff..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 onKeyDown={e => {
@@ -257,8 +263,26 @@ export default function StaffReturns() {
             </button>
           </div>
 
-          {/* Date & Staff Filters */}
+          {/* Payment Method, Date & Staff Filters */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            {/* Payment Method Filter (Prepaid or COD) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Payment:</span>
+              <select
+                className="form-control"
+                style={{ width: 'auto', padding: '5px 10px', fontSize: '12.5px' }}
+                value={paymentMethodFilter}
+                onChange={e => {
+                  setPaymentMethodFilter(e.target.value);
+                  setPage(1);
+                }}
+              >
+                <option value="all">All Methods</option>
+                <option value="Prepaid">Prepaid</option>
+                <option value="COD">COD</option>
+              </select>
+            </div>
+
             {/* Start Date */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>From:</span>
@@ -313,7 +337,7 @@ export default function StaffReturns() {
             )}
 
             {/* Reset Filters */}
-            {(search || startDate || endDate || staffFilter !== 'all') && (
+            {hasActiveFilters && (
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
@@ -327,7 +351,7 @@ export default function StaffReturns() {
           </div>
         </div>
 
-        {/* Returns Table: Exactly 5 columns */}
+        {/* Returns Table: Return ID | Return Date | Returned By | Product | Payment Method | Returned Quantity */}
         <div className="table-responsive">
           <table className="data-table">
             <thead>
@@ -336,19 +360,20 @@ export default function StaffReturns() {
                 <th>Return Date</th>
                 <th>Returned By (Staff)</th>
                 <th>Product</th>
+                <th>Payment Method</th>
                 <th style={{ textAlign: 'right' }}>Returned Quantity</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="5" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
+                  <td colSpan="6" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
                     Loading return records...
                   </td>
                 </tr>
               ) : returns.length === 0 ? (
                 <tr>
-                  <td colSpan="5">
+                  <td colSpan="6">
                     <div className="empty-state" style={{ padding: '36px 16px' }}>
                       <div className="empty-state-icon">
                         <RotateCcw size={28} />
@@ -393,6 +418,11 @@ export default function StaffReturns() {
                       <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
                         {r.product_code}
                       </div>
+                    </td>
+                    <td>
+                      <span className={`badge ${r.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`}>
+                        {r.payment_method || 'Prepaid'}
+                      </span>
                     </td>
                     <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
                       {r.return_quantity}
@@ -442,7 +472,7 @@ export default function StaffReturns() {
         )}
       </div>
 
-      {/* Minimal Add Return Modal */}
+      {/* Add Return Modal */}
       {showAddModal && (
         <div className="modal-overlay">
           <div className="modal-dialog" style={{ maxWidth: '480px' }}>
@@ -499,7 +529,7 @@ export default function StaffReturns() {
                       >
                         {returnableOrders.map(o => (
                           <option key={o.id} value={o.id}>
-                            {o.order_number} &bull; {o.order_date} ({o.product_name})
+                            {o.order_number} &bull; {o.order_date} ({o.product_name} &bull; {o.payment_method})
                           </option>
                         ))}
                       </select>
@@ -543,7 +573,24 @@ export default function StaffReturns() {
                       </div>
                     </div>
 
-                    {/* Field 3: Return Quantity */}
+                    {/* Field 3: Payment Method (Prepaid or COD) */}
+                    <div className="form-group" style={{ marginBottom: '16px' }}>
+                      <label className="form-label" style={{ fontWeight: 600, marginBottom: '6px' }}>
+                        Payment Method <span className="required">*</span>
+                      </label>
+                      <select
+                        className="form-control"
+                        value={paymentMethod}
+                        onChange={e => setPaymentMethod(e.target.value)}
+                        required
+                        style={{ fontSize: '13.5px' }}
+                      >
+                        <option value="Prepaid">Prepaid</option>
+                        <option value="COD">Cash on Delivery (COD)</option>
+                      </select>
+                    </div>
+
+                    {/* Field 4: Return Quantity */}
                     <div className="form-group" style={{ marginBottom: '10px' }}>
                       <label className="form-label" style={{ fontWeight: 600, marginBottom: '6px' }}>
                         Return Quantity <span className="required">*</span>

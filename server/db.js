@@ -193,6 +193,7 @@ function initSchema(db) {
       staff_id INTEGER NOT NULL REFERENCES users(id),
       product_id INTEGER REFERENCES products(id),
       returned_by_staff_id INTEGER REFERENCES users(id),
+      payment_method TEXT,
       return_quantity INTEGER NOT NULL CHECK(return_quantity > 0),
       return_amount REAL NOT NULL,
       return_date TEXT NOT NULL,
@@ -210,7 +211,7 @@ function initSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_returns_staff ON returns(staff_id);
   `);
 
-  // Ensure returns table has product_id and returned_by_staff_id columns
+  // Ensure returns table has product_id, returned_by_staff_id, and payment_method columns
   try {
     db.run(`ALTER TABLE returns ADD COLUMN product_id INTEGER REFERENCES products(id);`);
   } catch (e) {
@@ -218,6 +219,11 @@ function initSchema(db) {
   }
   try {
     db.run(`ALTER TABLE returns ADD COLUMN returned_by_staff_id INTEGER REFERENCES users(id);`);
+  } catch (e) {
+    // Column already exists
+  }
+  try {
+    db.run(`ALTER TABLE returns ADD COLUMN payment_method TEXT;`);
   } catch (e) {
     // Column already exists
   }
@@ -230,6 +236,10 @@ function initSchema(db) {
       UPDATE returns
       SET returned_by_staff_id = staff_id
       WHERE returned_by_staff_id IS NULL;
+
+      UPDATE returns
+      SET payment_method = (SELECT payment_method FROM orders WHERE orders.id = returns.order_id)
+      WHERE payment_method IS NULL;
 
       CREATE INDEX IF NOT EXISTS idx_returns_returned_by ON returns(returned_by_staff_id);
       CREATE INDEX IF NOT EXISTS idx_returns_product ON returns(product_id);
