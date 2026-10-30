@@ -2,176 +2,269 @@
 import { Router } from 'express';
 import { query, get } from '../db.js';
 import { authenticate, requireRole } from '../auth.js';
+import { getNowInBusinessTimezone } from '../timezone.js';
 
 const router = Router();
 
-// Helper to format rule description
-function formatIncentiveRule(type, basis, rate) {
-  if (type === 'fixed') {
-    return `Fixed ₹${rate} / ${basis === 'per_unit' ? 'unit' : 'order'}`;
-  } else {
-    return `${rate}% / ${basis === 'per_unit' ? 'unit price' : 'order'}`;
-  }
+const MONTH_NAMES = [
+  '',
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
+// Helper to resolve start & end date for a given year & month
+function resolveMonthDateRange(yearParam, monthParam) {
+  const now = getNowInBusinessTimezone();
+  const year = parseInt(yearParam, 10) || now.year;
+  const month = parseInt(monthParam, 10) || now.month;
+
+  const validMonth = Math.max(1, Math.min(12, month));
+  const mStr = String(validMonth).padStart(2, '0');
+  const startDate = `${year}-${mStr}-01`;
+
+  // Last day of month
+  const lastDay = new Date(Date.UTC(year, validMonth, 0)).getUTCDate();
+  const endDate = `${year}-${mStr}-${String(lastDay).padStart(2, '0')}`;
+
+  return {
+    year,
+    month: validMonth,
+    monthName: MONTH_NAMES[validMonth],
+    startDate,
+    endDate
+  };
 }
 
-// GET all incentive records (Brand Manager only)
-// Query params: staffId, productId, paymentMethod, startDate, endDate, search, page, limit
-router.get('/', authenticate, requireRole('brand_manager'), (req, res) => {
-  const {
-    staffId,
-    productId,
-    paymentMethod,
-    startDate,
-    endDate,
-    search,
-    page = 1,
-    limit = 50
-  } = req.query;
+/**
+ * 1. GET Monthly Staff-Wise Incentive Summary (Brand Manager only)
+ * Returns all active sales staff with their monthly incentive summary for the selected calendar month.
+ * Query params: year, month, search
+ */
+router.get('/monthly-summary', authenticate, requireRole('brand_manager'), (req, res) => {
+  const { year: qYear, month: qMonth, search } = req.query;
+  const { year, month, monthName, startDate, endDate } = resolveMonthDateRange(qYear, qMonth);
 
-  let conditions = [];
-  let params = [];
-
-  if (staffId && staffId !== 'all') {
-    conditions.push('o.staff_id = ?');
-    params.push(parseInt(staffId, 10));
-  }
-
-  if (productId && productId !== 'all') {
-    conditions.push('o.product_id = ?');
-    params.push(parseInt(productId, 10));
-  }
-
-  if (paymentMethod && paymentMethod !== 'all') {
-    conditions.push('o.payment_method = ?');
-    params.push(paymentMethod);
-  }
-
-  if (startDate) {
-    conditions.push('o.order_date >= ?');
-    params.push(startDate);
-  }
-  if (endDate) {
-    conditions.push('o.order_date <= ?');
-    params.push(endDate);
-  }
+  // Fetch all active sales staff
+  let staffUsers = query(`
+    SELECT id, staff_id, name, username, status
+    FROM users
+    WHERE role = 'sales_staff' AND status = 'active'
+    ORDER BY name ASC
+  `);
 
   if (search && search.trim()) {
-    conditions.push('(o.order_number LIKE ? OR u.name LIKE ? OR u.staff_id LIKE ? OR p.name LIKE ?)');
-    const term = `%${search.trim()}%`;
-    params.push(term, term, term, term);
+    const term = search.trim().toLowerCase();
+    staffUsers = staffUsers.filter(u =>
+      u.name.toLowerCase().includes(term) ||
+      u.staff_id.toLowerCase().includes(term) ||
+      u.username.toLowerCase().includes(term)
+    );
   }
 
-  const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+  // Calculate incentives for each staff member for orders created in the selected month
+  const staffSummaries = staffUsers.map(staff => {
+    // 1. Orders within the selected month (excluding cancelled orders)
+    const orderStats = get(`
+      SELECT
+        COUNT(o.id) AS total_orders,
+        COALESCE(SUM(o.quantity), 0) AS total_quantity,
+        COALESCE(SUM(o.total_amount), 0) AS gross_sales,
+        COALESCE(SUM(o.incentive_amount), 0) AS gross_incentive
+      FROM orders o
+      WHERE o.staff_id = ?
+        AND o.order_date >= ?
+        AND o.order_date <= ?
+        AND o.status != 'Cancelled'
+    `, [staff.id, startDate, endDate]);
 
-  // Calculate summary aggregates across filtered dataset
-  const summarySql = `
-    SELECT
-      COUNT(o.id) AS total_orders,
-      COALESCE(SUM(o.quantity), 0) AS total_quantity,
-      COALESCE(SUM(o.total_amount), 0) AS total_sales,
-      COALESCE(SUM(o.incentive_amount), 0) AS total_earned_incentive,
-      COALESCE((
-        SELECT SUM(r.reversed_incentive)
-        FROM returns r
-        JOIN orders o2 ON r.order_id = o2.id
-        JOIN users u2 ON o2.staff_id = u2.id
-        JOIN products p2 ON o2.product_id = p2.id
-        ${whereClause.replace(/\bo\./g, 'o2.').replace(/\bu\./g, 'u2.').replace(/\bp\./g, 'p2.')}
-      ), 0) AS total_return_adjustment
-    FROM orders o
-    JOIN users u ON o.staff_id = u.id
-    JOIN products p ON o.product_id = p.id
-    ${whereClause}
-  `;
+    // 2. Return adjustments attributable to orders created within the selected month
+    // (even if the return occurs in a later month)
+    const returnStats = get(`
+      SELECT
+        COALESCE(SUM(r.reversed_incentive), 0) AS total_reversed_incentive,
+        COALESCE(SUM(r.return_quantity), 0) AS total_returned_quantity,
+        COALESCE(SUM(r.return_amount), 0) AS total_returned_amount
+      FROM returns r
+      JOIN orders o ON r.order_id = o.id
+      WHERE o.staff_id = ?
+        AND o.order_date >= ?
+        AND o.order_date <= ?
+        AND o.status != 'Cancelled'
+    `, [staff.id, startDate, endDate]);
 
-  const summaryRow = get(summarySql, [...params, ...params]);
+    const totalOrders = orderStats?.total_orders || 0;
+    const grossIncentive = Math.round((orderStats?.gross_incentive || 0) * 100) / 100;
+    const returnAdjustments = Math.round((returnStats?.total_reversed_incentive || 0) * 100) / 100;
+    const netIncentive = Math.max(0, Math.round((grossIncentive - returnAdjustments) * 100) / 100);
+    const grossSales = Math.round((orderStats?.gross_sales || 0) * 100) / 100;
 
-  const totalOrders = summaryRow?.total_orders || 0;
-  const totalEarnedIncentive = Math.round((summaryRow?.total_earned_incentive || 0) * 100) / 100;
-  const totalReturnAdjustment = Math.round((summaryRow?.total_return_adjustment || 0) * 100) / 100;
-  const totalFinalIncentive = Math.max(0, Math.round((totalEarnedIncentive - totalReturnAdjustment) * 100) / 100);
+    return {
+      id: staff.id,
+      staff_id: staff.id,
+      staff_code: staff.staff_id,
+      name: staff.name,
+      username: staff.username,
+      status: staff.status,
+      total_orders: totalOrders,
+      total_incentive: grossIncentive,
+      return_adjustments: returnAdjustments,
+      net_incentive: netIncentive,
+      gross_sales: grossSales,
+      total_quantity: orderStats?.total_quantity || 0,
+      returned_quantity: returnStats?.total_returned_quantity || 0
+    };
+  });
 
-  // Pagination
-  const offset = (Math.max(1, parseInt(page, 10)) - 1) * parseInt(limit, 10);
+  // Sort by net incentive, highest first by default
+  staffSummaries.sort((a, b) => b.net_incentive - a.net_incentive || b.total_orders - a.total_orders);
 
-  // Fetch paginated records
-  const sql = `
+  // Overall totals across all staff
+  const totals = staffSummaries.reduce((acc, curr) => ({
+    total_staff: staffSummaries.length,
+    total_orders: acc.total_orders + curr.total_orders,
+    total_incentive: Math.round((acc.total_incentive + curr.total_incentive) * 100) / 100,
+    return_adjustments: Math.round((acc.return_adjustments + curr.return_adjustments) * 100) / 100,
+    net_incentive: Math.round((acc.net_incentive + curr.net_incentive) * 100) / 100,
+    gross_sales: Math.round((acc.gross_sales + curr.gross_sales) * 100) / 100
+  }), {
+    total_staff: 0,
+    total_orders: 0,
+    total_incentive: 0,
+    return_adjustments: 0,
+    net_incentive: 0,
+    gross_sales: 0
+  });
+
+  res.json({
+    period: {
+      year,
+      month,
+      monthName,
+      startDate,
+      endDate
+    },
+    totals,
+    staffSummaries
+  });
+});
+
+/**
+ * 2. GET Staff-Wise Incentive Details (Brand Manager only)
+ * Detailed orders and incentive calculations for a specific staff member in a selected month.
+ * Path param: staffId (accepts numeric user id or string staff_code like 'STF-001')
+ * Query params: year, month
+ */
+router.get('/staff/:staffId/monthly', authenticate, requireRole('brand_manager'), (req, res) => {
+  const staffParam = req.params.staffId;
+  const numericId = parseInt(staffParam, 10);
+  const { year: qYear, month: qMonth } = req.query;
+  const { year, month, monthName, startDate, endDate } = resolveMonthDateRange(qYear, qMonth);
+
+  const staff = get(`
+    SELECT id, staff_id, name, username, status, created_at
+    FROM users
+    WHERE (id = ? OR staff_id = ?) AND role = 'sales_staff'
+  `, [isNaN(numericId) ? -1 : numericId, staffParam]);
+
+  if (!staff) {
+    return res.status(404).json({ error: 'Sales staff member not found.' });
+  }
+
+  // Fetch all orders created in this month by this staff member (excluding cancelled)
+  const orders = query(`
     SELECT
       o.id,
       o.order_number,
       o.order_date,
-      o.staff_id,
-      u.name AS staff_name,
-      u.staff_id AS staff_code,
-      o.product_id,
-      p.name AS product_name,
-      p.code AS product_code,
-      p.price AS unit_price,
+      o.status,
       o.payment_method,
-      o.quantity AS order_quantity,
+      o.quantity,
+      o.unit_price,
       o.total_amount,
+      o.remarks,
       o.incentive_type,
       o.incentive_basis,
       o.incentive_rate,
-      o.incentive_amount AS earned_incentive,
-      COALESCE((SELECT SUM(r.reversed_incentive) FROM returns r WHERE r.order_id = o.id), 0) AS return_adjustment,
-      COALESCE((SELECT SUM(r.return_quantity) FROM returns r WHERE r.order_id = o.id), 0) AS returned_quantity
+      o.incentive_amount AS order_incentive,
+      c.name AS customer_name,
+      c.phone AS customer_phone,
+      c.address AS customer_address,
+      p.name AS product_name,
+      p.code AS product_code
     FROM orders o
-    JOIN users u ON o.staff_id = u.id
+    JOIN customers c ON o.customer_id = c.id
     JOIN products p ON o.product_id = p.id
-    ${whereClause}
+    WHERE o.staff_id = ?
+      AND o.order_date >= ?
+      AND o.order_date <= ?
+      AND o.status != 'Cancelled'
     ORDER BY o.order_date DESC, o.id DESC
-    LIMIT ? OFFSET ?
-  `;
+  `, [staff.id, startDate, endDate]);
 
-  const rows = query(sql, [...params, parseInt(limit, 10), offset]);
+  // For each order, fetch attached return records & calculate adjustments
+  const detailedOrders = orders.map(ord => {
+    const returnRows = query(`
+      SELECT
+        r.id,
+        r.return_number,
+        r.return_date,
+        r.return_quantity,
+        r.return_amount,
+        r.reversed_incentive,
+        r.return_reason,
+        r.remarks
+      FROM returns r
+      WHERE r.order_id = ?
+      ORDER BY r.return_date ASC, r.id ASC
+    `, [ord.id]);
 
-  const records = rows.map(r => {
-    const earned = Math.round((r.earned_incentive || 0) * 100) / 100;
-    const adjustment = Math.round((r.return_adjustment || 0) * 100) / 100;
-    const finalIncentive = Math.max(0, Math.round((earned - adjustment) * 100) / 100);
+    const returnAdjustment = Math.round(
+      returnRows.reduce((sum, r) => sum + (r.reversed_incentive || 0), 0) * 100
+    ) / 100;
+
+    const returnedQuantity = returnRows.reduce((sum, r) => sum + (r.return_quantity || 0), 0);
+    const orderIncentive = Math.round((ord.order_incentive || 0) * 100) / 100;
+    const netIncentive = Math.max(0, Math.round((orderIncentive - returnAdjustment) * 100) / 100);
 
     return {
-      id: r.id,
-      order_id: r.id,
-      order_number: r.order_number,
-      order_date: r.order_date,
-      staff_id: r.staff_id,
-      staff_name: r.staff_name,
-      staff_code: r.staff_code,
-      product_id: r.product_id,
-      product_name: r.product_name,
-      product_code: r.product_code,
-      unit_price: r.unit_price,
-      payment_method: r.payment_method,
-      order_quantity: r.order_quantity,
-      returned_quantity: r.returned_quantity,
-      net_quantity: Math.max(0, r.order_quantity - r.returned_quantity),
-      total_amount: r.total_amount,
-      incentive_type: r.incentive_type,
-      incentive_basis: r.incentive_basis,
-      incentive_rate: r.incentive_rate,
-      applied_rule: formatIncentiveRule(r.incentive_type, r.incentive_basis, r.incentive_rate),
-      earned_incentive: earned,
-      return_adjustment: adjustment,
-      final_incentive: finalIncentive
+      ...ord,
+      order_incentive: orderIncentive,
+      return_adjustment: returnAdjustment,
+      net_incentive: netIncentive,
+      returned_quantity: returnedQuantity,
+      net_quantity: Math.max(0, ord.quantity - returnedQuantity),
+      returns: returnRows
     };
   });
 
+  // Reconciled summary totals for this staff member in this month
+  const summary = {
+    totalOrders: detailedOrders.length,
+    grossIncentive: Math.round(detailedOrders.reduce((sum, o) => sum + o.order_incentive, 0) * 100) / 100,
+    returnAdjustments: Math.round(detailedOrders.reduce((sum, o) => sum + o.return_adjustment, 0) * 100) / 100,
+    netIncentive: Math.max(0, Math.round(detailedOrders.reduce((sum, o) => sum + o.net_incentive, 0) * 100) / 100),
+    grossSales: Math.round(detailedOrders.reduce((sum, o) => sum + o.total_amount, 0) * 100) / 100,
+    totalQuantity: detailedOrders.reduce((sum, o) => sum + o.quantity, 0),
+    returnedQuantity: detailedOrders.reduce((sum, o) => sum + o.returned_quantity, 0)
+  };
+
   res.json({
-    records,
-    summary: {
-      totalOrders,
-      totalEarnedIncentive,
-      totalReturnAdjustment,
-      totalFinalIncentive
+    staff: {
+      id: staff.id,
+      staff_code: staff.staff_id,
+      name: staff.name,
+      username: staff.username,
+      status: staff.status
     },
-    pagination: {
-      total: totalOrders,
-      page: parseInt(page, 10),
-      limit: parseInt(limit, 10),
-      totalPages: Math.ceil(totalOrders / parseInt(limit, 10))
-    }
+    period: {
+      year,
+      month,
+      monthName,
+      startDate,
+      endDate
+    },
+    summary,
+    orders: detailedOrders
   });
 });
 
