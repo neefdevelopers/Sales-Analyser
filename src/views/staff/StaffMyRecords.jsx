@@ -9,7 +9,8 @@ import {
   Search,
   Filter,
   CheckCircle,
-  FileText
+  FileText,
+  X
 } from 'lucide-react';
 
 export default function StaffMyRecords() {
@@ -87,37 +88,6 @@ export default function StaffMyRecords() {
         <div>
           <h2 className="page-title">My Records</h2>
         </div>
-
-        {/* Date Filter Bar */}
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Calendar size={15} color="var(--text-muted)" />
-            <input
-              type="date"
-              className="form-control"
-              style={{ width: 'auto', padding: '6px 10px', fontSize: '12.5px' }}
-              value={startDate}
-              onChange={e => setStartDate(e.target.value)}
-            />
-            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>to</span>
-            <input
-              type="date"
-              className="form-control"
-              style={{ width: 'auto', padding: '6px 10px', fontSize: '12.5px' }}
-              value={endDate}
-              onChange={e => setEndDate(e.target.value)}
-            />
-          </div>
-
-          {(startDate || endDate) && (
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={handleResetFilters}
-            >
-              Reset
-            </button>
-          )}
-        </div>
       </div>
 
       {/* 3 Summary Cards */}
@@ -175,6 +145,83 @@ export default function StaffMyRecords() {
         </div>
       </div>
 
+      {/* Filtration Section */}
+      <div className="table-card" style={{ marginBottom: '18px' }}>
+        <div
+          style={{
+            padding: '12px 18px',
+            borderBottom: '1px solid var(--border-subtle)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: '#f8fafc'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 700, color: 'var(--text-main)' }}>
+            <Filter size={15} color="var(--primary-600)" />
+            <span>Filtration</span>
+          </div>
+          {(startDate || endDate || search) && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={handleResetFilters}
+              style={{ padding: '4px 8px', fontSize: '11.5px', height: '26px' }}
+            >
+              <X size={12} style={{ marginRight: '4px' }} /> Reset Filters
+            </button>
+          )}
+        </div>
+
+        <div
+          style={{
+            padding: '14px 18px',
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px'
+          }}
+        >
+          {/* Search */}
+          <div className="search-input-wrap" style={{ minWidth: '220px', flex: '1 1 240px' }}>
+            <Search size={15} />
+            <input
+              type="text"
+              className="search-input"
+              placeholder={`Search ${activeTab === 'orders' ? 'orders' : 'returns'} by #, customer, product...`}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{ padding: '6px 10px 6px 32px', fontSize: '13px' }}
+            />
+          </div>
+
+          {/* Date Range Filter */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Calendar size={13} color="var(--primary-600)" /> Date Range:
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <input
+                type="date"
+                className="form-control"
+                style={{ width: 'auto', padding: '5px 8px', fontSize: '12px' }}
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+              />
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>to</span>
+              <input
+                type="date"
+                className="form-control"
+                style={{ width: 'auto', padding: '5px 8px', fontSize: '12px' }}
+                value={endDate}
+                onChange={e => setEndDate(e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Tab Navigation: Order History & Return History */}
       <div className="table-card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-subtle)', padding: '0 16px' }}>
@@ -218,18 +265,6 @@ export default function StaffMyRecords() {
               <RotateCcw size={16} />
               <span>Return History ({returns.length})</span>
             </button>
-          </div>
-
-          <div className="search-input-wrap" style={{ maxWidth: '280px', margin: '8px 0' }}>
-            <Search size={15} />
-            <input
-              type="text"
-              className="search-input"
-              placeholder={`Search ${activeTab === 'orders' ? 'orders' : 'returns'}...`}
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              style={{ padding: '6px 10px 6px 32px', fontSize: '13px' }}
-            />
           </div>
         </div>
 

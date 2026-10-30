@@ -15,7 +15,8 @@ import {
   CreditCard,
   User,
   Package,
-  Calendar
+  Calendar,
+  Filter
 } from 'lucide-react';
 
 export default function StaffOrders() {
@@ -219,16 +220,42 @@ export default function StaffOrders() {
         </button>
       </div>
 
-      {/* Filters Toolbar */}
-      <div className="table-card">
+      {/* Filtration Section */}
+      <div className="table-card" style={{ marginBottom: '18px' }}>
         <div
-          className="table-toolbar"
           style={{
+            padding: '12px 18px',
+            borderBottom: '1px solid var(--border-subtle)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: '#f8fafc'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 700, color: 'var(--text-main)' }}>
+            <Filter size={15} color="var(--primary-600)" />
+            <span>Filtration</span>
+          </div>
+          {hasActiveFilters && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={handleResetFilters}
+              style={{ padding: '4px 8px', fontSize: '11.5px', height: '26px' }}
+            >
+              <X size={12} style={{ marginRight: '4px' }} /> Reset Filters
+            </button>
+          )}
+        </div>
+
+        <div
+          style={{
+            padding: '14px 18px',
             display: 'flex',
             flexWrap: 'wrap',
             alignItems: 'center',
             justifyContent: 'space-between',
-            gap: '10px'
+            gap: '12px'
           }}
         >
           {/* Search */}
@@ -349,23 +376,12 @@ export default function StaffOrders() {
                 }}
               />
             </div>
-
-            {/* Reset */}
-            {hasActiveFilters && (
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={handleResetFilters}
-                style={{ padding: '4px 8px', fontSize: '12px' }}
-                title="Reset all filters"
-              >
-                <X size={13} style={{ marginRight: '4px' }} /> Reset
-              </button>
-            )}
           </div>
         </div>
+      </div>
 
-        {/* Orders Table */}
+      {/* Orders Table Card */}
+      <div className="table-card">
         <div className="table-responsive">
           <table className="data-table">
             <thead>

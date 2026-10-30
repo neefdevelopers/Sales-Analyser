@@ -18,7 +18,9 @@ import {
   User,
   Package,
   CreditCard,
-  Download
+  Download,
+  Filter,
+  X
 } from 'lucide-react';
 
 const MONTHS = [
@@ -56,6 +58,7 @@ export default function IncentiveRecords() {
 
   // Tab state in staff detail view: 'orders' | 'returns' | 'both'
   const [detailTab, setDetailTab] = useState('orders');
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState('all');
 
   // Fetch current business time on mount to initialize default month/year
   useEffect(() => {
@@ -198,41 +201,41 @@ export default function IncentiveRecords() {
     const orders = staffDetailData?.orders || [];
     const returns = staffDetailData?.returns || [];
 
-    // Filter orders by search
+    // Filter orders by search & payment method
     const filteredOrders = orders.filter(o => {
+      if (paymentMethodFilter !== 'all' && o.payment_method !== paymentMethodFilter) return false;
       if (!search.trim()) return true;
       const term = search.trim().toLowerCase();
       return (
         o.order_number.toLowerCase().includes(term) ||
         o.product_name.toLowerCase().includes(term) ||
-        o.customer_name.toLowerCase().includes(term) ||
         (o.payment_method && o.payment_method.toLowerCase().includes(term))
       );
     });
 
-    // Filter returns by search
+    // Filter returns by search & payment method
     const filteredReturns = returns.filter(r => {
+      if (paymentMethodFilter !== 'all' && r.payment_method !== paymentMethodFilter) return false;
       if (!search.trim()) return true;
       const term = search.trim().toLowerCase();
       return (
         r.return_number.toLowerCase().includes(term) ||
-        r.order_number.toLowerCase().includes(term) ||
         r.product_name.toLowerCase().includes(term) ||
-        (r.payment_method && r.payment_method.toLowerCase().includes(term)) ||
-        (r.customer_name && r.customer_name.toLowerCase().includes(term))
+        (r.payment_method && r.payment_method.toLowerCase().includes(term))
       );
     });
 
     return (
       <div className="page-body">
-        {/* Navigation & Period Header */}
-        <div className="page-header" style={{ marginBottom: '16px', alignItems: 'flex-start' }}>
+        {/* Navigation Header */}
+        <div className="page-header" style={{ marginBottom: '16px', alignItems: 'center' }}>
           <div>
             <button
               className="btn btn-secondary btn-sm"
               onClick={() => {
                 setSelectedStaffId(null);
                 setSearch('');
+                setPaymentMethodFilter('all');
               }}
               style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginBottom: '8px', padding: '6px 12px' }}
             >
@@ -251,36 +254,6 @@ export default function IncentiveRecords() {
                 {currentMonthName} {currentYear}
               </span>
             </div>
-          </div>
-
-          {/* Month / Year Selector in Detail View */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <button className="btn btn-secondary btn-sm" onClick={handlePrevMonth} title="Previous Month">
-              <ChevronLeft size={16} />
-            </button>
-            <select
-              className="form-control"
-              style={{ width: 'auto', padding: '6px 10px', fontSize: '13px', fontWeight: 600 }}
-              value={currentMonth}
-              onChange={e => setCurrentMonth(parseInt(e.target.value, 10))}
-            >
-              {MONTHS.map(m => (
-                <option key={m.value} value={m.value}>{m.label}</option>
-              ))}
-            </select>
-            <select
-              className="form-control"
-              style={{ width: 'auto', padding: '6px 10px', fontSize: '13px', fontWeight: 600 }}
-              value={currentYear}
-              onChange={e => setCurrentYear(parseInt(e.target.value, 10))}
-            >
-              {YEARS.map(y => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
-            <button className="btn btn-secondary btn-sm" onClick={handleNextMonth} title="Next Month">
-              <ChevronRight size={16} />
-            </button>
           </div>
         </div>
 
@@ -345,95 +318,190 @@ export default function IncentiveRecords() {
           </div>
         </div>
 
-        {/* Table Selector & Search Toolbar */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
-          <div style={{ display: 'inline-flex', background: '#f1f5f9', padding: '4px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-            <button
-              type="button"
-              onClick={() => setDetailTab('orders')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 16px',
-                borderRadius: 'var(--radius-sm)',
-                border: 'none',
-                background: detailTab === 'orders' ? '#ffffff' : 'transparent',
-                color: detailTab === 'orders' ? 'var(--primary-700)' : 'var(--text-muted)',
-                fontWeight: detailTab === 'orders' ? 700 : 500,
-                boxShadow: detailTab === 'orders' ? 'var(--shadow-xs)' : 'none',
-                cursor: 'pointer',
-                fontSize: '13.5px',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              <ShoppingCart size={15} />
-              <span>Orders ({orders.length})</span>
-              <span className="badge badge-warning" style={{ fontSize: '11px', padding: '2px 6px' }}>
-                ₹{summary.grossIncentive?.toLocaleString()}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setDetailTab('returns')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 16px',
-                borderRadius: 'var(--radius-sm)',
-                border: 'none',
-                background: detailTab === 'returns' ? '#ffffff' : 'transparent',
-                color: detailTab === 'returns' ? '#dc2626' : 'var(--text-muted)',
-                fontWeight: detailTab === 'returns' ? 700 : 500,
-                boxShadow: detailTab === 'returns' ? 'var(--shadow-xs)' : 'none',
-                cursor: 'pointer',
-                fontSize: '13.5px',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              <RotateCcw size={15} />
-              <span>Returns ({returns.length})</span>
-              {summary.returnAdjustments > 0 && (
-                <span className="badge badge-danger" style={{ fontSize: '11px', padding: '2px 6px' }}>
-                  -₹{summary.returnAdjustments?.toLocaleString()}
-                </span>
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setDetailTab('both')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '8px 14px',
-                borderRadius: 'var(--radius-sm)',
-                border: 'none',
-                background: detailTab === 'both' ? '#ffffff' : 'transparent',
-                color: detailTab === 'both' ? 'var(--primary-700)' : 'var(--text-muted)',
-                fontWeight: detailTab === 'both' ? 700 : 500,
-                boxShadow: detailTab === 'both' ? 'var(--shadow-xs)' : 'none',
-                cursor: 'pointer',
-                fontSize: '13px',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              <span>Both Tables</span>
-            </button>
+        {/* Filtration Section */}
+        <div className="table-card" style={{ marginBottom: '20px' }}>
+          <div
+            style={{
+              padding: '12px 18px',
+              borderBottom: '1px solid var(--border-subtle)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: '#f8fafc'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 700, color: 'var(--text-main)' }}>
+              <Filter size={15} color="var(--primary-600)" />
+              <span>Filtration</span>
+            </div>
+            {(search || paymentMethodFilter !== 'all') && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  setSearch('');
+                  setPaymentMethodFilter('all');
+                }}
+                style={{ padding: '4px 8px', fontSize: '11.5px', height: '26px' }}
+              >
+                <X size={12} style={{ marginRight: '4px' }} /> Reset Filters
+              </button>
+            )}
           </div>
 
-          <div className="search-input-wrap" style={{ minWidth: '280px' }}>
-            <Search size={15} />
-            <input
-              type="text"
-              className="search-input"
-              placeholder={detailTab === 'returns' ? 'Search returns by #, order, product...' : 'Search by order #, product, customer...'}
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
+          <div
+            style={{
+              padding: '14px 18px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '14px'
+            }}
+          >
+            {/* Left: View Tabs */}
+            <div style={{ display: 'inline-flex', background: 'var(--bg-surface-subtle)', padding: '3px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+              <button
+                type="button"
+                onClick={() => setDetailTab('orders')}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '7px 14px',
+                  borderRadius: 'var(--radius-sm)',
+                  border: 'none',
+                  background: detailTab === 'orders' ? '#ffffff' : 'transparent',
+                  color: detailTab === 'orders' ? '#2563eb' : 'var(--text-muted)',
+                  fontWeight: detailTab === 'orders' ? 700 : 500,
+                  boxShadow: detailTab === 'orders' ? 'var(--shadow-xs)' : 'none',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <ShoppingCart size={14} />
+                <span>Orders ({orders.length})</span>
+                <span className="badge badge-warning" style={{ fontSize: '11px', padding: '2px 6px' }}>
+                  ₹{summary.grossIncentive?.toLocaleString()}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDetailTab('returns')}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '7px 14px',
+                  borderRadius: 'var(--radius-sm)',
+                  border: 'none',
+                  background: detailTab === 'returns' ? '#ffffff' : 'transparent',
+                  color: detailTab === 'returns' ? '#dc2626' : 'var(--text-muted)',
+                  fontWeight: detailTab === 'returns' ? 700 : 500,
+                  boxShadow: detailTab === 'returns' ? 'var(--shadow-xs)' : 'none',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <RotateCcw size={14} />
+                <span>Returns ({returns.length})</span>
+                {summary.returnAdjustments > 0 && (
+                  <span className="badge badge-danger" style={{ fontSize: '11px', padding: '2px 6px' }}>
+                    -₹{summary.returnAdjustments?.toLocaleString()}
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDetailTab('both')}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '7px 14px',
+                  borderRadius: 'var(--radius-sm)',
+                  border: 'none',
+                  background: detailTab === 'both' ? '#ffffff' : 'transparent',
+                  color: detailTab === 'both' ? 'var(--primary-700)' : 'var(--text-muted)',
+                  fontWeight: detailTab === 'both' ? 700 : 500,
+                  boxShadow: detailTab === 'both' ? 'var(--shadow-xs)' : 'none',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <span>Both Tables</span>
+              </button>
+            </div>
+
+            {/* Right: Search, Payment Method & Period Filters */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              {/* Search */}
+              <div className="search-input-wrap" style={{ minWidth: '220px' }}>
+                <Search size={15} />
+                <input
+                  type="text"
+                  className="search-input"
+                  placeholder={detailTab === 'returns' ? 'Search returns by #, product...' : 'Search by order #, product...'}
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  style={{ padding: '6px 10px 6px 32px', fontSize: '13px' }}
+                />
+              </div>
+
+              {/* Payment Method Filter */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Payment:</span>
+                <select
+                  className="form-control"
+                  style={{ width: 'auto', padding: '5px 10px', fontSize: '12.5px' }}
+                  value={paymentMethodFilter}
+                  onChange={e => setPaymentMethodFilter(e.target.value)}
+                >
+                  <option value="all">All Methods</option>
+                  <option value="Prepaid">Prepaid</option>
+                  <option value="COD">COD</option>
+                </select>
+              </div>
+
+              {/* Period (Month & Year) */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Calendar size={13} color="var(--primary-600)" />
+                  Period:
+                </span>
+                <button className="btn btn-secondary btn-sm" onClick={handlePrevMonth} title="Previous Month" style={{ padding: '4px 8px', height: '30px' }}>
+                  <ChevronLeft size={14} />
+                </button>
+                <select
+                  className="form-control"
+                  style={{ width: 'auto', padding: '4px 8px', fontSize: '12.5px', fontWeight: 600 }}
+                  value={currentMonth}
+                  onChange={e => setCurrentMonth(parseInt(e.target.value, 10))}
+                >
+                  {MONTHS.map(m => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+                <select
+                  className="form-control"
+                  style={{ width: 'auto', padding: '4px 8px', fontSize: '12.5px', fontWeight: 600 }}
+                  value={currentYear}
+                  onChange={e => setCurrentYear(parseInt(e.target.value, 10))}
+                >
+                  {YEARS.map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+                <button className="btn btn-secondary btn-sm" onClick={handleNextMonth} title="Next Month" style={{ padding: '4px 8px', height: '30px' }}>
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -786,43 +854,12 @@ export default function IncentiveRecords() {
           </div>
         </div>
 
-        {/* Month and Year Period Selector */}
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#ffffff', padding: '4px 8px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-xs)' }}>
-            <Calendar size={15} color="var(--primary-600)" />
-            <button className="btn btn-secondary btn-sm" onClick={handlePrevMonth} style={{ padding: '4px 8px', height: '28px' }} title="Previous Month">
-              <ChevronLeft size={14} />
-            </button>
-            <select
-              className="form-control"
-              style={{ width: 'auto', padding: '4px 8px', fontSize: '13px', fontWeight: 600, border: 'none', background: 'transparent' }}
-              value={currentMonth}
-              onChange={e => setCurrentMonth(parseInt(e.target.value, 10))}
-            >
-              {MONTHS.map(m => (
-                <option key={m.value} value={m.value}>{m.label}</option>
-              ))}
-            </select>
-            <select
-              className="form-control"
-              style={{ width: 'auto', padding: '4px 8px', fontSize: '13px', fontWeight: 600, border: 'none', background: 'transparent' }}
-              value={currentYear}
-              onChange={e => setCurrentYear(parseInt(e.target.value, 10))}
-            >
-              {YEARS.map(y => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
-            <button className="btn btn-secondary btn-sm" onClick={handleNextMonth} style={{ padding: '4px 8px', height: '28px' }} title="Next Month">
-              <ChevronRight size={14} />
-            </button>
-          </div>
-
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button
             className="btn btn-secondary btn-sm"
             onClick={handleExportMonthlyCsv}
             disabled={filteredStaff.length === 0}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px' }}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px' }}
           >
             <Download size={14} />
             <span>Export CSV</span>
@@ -913,20 +950,108 @@ export default function IncentiveRecords() {
         </div>
       </div>
 
-      {/* Staff Incentive List Table Card */}
-      <div className="table-card">
-        <div className="table-toolbar">
-          <div className="search-input-wrap">
-            <Search size={16} />
-            <input
-              type="text"
-              className="search-input"
-              placeholder="Search staff by name or Staff ID..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
+      {/* Filtration Section */}
+      <div className="table-card" style={{ marginBottom: '18px' }}>
+        <div
+          style={{
+            padding: '12px 18px',
+            borderBottom: '1px solid var(--border-subtle)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: '#f8fafc'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 700, color: 'var(--text-main)' }}>
+            <Filter size={15} color="var(--primary-600)" />
+            <span>Filtration</span>
+          </div>
+          {search && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => setSearch('')}
+              style={{ padding: '4px 8px', fontSize: '11.5px', height: '26px' }}
+            >
+              <X size={12} style={{ marginRight: '4px' }} /> Clear Search
+            </button>
+          )}
+        </div>
+
+        <div
+          style={{
+            padding: '14px 18px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '14px'
+          }}
+        >
+          {/* Search Staff */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '1 1 300px' }}>
+            <div className="search-input-wrap" style={{ flex: 1, minWidth: '240px' }}>
+              <Search size={16} />
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Search staff by name or Staff ID..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Period Filter (Month & Year) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <Calendar size={14} color="var(--primary-600)" />
+              Period:
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={handlePrevMonth}
+                title="Previous Month"
+                style={{ padding: '5px 8px', height: '32px' }}
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <select
+                className="form-control"
+                style={{ width: 'auto', padding: '5px 10px', fontSize: '13px', fontWeight: 600 }}
+                value={currentMonth}
+                onChange={e => setCurrentMonth(parseInt(e.target.value, 10))}
+              >
+                {MONTHS.map(m => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
+              <select
+                className="form-control"
+                style={{ width: 'auto', padding: '5px 10px', fontSize: '13px', fontWeight: 600 }}
+                value={currentYear}
+                onChange={e => setCurrentYear(parseInt(e.target.value, 10))}
+              >
+                {YEARS.map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={handleNextMonth}
+                title="Next Month"
+                style={{ padding: '5px 8px', height: '32px' }}
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
           </div>
         </div>
+      </div>
+
+      {/* Staff Incentive List Table Card */}
+      <div className="table-card">
 
         <div className="table-responsive">
           <table className="data-table">
