@@ -6,6 +6,7 @@ A simplified, lightweight, full-stack web application purpose-built for managing
 
 ## 1. System Purpose & Scope
 
+
 The system is focused strictly on:
 1. **Adding and managing orders** (with customer details, product selection, quantity, payment method, order total, and live incentive preview).
 2. **Adding and managing product returns** (supporting partial and full returns with proportional incentive reversal and returnable quantity validation).

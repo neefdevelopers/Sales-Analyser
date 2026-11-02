@@ -12,6 +12,7 @@ import orderRoutes from './routes/orders.js';
 import returnRoutes from './routes/returns.js';
 import incentiveRoutes from './routes/incentives.js';
 import systemRoutes from './routes/system.js';
+import reportRoutes from './routes/reports.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,6 +31,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/returns', returnRoutes);
 app.use('/api/incentives', incentiveRoutes);
 app.use('/api/system', systemRoutes);
+app.use('/api/reports', reportRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

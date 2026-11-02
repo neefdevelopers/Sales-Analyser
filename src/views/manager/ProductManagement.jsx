@@ -1,19 +1,25 @@
 // src/views/manager/ProductManagement.jsx
 import React, { useState, useEffect } from 'react';
 import { api } from '../../api';
+import { useSessionState } from '../../hooks/useSessionState';
 import {
   Package,
   Plus,
   Search,
   CheckCircle,
   AlertCircle,
-  Edit2
+  Edit2,
+  Filter,
+  X,
+  ChevronDown
 } from 'lucide-react';
 
 export default function ProductManagement() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useSessionState('filter_product_search', '');
+  const [statusFilter, setStatusFilter] = useSessionState('filter_product_status', 'all');
+  const [showFilters, setShowFilters] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
 
@@ -109,10 +115,19 @@ export default function ProductManagement() {
   }
 
   const filteredProducts = products.filter(p => {
+    if (statusFilter !== 'all' && p.status !== statusFilter) return false;
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return p.name.toLowerCase().includes(q) || (p.code && p.code.toLowerCase().includes(q));
   });
+
+  const hasActiveFilters = Boolean(search.trim() || statusFilter !== 'all');
+  const activeFilterCount = (search.trim() ? 1 : 0) + (statusFilter !== 'all' ? 1 : 0);
+
+  function handleResetFilters() {
+    setSearch('');
+    setStatusFilter('all');
+  }
 
   return (
     <div className="page-body">
@@ -132,27 +147,182 @@ export default function ProductManagement() {
           <h2 className="page-title">Product Management</h2>
         </div>
 
-        <button className="btn btn-primary" onClick={openCreateModal}>
-          <Plus size={16} />
-          <span>Add Product</span>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className={`btn ${showFilters ? 'btn-primary' : 'btn-secondary'} btn-sm`}
+            onClick={() => setShowFilters(!showFilters)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '7px',
+              padding: '8px 14px',
+              fontWeight: 600,
+              fontSize: '12.5px'
+            }}
+          >
+            <Filter size={14} />
+            <span>Filtration</span>
+            {hasActiveFilters && (
+              <span
+                style={{
+                  background: showFilters ? '#ffffff' : 'var(--primary-600)',
+                  color: showFilters ? 'var(--primary-600)' : '#ffffff',
+                  borderRadius: '10px',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  padding: '1px 6px',
+                  marginLeft: '2px'
+                }}
+              >
+                {activeFilterCount}
+              </span>
+            )}
+            <ChevronDown
+              size={14}
+              style={{
+                transform: showFilters ? 'rotate(180deg)' : 'none',
+                transition: 'transform 0.2s ease'
+              }}
+            />
+          </button>
+
+          <button className="btn btn-primary" onClick={openCreateModal}>
+            <Plus size={16} />
+            <span>Add Product</span>
+          </button>
+        </div>
       </div>
+
+      {/* Compact Applied Filtration Pill Bar (when collapsed) */}
+      {!showFilters && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '10px',
+            background: '#f8fafc',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 'var(--radius-md)',
+            padding: '8px 14px',
+            marginBottom: '18px',
+            fontSize: '12.5px'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              <Filter size={13} color="var(--primary-600)" /> Active Filters:
+            </span>
+            {statusFilter !== 'all' && (
+              <span className="badge badge-info" style={{ fontSize: '11.5px' }}>
+                Status: {statusFilter === 'active' ? 'Active Only' : 'Inactive Only'}
+              </span>
+            )}
+            {search.trim() && (
+              <span className="badge badge-neutral" style={{ fontSize: '11.5px' }}>
+                Search: "{search.trim()}"
+              </span>
+            )}
+            {!hasActiveFilters && (
+              <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>
+                Showing all product catalog
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              type="button"
+              className="btn btn-sm btn-outline"
+              onClick={() => setShowFilters(true)}
+              style={{ fontSize: '11.5px', padding: '3px 10px', height: 'auto' }}
+            >
+              Change Filters ▾
+            </button>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                className="btn btn-sm btn-ghost"
+                onClick={handleResetFilters}
+                style={{ fontSize: '11.5px', padding: '3px 8px', color: '#dc2626', height: 'auto' }}
+                title="Reset filters"
+              >
+                <X size={12} style={{ marginRight: '4px' }} /> Reset
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Dedicated Filtration Section Card (when expanded) */}
+      {showFilters && (
+        <div className="table-card" style={{ marginBottom: '18px', padding: '16px 20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ width: '26px', height: '26px', borderRadius: '6px', background: 'var(--primary-50)', color: 'var(--primary-600)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Filter size={15} />
+              </div>
+              <strong style={{ fontSize: '13.5px', color: 'var(--text-main)', letterSpacing: '0.2px' }}>Filtration</strong>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                (Filter products by name or catalog status)
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost"
+              onClick={() => setShowFilters(false)}
+              style={{ fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--text-muted)' }}
+            >
+              <X size={14} /> Hide
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+            <div className="search-input-wrap" style={{ flex: '1 1 260px', maxWidth: '380px' }}>
+              <Search size={16} />
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Search products by name or code..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Status:</span>
+                <select
+                  className="form-control"
+                  style={{ width: 'auto', padding: '5px 10px', fontSize: '12.5px' }}
+                  value={statusFilter}
+                  onChange={e => setStatusFilter(e.target.value)}
+                >
+                  <option value="all">All Products</option>
+                  <option value="active">Active Only</option>
+                  <option value="inactive">Inactive Only</option>
+                </select>
+              </div>
+
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleResetFilters}
+                  style={{ padding: '5px 10px', fontSize: '12px' }}
+                  title="Reset filters"
+                >
+                  <X size={13} style={{ marginRight: '4px' }} /> Reset
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Product Table Card */}
       <div className="table-card">
-        <div className="table-toolbar">
-          <div className="search-input-wrap">
-            <Search size={16} />
-            <input
-              type="text"
-              className="search-input"
-              placeholder="Search products by name..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-          </div>
-        </div>
-
         <div className="table-responsive">
           <table className="data-table">
             <thead>

@@ -11,10 +11,11 @@ import {
   BarChart3,
   LogOut,
   ChevronDown,
-  UserCheck
+  UserCheck,
+  X
 } from 'lucide-react';
 
-export default function Sidebar({ currentView, setCurrentView }) {
+export default function Sidebar({ currentView, setCurrentView, isOpen, onClose }) {
   const { user, logout, switchDemo, demoAccounts } = useAuth();
   const [showDemoMenu, setShowDemoMenu] = useState(false);
 
@@ -27,48 +28,64 @@ export default function Sidebar({ currentView, setCurrentView }) {
     { id: 'my-records', label: 'My Records', icon: Award }
   ];
 
-  // Role 2: Brand Manager Navigation (1. Products, 2. Staff, 3. Orders, 4. Returns, 5. Incentive Records)
+  // Role 2: Brand Manager Navigation (1. Products, 2. Staff, 3. Orders, 4. Returns, 5. Incentive Records, 6. Sales Reports)
   const managerNavItems = [
     { id: 'products', label: 'Product Management', icon: Package },
     { id: 'staff', label: 'Staff Management', icon: Users },
     { id: 'orders', label: 'Orders', icon: ShoppingCart },
     { id: 'returns', label: 'Returns', icon: RotateCcw },
-    { id: 'incentives', label: 'Incentive Records', icon: Award }
+    { id: 'incentives', label: 'Incentive Records', icon: Award },
+    { id: 'reports', label: 'Sales Reports', icon: BarChart3 }
   ];
 
   const navItems = isManager ? managerNavItems : staffNavItems;
 
   return (
-    <aside className="sidebar">
-      {/* Brand Header */}
-      <div className="sidebar-brand">
-        <div className="brand-icon">
-          <Award size={20} />
+    <>
+      {isOpen && (
+        <div className="sidebar-backdrop" onClick={onClose} aria-hidden="true" />
+      )}
+      <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
+        {/* Brand Header */}
+        <div className="sidebar-brand">
+          <div className="brand-icon">
+            <Award size={20} />
+          </div>
+          <div>
+            <div className="brand-name">SalesPulse</div>
+            <span className="brand-tag">{isManager ? 'Brand Manager' : 'Sales Staff'}</span>
+          </div>
+          <button
+            type="button"
+            className="sidebar-close-btn"
+            onClick={onClose}
+            aria-label="Close navigation sidebar"
+          >
+            <X size={18} />
+          </button>
         </div>
-        <div>
-          <div className="brand-name">SalesPulse</div>
-          <span className="brand-tag">{isManager ? 'Brand Manager' : 'Sales Staff'}</span>
-        </div>
-      </div>
 
-      {/* Navigation List */}
-      <nav className="sidebar-nav">
-        <div className="nav-section-title">Main Menu</div>
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = currentView === item.id;
-          return (
-            <button
-              key={item.id}
-              className={`nav-item ${isActive ? 'active' : ''}`}
-              onClick={() => setCurrentView(item.id)}
-            >
-              <Icon size={18} />
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
-      </nav>
+        {/* Navigation List */}
+        <nav className="sidebar-nav">
+          <div className="nav-section-title">Main Menu</div>
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = currentView === item.id;
+            return (
+              <button
+                key={item.id}
+                className={`nav-item ${isActive ? 'active' : ''}`}
+                onClick={() => {
+                  setCurrentView(item.id);
+                  if (onClose) onClose();
+                }}
+              >
+                <Icon size={18} />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
 
       {/* Sidebar Footer with Demo Switcher & User Profile */}
       <div className="sidebar-footer">
@@ -176,5 +193,6 @@ export default function Sidebar({ currentView, setCurrentView }) {
         </div>
       </div>
     </aside>
-  );
+  </>
+);
 }

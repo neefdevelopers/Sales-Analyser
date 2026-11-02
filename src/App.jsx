@@ -1,8 +1,8 @@
-// src/App.jsx
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Sidebar from './components/Sidebar';
 import Navbar from './components/Navbar';
+import ErrorBoundary from './components/ErrorBoundary';
 import Login from './views/Login';
 
 // Staff Views
@@ -15,17 +15,19 @@ import ProductManagement from './views/manager/ProductManagement';
 import StaffManagement from './views/manager/StaffManagement';
 import ManagerOrders from './views/manager/ManagerOrders';
 import IncentiveRecords from './views/manager/IncentiveRecords';
+import SalesReports from './views/manager/SalesReports';
 
 function MainApp() {
   const { user, loading } = useAuth();
   const isManager = user?.role === 'brand_manager';
   const [currentView, setCurrentView] = useState(isManager ? 'products' : 'orders');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Keep view synchronized with active role
   useEffect(() => {
     if (user) {
       if (user.role === 'brand_manager') {
-        if (!['products', 'staff', 'orders', 'returns', 'incentives'].includes(currentView)) {
+        if (!['products', 'staff', 'orders', 'returns', 'incentives', 'reports'].includes(currentView)) {
           setCurrentView('products');
         }
       } else {
@@ -57,6 +59,7 @@ function MainApp() {
     'orders': isManager ? 'All Staff Orders' : 'My Orders',
     'returns': isManager ? 'All Returns Audit' : 'Order Returns',
     'incentives': 'Incentive Records & Audit',
+    'reports': 'Sales Reports & Analytics',
     'my-records': 'My Records'
   };
 
@@ -73,6 +76,8 @@ function MainApp() {
           return <StaffReturns />;
         case 'incentives':
           return <IncentiveRecords />;
+        case 'reports':
+          return <SalesReports />;
         default:
           return <ProductManagement />;
       }
@@ -93,10 +98,24 @@ function MainApp() {
 
   return (
     <div className="app-container">
-      <Sidebar currentView={currentView} setCurrentView={setCurrentView} />
+      <Sidebar
+        currentView={currentView}
+        setCurrentView={(view) => {
+          setCurrentView(view);
+          setSidebarOpen(false);
+        }}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
       <main className="main-content">
-        <Navbar currentViewTitle={viewTitles[currentView] || 'SalesPulse'} />
-        {renderView()}
+        <Navbar
+          currentViewTitle={viewTitles[currentView] || 'SalesPulse'}
+          sidebarOpen={sidebarOpen}
+          onToggleSidebar={() => setSidebarOpen(prev => !prev)}
+        />
+        <ErrorBoundary key={currentView}>
+          {renderView()}
+        </ErrorBoundary>
       </main>
     </div>
   );

@@ -2,9 +2,9 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
-import { Clock, Shield } from 'lucide-react';
+import { Clock, Shield, Menu } from 'lucide-react';
 
-export default function Navbar({ currentViewTitle }) {
+export default function Navbar({ currentViewTitle, sidebarOpen, onToggleSidebar }) {
   const { user } = useAuth();
   const [timeInfo, setTimeInfo] = useState(null);
 
@@ -27,40 +27,40 @@ export default function Navbar({ currentViewTitle }) {
 
   return (
     <header className="navbar">
-      <div>
-        <h1 style={{ fontSize: '18px', fontWeight: 800 }}>{currentViewTitle}</h1>
-        <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
-          Logged in as <strong style={{ color: 'var(--text-main)' }}>{user?.name}</strong> ({isManager ? 'Brand Manager' : user?.staff_id})
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+        {/* Mobile / Tablet Hamburger Toggle */}
+        <button
+          type="button"
+          className="mobile-menu-btn"
+          onClick={onToggleSidebar}
+          aria-label={sidebarOpen ? 'Close Navigation Menu' : 'Open Navigation Menu'}
+        >
+          <Menu size={20} />
+        </button>
+
+        <div style={{ minWidth: 0 }}>
+          <h1 className="navbar-title">{currentViewTitle}</h1>
+          <div className="navbar-user-meta">
+            Logged in as <strong style={{ color: 'var(--text-main)' }}>{user?.name}</strong> ({isManager ? 'Brand Manager' : user?.staff_id})
+          </div>
         </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
         {/* Business Timezone & Clock */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '6px 12px',
-            background: 'var(--bg-surface-subtle)',
-            borderRadius: 'var(--radius-md)',
-            fontSize: '12px',
-            fontWeight: 600,
-            color: 'var(--text-muted)'
-          }}
-        >
+        <div className="navbar-clock">
           <Clock size={14} color="var(--primary-600)" />
-          <span>Timezone: <strong>Asia/Kolkata</strong></span>
+          <span className="navbar-tz-text">Timezone: <strong>Asia/Kolkata</strong></span>
           {timeInfo && (
-            <span style={{ color: 'var(--text-main)', borderLeft: '1px solid var(--border-subtle)', paddingLeft: '8px' }}>
+            <span className="navbar-clock-time">
               {timeInfo.currentTime}
             </span>
           )}
         </div>
 
-        <div className={`badge ${isManager ? 'badge-primary' : 'badge-info'}`} style={{ padding: '6px 12px' }}>
+        <div className={`badge ${isManager ? 'badge-primary' : 'badge-info'} navbar-portal-badge`}>
           <Shield size={13} />
-          <span>{isManager ? 'Brand Manager Portal' : 'Sales Staff Portal'}</span>
+          <span className="navbar-portal-text">{isManager ? 'Brand Manager' : 'Sales Staff'}</span>
         </div>
       </div>
     </header>

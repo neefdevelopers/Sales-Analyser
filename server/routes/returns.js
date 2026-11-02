@@ -76,6 +76,8 @@ router.get('/', authenticate, (req, res) => {
       r.product_id,
       r.returned_by_staff_id,
       COALESCE(r.payment_method, o.payment_method, 'Prepaid') AS payment_method,
+      r.return_reason,
+      r.remarks,
       r.created_at,
       p.name AS product_name,
       p.code AS product_code,
@@ -115,7 +117,7 @@ router.get('/', authenticate, (req, res) => {
  * 2. POST Preview Return (internal helper)
  */
 router.post('/preview', authenticate, (req, res) => {
-  const { order_id, product_id, payment_method, return_quantity } = req.body;
+  const { order_id, product_id, payment_method, return_quantity, return_id } = req.body;
 
   const returnQty = parseInt(return_quantity, 10);
   if (isNaN(returnQty) || returnQty <= 0) {
@@ -123,13 +125,14 @@ router.post('/preview', authenticate, (req, res) => {
   }
 
   if (order_id) {
+    const excludeReturnId = return_id ? parseInt(return_id, 10) : 0;
     const order = get(`
       SELECT
         o.*,
-        COALESCE((SELECT SUM(r.return_quantity) FROM returns r WHERE r.order_id = o.id), 0) AS already_returned_qty
+        COALESCE((SELECT SUM(r.return_quantity) FROM returns r WHERE r.order_id = o.id AND r.id != ?), 0) AS already_returned_qty
       FROM orders o
       WHERE o.id = ?
-    `, [order_id]);
+    `, [excludeReturnId, order_id]);
 
     if (!order) {
       return res.status(404).json({ error: 'Order not found.' });
@@ -207,7 +210,11 @@ router.post('/', authenticate, (req, res) => {
     order_id,
     product_id,
     payment_method,
-    return_quantity
+    return_quantity,
+    return_date,
+    return_reason,
+    remarks,
+    staff_id
   } = req.body;
 
   const returnQty = parseInt(return_quantity, 10);
@@ -221,6 +228,18 @@ router.post('/', authenticate, (req, res) => {
     const newReturnId = transaction(() => {
       let linkedOrderId = null;
       let linkedStaffId = req.user.id;
+
+      if (isManager && staff_id) {
+        const targetStaff = get('SELECT id, status FROM users WHERE id = ?', [staff_id]);
+        if (!targetStaff) {
+          throw new Error('Assigned staff member not found.');
+        }
+        if (targetStaff.status !== 'active') {
+          throw new Error('Cannot assign return to an inactive staff member.');
+        }
+        linkedStaffId = targetStaff.id;
+      }
+
       let resolvedProductId = product_id ? parseInt(product_id, 10) : null;
       let finalPaymentMethod = (payment_method && ['Prepaid', 'COD'].includes(payment_method))
         ? payment_method
@@ -290,7 +309,7 @@ router.post('/', authenticate, (req, res) => {
             AND o.quantity > COALESCE((SELECT SUM(r.return_quantity) FROM returns r WHERE r.order_id = o.id), 0)
           ORDER BY o.order_date DESC, o.id DESC
           LIMIT 1
-        `, [req.user.id, product.id, finalPaymentMethod]);
+        `, [linkedStaffId, product.id, finalPaymentMethod]);
 
         if (candidateOrder && (candidateOrder.quantity - candidateOrder.already_returned_qty) >= returnQty) {
           linkedOrderId = candidateOrder.id;
@@ -301,7 +320,7 @@ router.post('/', authenticate, (req, res) => {
           }
         } else {
           linkedOrderId = null;
-          linkedStaffId = req.user.id;
+          // Keep linkedStaffId as established above
           const unitPrice = product.price || 0;
           returnAmount = Math.round(unitPrice * returnQty * 100) / 100;
           const incObj = calculateIncentive(product, finalPaymentMethod, returnQty, returnAmount);
@@ -309,9 +328,17 @@ router.post('/', authenticate, (req, res) => {
         }
       }
 
-      // Generate unique return number: RET-YYYYMMDD-XXXX
+      // Unique return number: RET-YYYYMMDD-XXXX
       const todayDate = new Date().toISOString().split('T')[0];
-      const dateFormatted = todayDate.replace(/-/g, '');
+      const returnDateStr = (return_date && /^\d{4}-\d{2}-\d{2}$/.test(String(return_date).trim()))
+        ? String(return_date).trim()
+        : todayDate;
+      const finalReturnReason = (return_reason && String(return_reason).trim())
+        ? String(return_reason).trim()
+        : 'Product Return';
+      const finalRemarks = remarks ? String(remarks).trim() : null;
+
+      const dateFormatted = returnDateStr.replace(/-/g, '');
       const countToday = get("SELECT COUNT(*) AS c FROM returns WHERE return_number LIKE ?", [`RET-${dateFormatted}-%`]);
       const nextSeq = (countToday?.c || 0) + 1;
       const returnNumber = `RET-${dateFormatted}-${String(nextSeq).padStart(4, '0')}`;
@@ -334,9 +361,9 @@ router.post('/', authenticate, (req, res) => {
           finalPaymentMethod,
           returnQty,
           returnAmount,
-          todayDate,
-          'Product Return',
-          null,
+          returnDateStr,
+          finalReturnReason,
+          finalRemarks,
           reversedIncentive,
           now,
           now
@@ -358,6 +385,8 @@ router.post('/', authenticate, (req, res) => {
         r.staff_id,
         r.product_id,
         COALESCE(r.payment_method, o.payment_method, 'Prepaid') AS payment_method,
+        r.return_reason,
+        r.remarks,
         p.name AS product_name,
         p.code AS product_code,
         u.name AS returned_by_name,
@@ -372,6 +401,163 @@ router.post('/', authenticate, (req, res) => {
     res.status(201).json({
       returnItem: createdReturn,
       message: `Return ${createdReturn.return_number} processed successfully.`
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// PUT edit existing return (Brand Manager can edit all, Staff can edit own)
+router.put('/:id', authenticate, (req, res) => {
+  const isManager = req.user.role === 'brand_manager';
+  const returnId = parseInt(req.params.id, 10);
+
+  const existingReturn = get(`
+    SELECT r.*, o.quantity AS order_qty, o.unit_price AS order_unit_price, o.incentive_amount AS order_incentive_amount, o.order_number
+    FROM returns r
+    LEFT JOIN orders o ON r.order_id = o.id
+    WHERE r.id = ?
+  `, [returnId]);
+
+  if (!existingReturn) {
+    return res.status(404).json({ error: 'Return record not found.' });
+  }
+
+  // Authorization: Sales staff can only edit their own returns
+  if (!isManager && existingReturn.staff_id !== req.user.id && existingReturn.returned_by_staff_id !== req.user.id) {
+    return res.status(403).json({ error: 'You are only authorized to edit your own returns.' });
+  }
+
+  const {
+    staff_id,
+    return_quantity,
+    return_date,
+    payment_method,
+    return_reason,
+    remarks
+  } = req.body;
+
+  let targetStaffId = existingReturn.staff_id;
+  if (isManager && staff_id) {
+    const assignedStaff = get('SELECT id, status FROM users WHERE id = ?', [staff_id]);
+    if (!assignedStaff) {
+      return res.status(404).json({ error: 'Assigned staff member not found.' });
+    }
+    targetStaffId = assignedStaff.id;
+  }
+
+  const newReturnQty = return_quantity !== undefined ? parseInt(return_quantity, 10) : existingReturn.return_quantity;
+  if (isNaN(newReturnQty) || newReturnQty <= 0) {
+    return res.status(400).json({ error: 'Return quantity must be a positive integer (at least 1).' });
+  }
+
+  const finalPaymentMethod = (payment_method && ['Prepaid', 'COD'].includes(payment_method))
+    ? payment_method
+    : (existingReturn.payment_method || 'Prepaid');
+
+  const returnDateStr = (return_date && /^\d{4}-\d{2}-\d{2}$/.test(return_date.trim()))
+    ? return_date.trim()
+    : existingReturn.return_date;
+
+  let returnAmount = 0;
+  let reversedIncentive = 0;
+
+  try {
+    if (existingReturn.order_id) {
+      // Check against order remaining quantity
+      const order = get('SELECT * FROM orders WHERE id = ?', [existingReturn.order_id]);
+      if (!order) {
+        return res.status(404).json({ error: 'Linked order not found.' });
+      }
+
+      const otherReturns = get(`
+        SELECT COALESCE(SUM(return_quantity), 0) AS total
+        FROM returns
+        WHERE order_id = ? AND id != ?
+      `, [existingReturn.order_id, existingReturn.id]);
+
+      const otherQty = otherReturns?.total || 0;
+      const remainingForThis = order.quantity - otherQty;
+
+      if (newReturnQty > remainingForThis) {
+        return res.status(400).json({
+          error: `Return quantity (${newReturnQty}) exceeds remaining returnable quantity (${remainingForThis}) for order ${order.order_number}.`
+        });
+      }
+
+      returnAmount = Math.round(order.unit_price * newReturnQty * 100) / 100;
+      if (order.incentive_amount > 0 && order.quantity > 0) {
+        reversedIncentive = Math.round((newReturnQty / order.quantity) * order.incentive_amount * 100) / 100;
+      }
+    } else {
+      // Standalone return
+      const product = get('SELECT * FROM products WHERE id = ?', [existingReturn.product_id]);
+      const unitPrice = product?.price || 0;
+      returnAmount = Math.round(unitPrice * newReturnQty * 100) / 100;
+      if (product) {
+        const incObj = calculateIncentive(product, finalPaymentMethod, newReturnQty, returnAmount);
+        reversedIncentive = incObj.amount;
+      }
+    }
+
+    const now = new Date().toISOString();
+
+    run(`
+      UPDATE returns SET
+        staff_id = ?,
+        return_quantity = ?,
+        return_amount = ?,
+        reversed_incentive = ?,
+        return_date = ?,
+        payment_method = ?,
+        return_reason = ?,
+        remarks = ?,
+        updated_at = ?
+      WHERE id = ?
+    `, [
+      targetStaffId,
+      newReturnQty,
+      returnAmount,
+      reversedIncentive,
+      returnDateStr,
+      finalPaymentMethod,
+      return_reason || existingReturn.return_reason || 'Product Return',
+      remarks !== undefined ? remarks : existingReturn.remarks,
+      now,
+      existingReturn.id
+    ]);
+
+    const updatedReturn = get(`
+      SELECT
+        r.id,
+        r.return_number,
+        r.return_date,
+        r.return_quantity,
+        r.return_amount,
+        r.reversed_incentive,
+        r.order_id,
+        r.staff_id,
+        r.product_id,
+        COALESCE(r.payment_method, o.payment_method, 'Prepaid') AS payment_method,
+        r.return_reason,
+        r.remarks,
+        p.name AS product_name,
+        p.code AS product_code,
+        u.name AS returned_by_name,
+        u.staff_id AS returned_by_code,
+        u_order.name AS staff_name,
+        u_order.staff_id AS staff_code
+      FROM returns r
+      LEFT JOIN orders o ON r.order_id = o.id
+      JOIN products p ON r.product_id = p.id
+      JOIN users u ON COALESCE(r.returned_by_staff_id, r.staff_id) = u.id
+      LEFT JOIN users u_order ON r.staff_id = u_order.id
+      WHERE r.id = ?
+    `, [existingReturn.id]);
+
+    res.json({
+      returnItem: updatedReturn,
+      message: `Return ${updatedReturn.return_number} updated successfully.`
     });
   } catch (err) {
     res.status(400).json({ error: err.message });

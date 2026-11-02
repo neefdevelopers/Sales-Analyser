@@ -1,6 +1,7 @@
 // src/views/staff/StaffMyRecords.jsx
 import React, { useState, useEffect } from 'react';
 import { api } from '../../api';
+import { useSessionState } from '../../hooks/useSessionState';
 import {
   ShoppingCart,
   RotateCcw,
@@ -10,20 +11,24 @@ import {
   Filter,
   CheckCircle,
   FileText,
-  X
+  X,
+  ChevronDown
 } from 'lucide-react';
 
 export default function StaffMyRecords() {
-  const [activeTab, setActiveTab] = useState('orders'); // 'orders' | 'returns'
+  const [activeTab, setActiveTab] = useSessionState('filter_myrecords_tab', 'orders'); // 'orders' | 'returns'
   const [summary, setSummary] = useState(null);
   const [orders, setOrders] = useState([]);
   const [returns, setReturns] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Date filters
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [search, setSearch] = useState('');
+  // Date filters (persisted per session)
+  const [startDate, setStartDate] = useSessionState('filter_myrecords_start_date', '');
+  const [endDate, setEndDate] = useSessionState('filter_myrecords_end_date', '');
+  const [search, setSearch] = useSessionState('filter_myrecords_search', '');
+
+  // Toggle filtration panel
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -59,6 +64,8 @@ export default function StaffMyRecords() {
     setSearch('');
   }
 
+  const hasActiveFilters = Boolean(startDate || endDate || search.trim());
+
   // Filtered orders & returns by search term
   const filteredOrders = orders.filter(o => {
     if (!search.trim()) return true;
@@ -88,10 +95,49 @@ export default function StaffMyRecords() {
         <div>
           <h2 className="page-title">My Records</h2>
         </div>
+
+        <button
+          type="button"
+          className={`btn ${showFilters ? 'btn-primary' : 'btn-secondary'} btn-sm`}
+          onClick={() => setShowFilters(!showFilters)}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '7px',
+            padding: '8px 14px',
+            fontWeight: 600,
+            fontSize: '12.5px'
+          }}
+        >
+          <Filter size={14} />
+          <span>Filtration</span>
+          {hasActiveFilters && (
+            <span
+              style={{
+                background: showFilters ? '#ffffff' : 'var(--primary-600)',
+                color: showFilters ? 'var(--primary-600)' : '#ffffff',
+                borderRadius: '10px',
+                fontSize: '11px',
+                fontWeight: 700,
+                padding: '1px 6px',
+                marginLeft: '2px'
+              }}
+            >
+              {(Boolean(startDate || endDate) ? 1 : 0) + (search.trim() ? 1 : 0)}
+            </span>
+          )}
+          <ChevronDown
+            size={14}
+            style={{
+              transform: showFilters ? 'rotate(180deg)' : 'none',
+              transition: 'transform 0.2s ease'
+            }}
+          />
+        </button>
       </div>
 
       {/* 3 Summary Cards */}
-      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
+      <div className="kpi-grid three-col-kpi-grid" style={{ marginBottom: '24px' }}>
         {/* Card 1: Total Orders */}
         <div className="kpi-card-premium" style={{ '--card-accent': '#3b82f6' }}>
           <div className="kpi-header">
@@ -145,63 +191,159 @@ export default function StaffMyRecords() {
         </div>
       </div>
 
-      {/* Filtration Section */}
-      <div className="table-card" style={{ marginBottom: '18px' }}>
+      {/* Compact Applied Filtration Pill Bar (when collapsed) */}
+      {!showFilters && (
         <div
           style={{
-            padding: '12px 18px',
-            borderBottom: '1px solid var(--border-subtle)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            background: '#f8fafc'
+            flexWrap: 'wrap',
+            gap: '10px',
+            background: '#f8fafc',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 'var(--radius-md)',
+            padding: '8px 14px',
+            marginBottom: '18px',
+            fontSize: '12.5px'
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 700, color: 'var(--text-main)' }}>
-            <Filter size={15} color="var(--primary-600)" />
-            <span>Filtration</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              <Filter size={13} color="var(--primary-600)" /> Active Filters:
+            </span>
+            <span className="badge badge-info" style={{ fontSize: '11.5px' }}>
+              Mode: {activeTab === 'orders' ? 'Orders History' : 'Returns History'}
+            </span>
+            {(startDate || endDate) && (
+              <span className="badge badge-neutral" style={{ fontSize: '11.5px' }}>
+                Dates: {startDate || '...'} to {endDate || '...'}
+              </span>
+            )}
+            {search.trim() && (
+              <span className="badge badge-neutral" style={{ fontSize: '11.5px' }}>
+                Search: "{search.trim()}"
+              </span>
+            )}
+            {!hasActiveFilters && (
+              <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>
+                Showing all lifetime records
+              </span>
+            )}
           </div>
-          {(startDate || endDate || search) && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button
               type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={handleResetFilters}
-              style={{ padding: '4px 8px', fontSize: '11.5px', height: '26px' }}
+              className="btn btn-sm btn-outline"
+              onClick={() => setShowFilters(true)}
+              style={{ fontSize: '11.5px', padding: '3px 10px', height: 'auto' }}
             >
-              <X size={12} style={{ marginRight: '4px' }} /> Reset Filters
+              Change Filters ▾
             </button>
-          )}
+            {hasActiveFilters && (
+              <button
+                type="button"
+                className="btn btn-sm btn-ghost"
+                onClick={handleResetFilters}
+                style={{ fontSize: '11.5px', padding: '3px 8px', color: '#dc2626', height: 'auto' }}
+                title="Reset all filters"
+              >
+                <X size={12} style={{ marginRight: '4px' }} /> Reset
+              </button>
+            )}
+          </div>
         </div>
+      )}
 
-        <div
-          style={{
-            padding: '14px 18px',
-            display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '12px'
-          }}
-        >
-          {/* Search */}
-          <div className="search-input-wrap" style={{ minWidth: '220px', flex: '1 1 240px' }}>
-            <Search size={15} />
-            <input
-              type="text"
-              className="search-input"
-              placeholder={`Search ${activeTab === 'orders' ? 'orders' : 'returns'} by #, customer, product...`}
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              style={{ padding: '6px 10px 6px 32px', fontSize: '13px' }}
-            />
+      {/* Dedicated Filtration Section Card (when expanded) */}
+      {showFilters && (
+        <div className="table-card" style={{ marginBottom: '18px', padding: '16px 20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ width: '26px', height: '26px', borderRadius: '6px', background: 'var(--primary-50)', color: 'var(--primary-600)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Filter size={15} />
+              </div>
+              <strong style={{ fontSize: '13.5px', color: 'var(--text-main)', letterSpacing: '0.2px' }}>Filtration</strong>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                (Filter your records by history type, search query, or date range)
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost"
+              onClick={() => setShowFilters(false)}
+              style={{ fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--text-muted)' }}
+            >
+              <X size={14} /> Hide
+            </button>
           </div>
 
-          {/* Date Range Filter */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Calendar size={13} color="var(--primary-600)" /> Date Range:
-            </span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
+          {/* History Type Toggle */}
+          <div style={{ display: 'inline-flex', background: '#f1f5f9', padding: '4px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+            <button
+              type="button"
+              onClick={() => setActiveTab('orders')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                borderRadius: 'var(--radius-sm)',
+                border: 'none',
+                background: activeTab === 'orders' ? '#ffffff' : 'transparent',
+                color: activeTab === 'orders' ? 'var(--primary-700)' : 'var(--text-muted)',
+                fontWeight: activeTab === 'orders' ? 700 : 500,
+                boxShadow: activeTab === 'orders' ? 'var(--shadow-xs)' : 'none',
+                cursor: 'pointer',
+                fontSize: '13px',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <ShoppingCart size={14} />
+              <span>Order History ({orders.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('returns')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                borderRadius: 'var(--radius-sm)',
+                border: 'none',
+                background: activeTab === 'returns' ? '#ffffff' : 'transparent',
+                color: activeTab === 'returns' ? '#dc2626' : 'var(--text-muted)',
+                fontWeight: activeTab === 'returns' ? 700 : 500,
+                boxShadow: activeTab === 'returns' ? 'var(--shadow-xs)' : 'none',
+                cursor: 'pointer',
+                fontSize: '13px',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <RotateCcw size={14} />
+              <span>Return History ({returns.length})</span>
+            </button>
+          </div>
+
+          {/* Search, Dates, and Reset */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <div className="search-input-wrap" style={{ minWidth: '220px', maxWidth: '300px' }}>
+              <Search size={15} />
+              <input
+                type="text"
+                className="search-input"
+                placeholder={`Search ${activeTab === 'orders' ? 'orders' : 'returns'}...`}
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                style={{ padding: '6px 10px 6px 32px', fontSize: '12.5px' }}
+              />
+            </div>
+
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>From:</span>
               <input
                 type="date"
                 className="form-control"
@@ -209,7 +351,7 @@ export default function StaffMyRecords() {
                 value={startDate}
                 onChange={e => setStartDate(e.target.value)}
               />
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>to</span>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>To:</span>
               <input
                 type="date"
                 className="form-control"
@@ -218,55 +360,25 @@ export default function StaffMyRecords() {
                 onChange={e => setEndDate(e.target.value)}
               />
             </div>
+
+            {hasActiveFilters && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={handleResetFilters}
+                style={{ padding: '5px 10px', fontSize: '12px' }}
+                title="Reset filters"
+              >
+                <X size={13} style={{ marginRight: '4px' }} /> Reset
+              </button>
+            )}
           </div>
         </div>
       </div>
+      )}
 
-      {/* Tab Navigation: Order History & Return History */}
+      {/* Table Card */}
       <div className="table-card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-subtle)', padding: '0 16px' }}>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '14px 18px',
-                border: 'none',
-                background: 'transparent',
-                fontWeight: activeTab === 'orders' ? 700 : 500,
-                color: activeTab === 'orders' ? 'var(--primary-600)' : 'var(--text-muted)',
-                borderBottom: activeTab === 'orders' ? '2px solid var(--primary-600)' : '2px solid transparent',
-                cursor: 'pointer',
-                fontSize: '14px'
-              }}
-              onClick={() => setActiveTab('orders')}
-            >
-              <ShoppingCart size={16} />
-              <span>Order History ({orders.length})</span>
-            </button>
-
-            <button
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '14px 18px',
-                border: 'none',
-                background: 'transparent',
-                fontWeight: activeTab === 'returns' ? 700 : 500,
-                color: activeTab === 'returns' ? 'var(--primary-600)' : 'var(--text-muted)',
-                borderBottom: activeTab === 'returns' ? '2px solid var(--primary-600)' : '2px solid transparent',
-                cursor: 'pointer',
-                fontSize: '14px'
-              }}
-              onClick={() => setActiveTab('returns')}
-            >
-              <RotateCcw size={16} />
-              <span>Return History ({returns.length})</span>
-            </button>
-          </div>
-        </div>
 
         {/* Tab 1: Order History */}
         {activeTab === 'orders' && (

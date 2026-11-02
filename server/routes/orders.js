@@ -358,7 +358,20 @@ router.post('/', authenticate, (req, res) => {
   const nextSeq = (countToday?.c || 0) + 1;
   const orderNumber = `ORD-${dateFormatted}-${String(nextSeq).padStart(4, '0')}`;
 
-  const staffId = req.user.id;
+  const isManager = req.user.role === 'brand_manager';
+  let staffId = req.user.id;
+
+  if (isManager && req.body.staff_id) {
+    const targetStaff = get('SELECT id, name, status FROM users WHERE id = ?', [req.body.staff_id]);
+    if (!targetStaff) {
+      return res.status(404).json({ error: 'Assigned staff member not found.' });
+    }
+    if (targetStaff.status !== 'active') {
+      return res.status(400).json({ error: 'Cannot assign order to an inactive staff member.' });
+    }
+    staffId = targetStaff.id;
+  }
+
   const now = new Date().toISOString();
 
   try {
@@ -436,6 +449,203 @@ router.post('/', authenticate, (req, res) => {
     res.status(201).json({
       order: createdOrder,
       message: `Order ${createdOrder.order_number} created successfully.`
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// PUT edit existing order (Brand Manager can edit all, Staff can edit own)
+router.put('/:id', authenticate, (req, res) => {
+  const isManager = req.user.role === 'brand_manager';
+  const orderId = parseInt(req.params.id, 10);
+
+  const order = get('SELECT * FROM orders WHERE id = ?', [orderId]);
+  if (!order) {
+    return res.status(404).json({ error: 'Order not found.' });
+  }
+
+  // Authorization: Sales staff can only edit their own orders
+  if (!isManager && order.staff_id !== req.user.id) {
+    return res.status(403).json({ error: 'You are only authorized to edit your own orders.' });
+  }
+
+  const {
+    staff_id,
+    customer_name,
+    customer_phone,
+    customer_address,
+    product_id,
+    quantity,
+    payment_method,
+    order_date,
+    status,
+    remarks
+  } = req.body;
+
+  // Determine target staff
+  let targetStaffId = order.staff_id;
+  if (isManager && staff_id) {
+    const assignedStaff = get('SELECT id, status FROM users WHERE id = ?', [staff_id]);
+    if (!assignedStaff) {
+      return res.status(404).json({ error: 'Assigned staff member not found.' });
+    }
+    if (assignedStaff.status !== 'active') {
+      return res.status(400).json({ error: 'Cannot assign order to an inactive staff member.' });
+    }
+    targetStaffId = assignedStaff.id;
+  }
+
+  // Check product
+  const targetProductId = product_id ? parseInt(product_id, 10) : order.product_id;
+  const product = get('SELECT * FROM products WHERE id = ?', [targetProductId]);
+  if (!product) {
+    return res.status(404).json({ error: 'Selected product not found.' });
+  }
+
+  // Check quantity against already returned units
+  const newQty = quantity !== undefined ? parseInt(quantity, 10) : order.quantity;
+  if (isNaN(newQty) || newQty <= 0) {
+    return res.status(400).json({ error: 'Quantity must be a positive integer (at least 1).' });
+  }
+
+  const retStats = get('SELECT COALESCE(SUM(return_quantity), 0) AS total_returned FROM returns WHERE order_id = ?', [order.id]);
+  const totalReturned = retStats?.total_returned || 0;
+  if (newQty < totalReturned) {
+    return res.status(400).json({
+      error: `Quantity cannot be reduced to ${newQty}. ${totalReturned} units have already been returned for this order.`
+    });
+  }
+
+  const finalPaymentMethod = (payment_method && ['Prepaid', 'COD'].includes(payment_method))
+    ? payment_method
+    : order.payment_method;
+
+  const orderDateStr = (order_date && /^\d{4}-\d{2}-\d{2}$/.test(order_date.trim()))
+    ? order_date.trim()
+    : order.order_date;
+
+  const orderStatus = (status && ['Confirmed', 'Delivered', 'Pending', 'Cancelled'].includes(status))
+    ? status
+    : order.status;
+
+  // Calculate new unit price, total amount, and snapshot incentive
+  const unitPrice = product.price || 0;
+  const totalAmount = Math.round(unitPrice * newQty * 100) / 100;
+  const incentive = calculateIncentive(product, finalPaymentMethod, newQty, totalAmount);
+  const now = new Date().toISOString();
+
+  try {
+    transaction(() => {
+      // Update customer details if provided
+      if (customer_name || customer_phone || customer_address) {
+        const custName = customer_name ? customer_name.trim() : undefined;
+        const custAddr = customer_address ? customer_address.trim() : undefined;
+        const cleanPhone = customer_phone ? normalizePhone(customer_phone) : undefined;
+
+        let custUpdates = [];
+        let custParams = [];
+        if (custName !== undefined) { custUpdates.push('name = ?'); custParams.push(custName); }
+        if (custAddr !== undefined) { custUpdates.push('address = ?'); custParams.push(custAddr); }
+        if (cleanPhone !== undefined && cleanPhone.length >= 7) { custUpdates.push('phone = ?'); custParams.push(cleanPhone); }
+        custUpdates.push('updated_at = ?'); custParams.push(now);
+
+        if (custUpdates.length > 1) {
+          run(`UPDATE customers SET ${custUpdates.join(', ')} WHERE id = ?`, [...custParams, order.customer_id]);
+        }
+      }
+
+      // Update Order
+      run(`
+        UPDATE orders SET
+          staff_id = ?,
+          product_id = ?,
+          quantity = ?,
+          unit_price = ?,
+          total_amount = ?,
+          payment_method = ?,
+          order_date = ?,
+          status = ?,
+          remarks = ?,
+          incentive_type = ?,
+          incentive_basis = ?,
+          incentive_rate = ?,
+          incentive_amount = ?,
+          updated_at = ?
+        WHERE id = ?
+      `, [
+        targetStaffId,
+        product.id,
+        newQty,
+        unitPrice,
+        totalAmount,
+        finalPaymentMethod,
+        orderDateStr,
+        orderStatus,
+        remarks !== undefined ? remarks : order.remarks,
+        incentive.type,
+        incentive.basis,
+        incentive.rate,
+        incentive.amount,
+        now,
+        order.id
+      ]);
+
+      // If staff changed, synchronize existing returns' staff_id
+      if (targetStaffId !== order.staff_id) {
+        run('UPDATE returns SET staff_id = ?, updated_at = ? WHERE order_id = ?', [
+          targetStaffId,
+          now,
+          order.id
+        ]);
+      }
+
+      // If quantity or incentive changed, recalculate reversed_incentive on existing returns
+      const linkedReturns = query('SELECT id, return_quantity FROM returns WHERE order_id = ?', [order.id]);
+      for (const ret of linkedReturns) {
+        const newRev = newQty > 0
+          ? Math.round((ret.return_quantity / newQty) * incentive.amount * 100) / 100
+          : 0;
+        run('UPDATE returns SET reversed_incentive = ?, updated_at = ? WHERE id = ?', [
+          newRev,
+          now,
+          ret.id
+        ]);
+      }
+    });
+
+    const updatedOrder = get(`
+      SELECT
+        o.*,
+        c.name AS customer_name,
+        c.phone AS customer_phone,
+        c.address AS customer_address,
+        p.name AS product_name,
+        p.code AS product_code,
+        u.name AS staff_name,
+        u.staff_id AS staff_code,
+        COALESCE((SELECT SUM(r.return_quantity) FROM returns r WHERE r.order_id = o.id), 0) AS returned_quantity,
+        COALESCE((SELECT SUM(r.return_amount) FROM returns r WHERE r.order_id = o.id), 0) AS returned_amount,
+        COALESCE((SELECT SUM(r.reversed_incentive) FROM returns r WHERE r.order_id = o.id), 0) AS reversed_incentive
+      FROM orders o
+      JOIN customers c ON o.customer_id = c.id
+      JOIN products p ON o.product_id = p.id
+      JOIN users u ON o.staff_id = u.id
+      WHERE o.id = ?
+    `, [order.id]);
+
+    const returnableQuantity = Math.max(0, updatedOrder.quantity - updatedOrder.returned_quantity);
+    const netAmount = Math.max(0, updatedOrder.total_amount - updatedOrder.returned_amount);
+    const netIncentive = Math.max(0, updatedOrder.incentive_amount - updatedOrder.reversed_incentive);
+
+    res.json({
+      order: {
+        ...updatedOrder,
+        returnable_quantity: returnableQuantity,
+        net_amount: Math.round(netAmount * 100) / 100,
+        net_incentive: Math.round(netIncentive * 100) / 100
+      },
+      message: `Order ${updatedOrder.order_number} updated successfully.`
     });
   } catch (err) {
     res.status(400).json({ error: err.message });

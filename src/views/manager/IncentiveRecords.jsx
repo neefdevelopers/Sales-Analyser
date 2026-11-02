@@ -1,6 +1,9 @@
+
+
 // src/views/manager/IncentiveRecords.jsx
 import React, { useState, useEffect } from 'react';
 import { api } from '../../api';
+import { useSessionState } from '../../hooks/useSessionState';
 import {
   Award,
   Search,
@@ -20,7 +23,8 @@ import {
   CreditCard,
   Download,
   Filter,
-  X
+  X,
+  ChevronDown
 } from 'lucide-react';
 
 const MONTHS = [
@@ -41,8 +45,8 @@ const MONTHS = [
 const YEARS = [2024, 2025, 2026, 2027, 2028];
 
 export default function IncentiveRecords() {
-  const [currentYear, setCurrentYear] = useState(2026);
-  const [currentMonth, setCurrentMonth] = useState(10);
+  const [currentYear, setCurrentYear] = useSessionState('filter_incentives_year', 2026);
+  const [currentMonth, setCurrentMonth] = useSessionState('filter_incentives_month', 10);
 
   // Navigation state: null for monthly staff summary list; number for staff detail view
   const [selectedStaffId, setSelectedStaffId] = useState(null);
@@ -51,16 +55,18 @@ export default function IncentiveRecords() {
   const [summaryData, setSummaryData] = useState(null);
   const [staffDetailData, setStaffDetailData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useSessionState('filter_incentives_search', '');
 
   // Modals for audit inspection
   const [selectedOrderModal, setSelectedOrderModal] = useState(null);
 
   // Tab state in staff detail view: 'orders' | 'returns' | 'both'
-  const [detailTab, setDetailTab] = useState('orders');
-  const [paymentMethodFilter, setPaymentMethodFilter] = useState('all');
+  const [detailTab, setDetailTab] = useSessionState('filter_incentives_detail_tab', 'orders');
 
-  // Fetch current business time on mount to initialize default month/year
+  // Toggle filtration panel
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Fetch current business time on mount to initialize default month/year if not set in session
   useEffect(() => {
     async function initTime() {
       try {
@@ -69,8 +75,8 @@ export default function IncentiveRecords() {
           const parts = timeRes.currentDate.split('-');
           const y = parseInt(parts[0], 10);
           const m = parseInt(parts[1], 10);
-          if (y) setCurrentYear(y);
-          if (m) setCurrentMonth(m);
+          if (!sessionStorage.getItem('filter_incentives_year') && y) setCurrentYear(y);
+          if (!sessionStorage.getItem('filter_incentives_month') && m) setCurrentMonth(m);
         }
       } catch (err) {
         // Fallback to default
@@ -78,15 +84,6 @@ export default function IncentiveRecords() {
     }
     initTime();
   }, []);
-
-  // Fetch data whenever year, month, or selectedStaffId changes
-  useEffect(() => {
-    if (selectedStaffId === null) {
-      fetchMonthlySummary();
-    } else {
-      fetchStaffDetails(selectedStaffId);
-    }
-  }, [currentYear, currentMonth, selectedStaffId]);
 
   async function fetchMonthlySummary() {
     setLoading(true);
@@ -112,6 +109,15 @@ export default function IncentiveRecords() {
     }
   }
 
+  // Fetch data whenever year, month, or selectedStaffId changes
+  useEffect(() => {
+    if (selectedStaffId === null) {
+      fetchMonthlySummary();
+    } else {
+      fetchStaffDetails(selectedStaffId);
+    }
+  }, [currentYear, currentMonth, selectedStaffId]);
+
   function handlePrevMonth() {
     if (currentMonth === 1) {
       setCurrentMonth(12);
@@ -128,6 +134,25 @@ export default function IncentiveRecords() {
     } else {
       setCurrentMonth(prev => prev + 1);
     }
+  }
+
+  async function handleCurrentMonth() {
+    try {
+      const timeRes = await api.get('/system/time');
+      if (timeRes?.currentDate) {
+        const parts = timeRes.currentDate.split('-');
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10);
+        if (y) setCurrentYear(y);
+        if (m) setCurrentMonth(m);
+        return;
+      }
+    } catch (e) {
+      // fallback
+    }
+    const now = new Date();
+    setCurrentYear(now.getFullYear());
+    setCurrentMonth(now.getMonth() + 1);
   }
 
   // Filter staff list in summary view
@@ -201,41 +226,41 @@ export default function IncentiveRecords() {
     const orders = staffDetailData?.orders || [];
     const returns = staffDetailData?.returns || [];
 
-    // Filter orders by search & payment method
+    // Filter orders by search
     const filteredOrders = orders.filter(o => {
-      if (paymentMethodFilter !== 'all' && o.payment_method !== paymentMethodFilter) return false;
       if (!search.trim()) return true;
       const term = search.trim().toLowerCase();
       return (
         o.order_number.toLowerCase().includes(term) ||
         o.product_name.toLowerCase().includes(term) ||
+        o.customer_name.toLowerCase().includes(term) ||
         (o.payment_method && o.payment_method.toLowerCase().includes(term))
       );
     });
 
-    // Filter returns by search & payment method
+    // Filter returns by search
     const filteredReturns = returns.filter(r => {
-      if (paymentMethodFilter !== 'all' && r.payment_method !== paymentMethodFilter) return false;
       if (!search.trim()) return true;
       const term = search.trim().toLowerCase();
       return (
         r.return_number.toLowerCase().includes(term) ||
+        r.order_number.toLowerCase().includes(term) ||
         r.product_name.toLowerCase().includes(term) ||
-        (r.payment_method && r.payment_method.toLowerCase().includes(term))
+        (r.payment_method && r.payment_method.toLowerCase().includes(term)) ||
+        (r.customer_name && r.customer_name.toLowerCase().includes(term))
       );
     });
 
     return (
       <div className="page-body">
-        {/* Navigation Header */}
-        <div className="page-header" style={{ marginBottom: '16px', alignItems: 'center' }}>
+        {/* Navigation & Period Header */}
+        <div className="page-header" style={{ marginBottom: '16px', alignItems: 'flex-start' }}>
           <div>
             <button
               className="btn btn-secondary btn-sm"
               onClick={() => {
                 setSelectedStaffId(null);
                 setSearch('');
-                setPaymentMethodFilter('all');
               }}
               style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginBottom: '8px', padding: '6px 12px' }}
             >
@@ -255,10 +280,51 @@ export default function IncentiveRecords() {
               </span>
             </div>
           </div>
+
+          <div>
+            <button
+              type="button"
+              className={`btn ${showFilters ? 'btn-primary' : 'btn-secondary'} btn-sm`}
+              onClick={() => setShowFilters(!showFilters)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '7px',
+                padding: '8px 14px',
+                fontWeight: 600,
+                fontSize: '12.5px'
+              }}
+            >
+              <Filter size={14} />
+              <span>Filtration</span>
+              {(search.trim() || detailTab !== 'orders') && (
+                <span
+                  style={{
+                    background: showFilters ? '#ffffff' : 'var(--primary-600)',
+                    color: showFilters ? 'var(--primary-600)' : '#ffffff',
+                    borderRadius: '10px',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    padding: '1px 6px',
+                    marginLeft: '2px'
+                  }}
+                >
+                  {(search.trim() ? 1 : 0) + (detailTab !== 'orders' ? 1 : 0)}
+                </span>
+              )}
+              <ChevronDown
+                size={14}
+                style={{
+                  transform: showFilters ? 'rotate(180deg)' : 'none',
+                  transition: 'transform 0.2s ease'
+                }}
+              />
+            </button>
+          </div>
         </div>
 
         {/* Staff Summary Cards (4) */}
-        <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '22px' }}>
+        <div className="kpi-grid sales-kpi-grid" style={{ marginBottom: '22px' }}>
           <div className="kpi-card-premium" style={{ '--card-accent': '#3b82f6' }}>
             <div className="kpi-header">
               <span className="kpi-title">Total Orders</span>
@@ -318,49 +384,124 @@ export default function IncentiveRecords() {
           </div>
         </div>
 
-        {/* Filtration Section */}
-        <div className="table-card" style={{ marginBottom: '20px' }}>
+        {/* Compact Applied Filtration Pill Bar (when collapsed) */}
+        {!showFilters && (
           <div
             style={{
-              padding: '12px 18px',
-              borderBottom: '1px solid var(--border-subtle)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              background: '#f8fafc'
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 700, color: 'var(--text-main)' }}>
-              <Filter size={15} color="var(--primary-600)" />
-              <span>Filtration</span>
-            </div>
-            {(search || paymentMethodFilter !== 'all') && (
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => {
-                  setSearch('');
-                  setPaymentMethodFilter('all');
-                }}
-                style={{ padding: '4px 8px', fontSize: '11.5px', height: '26px' }}
-              >
-                <X size={12} style={{ marginRight: '4px' }} /> Reset Filters
-              </button>
-            )}
-          </div>
-
-          <div
-            style={{
-              padding: '14px 18px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               flexWrap: 'wrap',
-              gap: '14px'
+              gap: '10px',
+              background: '#f8fafc',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-md)',
+              padding: '8px 14px',
+              marginBottom: '18px',
+              fontSize: '12.5px'
             }}
           >
-            {/* Left: View Tabs */}
-            <div style={{ display: 'inline-flex', background: 'var(--bg-surface-subtle)', padding: '3px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                <Filter size={13} color="var(--primary-600)" /> Active Filters:
+              </span>
+              <span className="badge badge-info" style={{ fontSize: '11.5px' }}>
+                Period: {currentMonthName} {currentYear}
+              </span>
+              <span className="badge badge-neutral" style={{ fontSize: '11.5px' }}>
+                Mode: {detailTab === 'orders' ? 'Orders' : detailTab === 'returns' ? 'Returns' : 'Both'}
+              </span>
+              {search.trim() && (
+                <span className="badge badge-neutral" style={{ fontSize: '11.5px' }}>
+                  Search: "{search.trim()}"
+                </span>
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline"
+                onClick={() => setShowFilters(true)}
+                style={{ fontSize: '11.5px', padding: '3px 10px', height: 'auto' }}
+              >
+                Change Filters ▾
+              </button>
+              {search.trim() && (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-ghost"
+                  onClick={() => setSearch('')}
+                  style={{ fontSize: '11.5px', padding: '3px 8px', color: '#dc2626', height: 'auto' }}
+                >
+                  <X size={12} style={{ marginRight: '4px' }} /> Clear Search
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Table Selector & Search Toolbar (Filtration Card) */}
+        {showFilters && (
+          <div className="table-card" style={{ marginBottom: '20px', padding: '16px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '26px', height: '26px', borderRadius: '6px', background: 'var(--primary-50)', color: 'var(--primary-600)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Filter size={15} />
+                </div>
+                <strong style={{ fontSize: '13.5px', color: 'var(--text-main)', letterSpacing: '0.2px' }}>Filtration</strong>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                  (Filter by period, table mode, or search keywords)
+                </span>
+              </div>
+              <button
+                type="button"
+                className="btn btn-sm btn-ghost"
+                onClick={() => setShowFilters(false)}
+                style={{ fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--text-muted)' }}
+              >
+                <X size={14} /> Hide
+              </button>
+            </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
+            {/* 1. Period Filter (Month & Year) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Period:</span>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <button className="btn btn-secondary btn-sm" onClick={handlePrevMonth} title="Previous Month">
+                  <ChevronLeft size={15} />
+                </button>
+                <select
+                  className="form-control"
+                  style={{ width: 'auto', padding: '5px 10px', fontSize: '13px', fontWeight: 600 }}
+                  value={currentMonth}
+                  onChange={e => setCurrentMonth(parseInt(e.target.value, 10))}
+                >
+                  {MONTHS.map(m => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+                <select
+                  className="form-control"
+                  style={{ width: 'auto', padding: '5px 10px', fontSize: '13px', fontWeight: 600 }}
+                  value={currentYear}
+                  onChange={e => setCurrentYear(parseInt(e.target.value, 10))}
+                >
+                  {YEARS.map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+                <button className="btn btn-secondary btn-sm" onClick={handleNextMonth} title="Next Month">
+                  <ChevronRight size={15} />
+                </button>
+                <button className="btn btn-secondary btn-sm" onClick={handleCurrentMonth} style={{ fontSize: '12px', padding: '5px 10px' }}>
+                  Current
+                </button>
+              </div>
+            </div>
+
+            {/* 2. Table Mode Filter Tabs */}
+            <div style={{ display: 'inline-flex', background: '#f1f5f9', padding: '4px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
               <button
                 type="button"
                 onClick={() => setDetailTab('orders')}
@@ -368,11 +509,11 @@ export default function IncentiveRecords() {
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '6px',
-                  padding: '7px 14px',
+                  padding: '6px 14px',
                   borderRadius: 'var(--radius-sm)',
                   border: 'none',
                   background: detailTab === 'orders' ? '#ffffff' : 'transparent',
-                  color: detailTab === 'orders' ? '#2563eb' : 'var(--text-muted)',
+                  color: detailTab === 'orders' ? 'var(--primary-700)' : 'var(--text-muted)',
                   fontWeight: detailTab === 'orders' ? 700 : 500,
                   boxShadow: detailTab === 'orders' ? 'var(--shadow-xs)' : 'none',
                   cursor: 'pointer',
@@ -382,9 +523,6 @@ export default function IncentiveRecords() {
               >
                 <ShoppingCart size={14} />
                 <span>Orders ({orders.length})</span>
-                <span className="badge badge-warning" style={{ fontSize: '11px', padding: '2px 6px' }}>
-                  ₹{summary.grossIncentive?.toLocaleString()}
-                </span>
               </button>
 
               <button
@@ -394,7 +532,7 @@ export default function IncentiveRecords() {
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '6px',
-                  padding: '7px 14px',
+                  padding: '6px 14px',
                   borderRadius: 'var(--radius-sm)',
                   border: 'none',
                   background: detailTab === 'returns' ? '#ffffff' : 'transparent',
@@ -408,11 +546,6 @@ export default function IncentiveRecords() {
               >
                 <RotateCcw size={14} />
                 <span>Returns ({returns.length})</span>
-                {summary.returnAdjustments > 0 && (
-                  <span className="badge badge-danger" style={{ fontSize: '11px', padding: '2px 6px' }}>
-                    -₹{summary.returnAdjustments?.toLocaleString()}
-                  </span>
-                )}
               </button>
 
               <button
@@ -422,7 +555,7 @@ export default function IncentiveRecords() {
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '6px',
-                  padding: '7px 14px',
+                  padding: '6px 12px',
                   borderRadius: 'var(--radius-sm)',
                   border: 'none',
                   background: detailTab === 'both' ? '#ffffff' : 'transparent',
@@ -430,18 +563,17 @@ export default function IncentiveRecords() {
                   fontWeight: detailTab === 'both' ? 700 : 500,
                   boxShadow: detailTab === 'both' ? 'var(--shadow-xs)' : 'none',
                   cursor: 'pointer',
-                  fontSize: '13px',
+                  fontSize: '12.5px',
                   transition: 'all 0.15s ease'
                 }}
               >
-                <span>Both Tables</span>
+                <span>Both</span>
               </button>
             </div>
 
-            {/* Right: Search, Payment Method & Period Filters */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              {/* Search */}
-              <div className="search-input-wrap" style={{ minWidth: '220px' }}>
+            {/* 3. Search Filter */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 220px', maxWidth: '400px' }}>
+              <div className="search-input-wrap" style={{ flex: 1 }}>
                 <Search size={15} />
                 <input
                   type="text"
@@ -449,61 +581,23 @@ export default function IncentiveRecords() {
                   placeholder={detailTab === 'returns' ? 'Search returns by #, product...' : 'Search by order #, product...'}
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  style={{ padding: '6px 10px 6px 32px', fontSize: '13px' }}
                 />
               </div>
-
-              {/* Payment Method Filter */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Payment:</span>
-                <select
-                  className="form-control"
-                  style={{ width: 'auto', padding: '5px 10px', fontSize: '12.5px' }}
-                  value={paymentMethodFilter}
-                  onChange={e => setPaymentMethodFilter(e.target.value)}
+              {search && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setSearch('')}
+                  title="Clear search"
+                  style={{ padding: '6px 10px', fontSize: '12px' }}
                 >
-                  <option value="all">All Methods</option>
-                  <option value="Prepaid">Prepaid</option>
-                  <option value="COD">COD</option>
-                </select>
-              </div>
-
-              {/* Period (Month & Year) */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <Calendar size={13} color="var(--primary-600)" />
-                  Period:
-                </span>
-                <button className="btn btn-secondary btn-sm" onClick={handlePrevMonth} title="Previous Month" style={{ padding: '4px 8px', height: '30px' }}>
-                  <ChevronLeft size={14} />
+                  <X size={13} style={{ marginRight: '4px' }} /> Clear
                 </button>
-                <select
-                  className="form-control"
-                  style={{ width: 'auto', padding: '4px 8px', fontSize: '12.5px', fontWeight: 600 }}
-                  value={currentMonth}
-                  onChange={e => setCurrentMonth(parseInt(e.target.value, 10))}
-                >
-                  {MONTHS.map(m => (
-                    <option key={m.value} value={m.value}>{m.label}</option>
-                  ))}
-                </select>
-                <select
-                  className="form-control"
-                  style={{ width: 'auto', padding: '4px 8px', fontSize: '12.5px', fontWeight: 600 }}
-                  value={currentYear}
-                  onChange={e => setCurrentYear(parseInt(e.target.value, 10))}
-                >
-                  {YEARS.map(y => (
-                    <option key={y} value={y}>{y}</option>
-                  ))}
-                </select>
-                <button className="btn btn-secondary btn-sm" onClick={handleNextMonth} title="Next Month" style={{ padding: '4px 8px', height: '30px' }}>
-                  <ChevronRight size={14} />
-                </button>
-              </div>
+              )}
             </div>
           </div>
         </div>
+        )}
 
         {/* TABLE 1: ORDERS & EARNED INCENTIVES */}
         {(detailTab === 'orders' || detailTab === 'both') && (
@@ -706,22 +800,26 @@ export default function IncentiveRecords() {
         {/* Complete Order Details Modal */}
         {selectedOrderModal && (
           <div className="modal-overlay">
-            <div className="modal-dialog" style={{ maxWidth: '640px' }}>
+            <div
+              className="modal-dialog"
+              style={{
+                width: 'min(820px, 96vw)',
+                maxWidth: '820px',
+                maxHeight: '92vh',
+                display: 'flex',
+                flexDirection: 'column'
+              }}
+            >
               <div className="modal-header">
                 <h3 className="modal-title">Order Audit: {selectedOrderModal.order_number}</h3>
                 <button className="modal-close" onClick={() => setSelectedOrderModal(null)}>✕</button>
               </div>
-              <div className="modal-body">
+              <div className="modal-body" style={{ padding: '20px 24px', overflowY: 'auto', flex: 1 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
                   <div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Customer Info</div>
-                    <div style={{ fontWeight: 700, fontSize: '15px' }}>{selectedOrderModal.customer_name}</div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Phone: {selectedOrderModal.customer_phone}</div>
-                    {selectedOrderModal.customer_address && (
-                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                        Address: {selectedOrderModal.customer_address}
-                      </div>
-                    )}
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Order Details</div>
+                    <div style={{ fontWeight: 700, fontSize: '15px' }}>{selectedOrderModal.order_number}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Date: {selectedOrderModal.order_date}</div>
                   </div>
 
                   <div>
@@ -854,12 +952,51 @@ export default function IncentiveRecords() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className={`btn ${showFilters ? 'btn-primary' : 'btn-secondary'} btn-sm`}
+            onClick={() => setShowFilters(!showFilters)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '7px',
+              padding: '8px 14px',
+              fontWeight: 600,
+              fontSize: '12.5px'
+            }}
+          >
+            <Filter size={14} />
+            <span>Filtration</span>
+            {search.trim() && (
+              <span
+                style={{
+                  background: showFilters ? '#ffffff' : 'var(--primary-600)',
+                  color: showFilters ? 'var(--primary-600)' : '#ffffff',
+                  borderRadius: '10px',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  padding: '1px 6px',
+                  marginLeft: '2px'
+                }}
+              >
+                1
+              </span>
+            )}
+            <ChevronDown
+              size={14}
+              style={{
+                transform: showFilters ? 'rotate(180deg)' : 'none',
+                transition: 'transform 0.2s ease'
+              }}
+            />
+          </button>
+
           <button
             className="btn btn-secondary btn-sm"
             onClick={handleExportMonthlyCsv}
             disabled={filteredStaff.length === 0}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px' }}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px' }}
           >
             <Download size={14} />
             <span>Export CSV</span>
@@ -890,7 +1027,7 @@ export default function IncentiveRecords() {
       </div>
 
       {/* 4 Summary Cards */}
-      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '22px' }}>
+      <div className="kpi-grid sales-kpi-grid" style={{ marginBottom: '22px' }}>
         <div className="kpi-card-premium" style={{ '--card-accent': '#3b82f6' }}>
           <div className="kpi-header">
             <span className="kpi-title">Total Orders</span>
@@ -950,105 +1087,146 @@ export default function IncentiveRecords() {
         </div>
       </div>
 
-      {/* Filtration Section */}
-      <div className="table-card" style={{ marginBottom: '18px' }}>
+      {/* Compact Applied Filtration Pill Bar (when collapsed) */}
+      {!showFilters && (
         <div
           style={{
-            padding: '12px 18px',
-            borderBottom: '1px solid var(--border-subtle)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            background: '#f8fafc'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 700, color: 'var(--text-main)' }}>
-            <Filter size={15} color="var(--primary-600)" />
-            <span>Filtration</span>
-          </div>
-          {search && (
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={() => setSearch('')}
-              style={{ padding: '4px 8px', fontSize: '11.5px', height: '26px' }}
-            >
-              <X size={12} style={{ marginRight: '4px' }} /> Clear Search
-            </button>
-          )}
-        </div>
-
-        <div
-          style={{
-            padding: '14px 18px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             flexWrap: 'wrap',
-            gap: '14px'
+            gap: '10px',
+            background: '#f8fafc',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 'var(--radius-md)',
+            padding: '8px 14px',
+            marginBottom: '18px',
+            fontSize: '12.5px'
           }}
         >
-          {/* Search Staff */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '1 1 300px' }}>
-            <div className="search-input-wrap" style={{ flex: 1, minWidth: '240px' }}>
-              <Search size={16} />
-              <input
-                type="text"
-                className="search-input"
-                placeholder="Search staff by name or Staff ID..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-              />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              <Filter size={13} color="var(--primary-600)" /> Active Filters:
+            </span>
+            <span className="badge badge-info" style={{ fontSize: '11.5px' }}>
+              Period: {currentMonthName} {currentYear}
+            </span>
+            {search.trim() && (
+              <span className="badge badge-neutral" style={{ fontSize: '11.5px' }}>
+                Search: "{search.trim()}"
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              type="button"
+              className="btn btn-sm btn-outline"
+              onClick={() => setShowFilters(true)}
+              style={{ fontSize: '11.5px', padding: '3px 10px', height: 'auto' }}
+            >
+              Change Filters ▾
+            </button>
+            {search.trim() && (
+              <button
+                type="button"
+                className="btn btn-sm btn-ghost"
+                onClick={() => setSearch('')}
+                style={{ fontSize: '11.5px', padding: '3px 8px', color: '#dc2626', height: 'auto' }}
+              >
+                <X size={12} style={{ marginRight: '4px' }} /> Clear Search
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Dedicated Filtration Section Card */}
+      {showFilters && (
+        <div className="table-card" style={{ marginBottom: '20px', padding: '16px 20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ width: '26px', height: '26px', borderRadius: '6px', background: 'var(--primary-50)', color: 'var(--primary-600)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Filter size={15} />
+              </div>
+              <strong style={{ fontSize: '13.5px', color: 'var(--text-main)', letterSpacing: '0.2px' }}>Filtration</strong>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                (Period selection and staff search filtration)
+              </span>
             </div>
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost"
+              onClick={() => setShowFilters(false)}
+              style={{ fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--text-muted)' }}
+            >
+              <X size={14} /> Hide
+            </button>
           </div>
 
-          {/* Period Filter (Month & Year) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <Calendar size={14} color="var(--primary-600)" />
-              Period:
-            </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={handlePrevMonth}
-                title="Previous Month"
-                style={{ padding: '5px 8px', height: '32px' }}
-              >
-                <ChevronLeft size={14} />
-              </button>
-              <select
-                className="form-control"
-                style={{ width: 'auto', padding: '5px 10px', fontSize: '13px', fontWeight: 600 }}
-                value={currentMonth}
-                onChange={e => setCurrentMonth(parseInt(e.target.value, 10))}
-              >
-                {MONTHS.map(m => (
-                  <option key={m.value} value={m.value}>{m.label}</option>
-                ))}
-              </select>
-              <select
-                className="form-control"
-                style={{ width: 'auto', padding: '5px 10px', fontSize: '13px', fontWeight: 600 }}
-                value={currentYear}
-                onChange={e => setCurrentYear(parseInt(e.target.value, 10))}
-              >
-                {YEARS.map(y => (
-                  <option key={y} value={y}>{y}</option>
-                ))}
-              </select>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={handleNextMonth}
-                title="Next Month"
-                style={{ padding: '5px 8px', height: '32px' }}
-              >
-                <ChevronRight size={14} />
-              </button>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
+            {/* 1. Period Controls */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Period:</span>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <button className="btn btn-secondary btn-sm" onClick={handlePrevMonth} title="Previous Month">
+                  <ChevronLeft size={15} />
+                </button>
+                <select
+                  className="form-control"
+                  style={{ width: 'auto', padding: '5px 10px', fontSize: '13px', fontWeight: 600 }}
+                  value={currentMonth}
+                  onChange={e => setCurrentMonth(parseInt(e.target.value, 10))}
+                >
+                  {MONTHS.map(m => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+                <select
+                  className="form-control"
+                  style={{ width: 'auto', padding: '5px 10px', fontSize: '13px', fontWeight: 600 }}
+                  value={currentYear}
+                  onChange={e => setCurrentYear(parseInt(e.target.value, 10))}
+                >
+                  {YEARS.map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+                <button className="btn btn-secondary btn-sm" onClick={handleNextMonth} title="Next Month">
+                  <ChevronRight size={15} />
+                </button>
+                <button className="btn btn-secondary btn-sm" onClick={handleCurrentMonth} style={{ fontSize: '12px', padding: '5px 10px' }}>
+                  Current
+                </button>
+              </div>
+            </div>
+
+            {/* 2. Staff Search */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 220px', maxWidth: '400px' }}>
+              <div className="search-input-wrap" style={{ flex: 1 }}>
+                <Search size={15} />
+                <input
+                  type="text"
+                  className="search-input"
+                  placeholder="Search staff by name or Staff ID..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                />
+              </div>
+              {search && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setSearch('')}
+                  title="Clear search"
+                  style={{ padding: '6px 10px', fontSize: '12px' }}
+                >
+                  <X size={13} style={{ marginRight: '4px' }} /> Clear
+                </button>
+              )}
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Staff Incentive List Table Card */}
       <div className="table-card">
