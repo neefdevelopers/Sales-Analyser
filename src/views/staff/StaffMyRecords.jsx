@@ -137,19 +137,26 @@ export default function StaffMyRecords() {
       </div>
 
       {/* 3 Summary Cards */}
-      <div className="kpi-grid three-col-kpi-grid" style={{ marginBottom: '24px' }}>
+      <div className="my-records-kpi-grid">
         {/* Card 1: Total Orders */}
         <div className="kpi-card-premium" style={{ '--card-accent': '#3b82f6' }}>
           <div className="kpi-header">
             <span className="kpi-title">My Total Orders</span>
             <div className="kpi-icon-wrap" style={{ background: '#eff6ff', color: '#2563eb' }}>
-              <ShoppingCart size={20} />
+              <ShoppingCart size={18} />
             </div>
           </div>
           <div>
             <div className="kpi-value">{summary?.totalOrders ?? 0}</div>
-            <div className="kpi-subtext">
-              Total Gross Sales: <strong>₹{summary?.grossSales?.toLocaleString() ?? 0}</strong> ({summary?.totalQuantity ?? 0} units)
+            <div className="kpi-meta-details">
+              <div className="kpi-meta-row">
+                <span className="kpi-meta-label">Gross Sales:</span>
+                <span className="kpi-meta-val">₹{summary?.grossSales?.toLocaleString() ?? 0}</span>
+              </div>
+              <div className="kpi-meta-row">
+                <span className="kpi-meta-label">Units Sold:</span>
+                <span className="kpi-meta-val">{summary?.totalQuantity ?? 0} units</span>
+              </div>
             </div>
           </div>
         </div>
@@ -159,33 +166,63 @@ export default function StaffMyRecords() {
           <div className="kpi-header">
             <span className="kpi-title">My Returned Orders</span>
             <div className="kpi-icon-wrap" style={{ background: '#fef2f2', color: '#dc2626' }}>
-              <RotateCcw size={20} />
+              <RotateCcw size={18} />
             </div>
           </div>
           <div>
             <div className="kpi-value" style={{ color: summary?.returnedOrders > 0 ? '#dc2626' : 'var(--text-main)' }}>
               {summary?.returnedOrders ?? 0}
             </div>
-            <div className="kpi-subtext">
-              Returned Units: <strong>{summary?.returnedQuantity ?? 0} units</strong>
+            <div className="kpi-meta-details">
+              <div className="kpi-meta-row">
+                <span className="kpi-meta-label">Returned Units:</span>
+                <span className="kpi-meta-val" style={{ color: summary?.returnedQuantity > 0 ? '#dc2626' : 'inherit' }}>
+                  {summary?.returnedQuantity ?? 0} units
+                </span>
+              </div>
+              <div className="kpi-meta-row">
+                <span className="kpi-meta-label">Deductions:</span>
+                <span className="kpi-meta-val" style={{ color: summary?.reversedIncentive > 0 ? '#dc2626' : 'var(--text-muted)' }}>
+                  {summary?.reversedIncentive > 0 ? `-₹${summary?.reversedIncentive?.toLocaleString()}` : '₹0'}
+                </span>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Card 3: Total Incentives (Hero) */}
+        {/* Card 3: Total Incentives (Hero Card) */}
         <div className="kpi-card-premium kpi-card-hero">
           <div className="kpi-header">
             <span className="kpi-title" style={{ color: '#166534', fontWeight: 800 }}>My Total Incentives</span>
             <div className="kpi-icon-wrap" style={{ background: '#dcfce7', color: '#16a34a' }}>
-              <Award size={20} />
+              <Award size={18} />
             </div>
           </div>
           <div>
-            <div className="kpi-value" style={{ color: '#15803d', fontSize: '28px' }}>
-              ₹{summary?.netIncentive?.toLocaleString() ?? 0}
+            <div className="kpi-hero-value-wrap">
+              <div className="kpi-value kpi-hero-value">
+                ₹{Number(summary?.netIncentive ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <span className="badge badge-success" style={{ fontSize: '11px', fontWeight: 700 }}>
+                Net Payout
+              </span>
             </div>
-            <div className="kpi-subtext" style={{ color: '#166534' }}>
-              Earned: ₹{summary?.grossIncentive ?? 0} | Reversed: -₹{summary?.reversedIncentive ?? 0}
+            <div className="kpi-incentive-breakdown">
+              <div className="kpi-breakdown-pill success">
+                <span className="pill-dot">●</span>
+                <span>Earned: <strong>₹{Number(summary?.grossIncentive ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></span>
+              </div>
+              {summary?.reversedIncentive > 0 ? (
+                <div className="kpi-breakdown-pill danger">
+                  <span className="pill-dot">●</span>
+                  <span>Reversed: <strong>-₹{Number(summary?.reversedIncentive ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></span>
+                </div>
+              ) : (
+                <div className="kpi-breakdown-pill neutral">
+                  <span className="pill-dot" style={{ color: '#16a34a' }}>✓</span>
+                  <span>Zero Deductions</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
