@@ -1,8 +1,7 @@
 // src/components/Sidebar.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
-  LayoutDashboard,
   ShoppingCart,
   RotateCcw,
   Award,
@@ -18,8 +17,24 @@ import {
 export default function Sidebar({ currentView, setCurrentView, isOpen, onClose }) {
   const { user, logout, switchDemo, demoAccounts } = useAuth();
   const [showDemoMenu, setShowDemoMenu] = useState(false);
+  const demoMenuRef = useRef(null);
 
   const isManager = user?.role === 'brand_manager';
+
+  // Close demo menu if user clicks outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (demoMenuRef.current && !demoMenuRef.current.contains(event.target)) {
+        setShowDemoMenu(false);
+      }
+    }
+    if (showDemoMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showDemoMenu]);
 
   // Role 1: Sales Staff Navigation (1. Orders, 2. Returns, 3. My Records)
   const staffNavItems = [
@@ -51,7 +66,7 @@ export default function Sidebar({ currentView, setCurrentView, isOpen, onClose }
           <div className="brand-icon">
             <Award size={20} />
           </div>
-          <div>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <div className="brand-name">SalesPulse</div>
             <span className="brand-tag">{isManager ? 'Brand Manager' : 'Sales Staff'}</span>
           </div>
@@ -74,6 +89,7 @@ export default function Sidebar({ currentView, setCurrentView, isOpen, onClose }
             return (
               <button
                 key={item.id}
+                type="button"
                 className={`nav-item ${isActive ? 'active' : ''}`}
                 onClick={() => {
                   setCurrentView(item.id);
@@ -87,112 +103,112 @@ export default function Sidebar({ currentView, setCurrentView, isOpen, onClose }
           })}
         </nav>
 
-      {/* Sidebar Footer with Demo Switcher & User Profile */}
-      <div className="sidebar-footer">
-        {/* Quick Role Switcher for Test Evaluators */}
-        <div style={{ position: 'relative', marginBottom: '12px' }}>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            style={{ width: '100%', justifyContent: 'space-between' }}
-            onClick={() => setShowDemoMenu(!showDemoMenu)}
-          >
-            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <UserCheck size={14} />
-              <span>Switch User Role</span>
-            </span>
-            <ChevronDown size={14} />
-          </button>
-
-          {showDemoMenu && (
-            <div
-              style={{
-                position: 'absolute',
-                bottom: '100%',
-                left: 0,
-                right: 0,
-                background: 'white',
-                border: '1px solid var(--border-subtle)',
-                borderRadius: 'var(--radius-md)',
-                boxShadow: 'var(--shadow-lg)',
-                padding: '6px',
-                marginBottom: '6px',
-                zIndex: 50
-              }}
+        {/* Sidebar Footer with Demo Switcher & User Profile */}
+        <div className="sidebar-footer">
+          {/* Quick Role Switcher for Test Evaluators */}
+          <div ref={demoMenuRef} style={{ position: 'relative', marginBottom: '12px' }}>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              style={{ width: '100%', justifyContent: 'space-between' }}
+              onClick={() => setShowDemoMenu(!showDemoMenu)}
             >
-              <div style={{ fontSize: '11px', fontWeight: 700, padding: '4px 8px', color: 'var(--text-muted)' }}>
-                SELECT EVALUATION ROLE:
-              </div>
-              {demoAccounts.map((acc) => (
-                <button
-                  key={acc.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    width: '100%',
-                    padding: '6px 8px',
-                    border: 'none',
-                    background: acc.id === user?.id ? 'var(--primary-50)' : 'transparent',
-                    color: acc.id === user?.id ? 'var(--primary-700)' : 'var(--text-main)',
-                    borderRadius: 'var(--radius-sm)',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    textAlign: 'left'
-                  }}
-                  onClick={() => {
-                    switchDemo(acc.username);
-                    setShowDemoMenu(false);
-                  }}
-                >
-                  <span>{acc.name}</span>
-                  <span
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <UserCheck size={14} />
+                <span>Switch User Role</span>
+              </span>
+              <ChevronDown size={14} style={{ transform: showDemoMenu ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} />
+            </button>
+
+            {showDemoMenu && (
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: 'calc(100% + 6px)',
+                  left: 0,
+                  right: 0,
+                  background: 'white',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  boxShadow: 'var(--shadow-xl)',
+                  padding: '6px',
+                  maxHeight: '260px',
+                  overflowY: 'auto',
+                  zIndex: 60
+                }}
+              >
+                <div style={{ fontSize: '10.5px', fontWeight: 700, padding: '4px 8px', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Select Evaluation Role
+                </div>
+                {demoAccounts.map((acc) => (
+                  <button
+                    key={acc.id}
+                    type="button"
                     style={{
-                      fontSize: '10px',
-                      padding: '2px 6px',
-                      borderRadius: '4px',
-                      background: acc.role === 'brand_manager' ? '#e0e7ff' : '#f1f5f9'
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      width: '100%',
+                      padding: '7px 8px',
+                      border: 'none',
+                      background: acc.id === user?.id ? 'var(--primary-50)' : 'transparent',
+                      color: acc.id === user?.id ? 'var(--primary-700)' : 'var(--text-main)',
+                      borderRadius: 'var(--radius-sm)',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      marginBottom: '2px',
+                      transition: 'background 0.15s ease'
+                    }}
+                    onClick={() => {
+                      switchDemo(acc.username);
+                      setShowDemoMenu(false);
+                      if (onClose) onClose();
                     }}
                   >
-                    {acc.role === 'brand_manager' ? 'Manager' : acc.staff_id}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+                    <span>{acc.name}</span>
+                    <span
+                      style={{
+                        fontSize: '10px',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        fontWeight: 700,
+                        background: acc.role === 'brand_manager' ? '#e0e7ff' : '#f1f5f9',
+                        color: acc.role === 'brand_manager' ? '#4338ca' : '#475569'
+                      }}
+                    >
+                      {acc.role === 'brand_manager' ? 'Manager' : acc.staff_id}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
-        {/* Current User Card & Logout */}
-        <div className="user-card">
-          <div className="user-avatar">
-            {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
-          </div>
-          <div className="user-info">
-            <div className="user-name">{user?.name}</div>
-            <div className="user-role-badge">
-              {isManager ? 'Manager' : user?.staff_id || 'Staff'}
+          {/* Current User Card & Logout */}
+          <div className="user-card">
+            <div className="user-avatar">
+              {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
             </div>
+            <div className="user-info">
+              <div className="user-name" title={user?.name}>{user?.name}</div>
+              <div className="user-role-badge">
+                {isManager ? 'Manager' : user?.staff_id || 'Staff'}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="user-logout-btn"
+              title="Log Out"
+              onClick={logout}
+              aria-label="Log Out"
+            >
+              <LogOut size={16} />
+            </button>
           </div>
-          <button
-            title="Log Out"
-            onClick={logout}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              color: 'var(--text-muted)',
-              padding: '4px',
-              borderRadius: 'var(--radius-sm)',
-              display: 'flex',
-              alignItems: 'center'
-            }}
-          >
-            <LogOut size={16} />
-          </button>
         </div>
-      </div>
-    </aside>
-  </>
-);
+      </aside>
+    </>
+  );
 }
