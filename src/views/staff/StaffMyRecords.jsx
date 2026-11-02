@@ -422,7 +422,6 @@ export default function StaffMyRecords() {
                     <tr>
                       <th>Order #</th>
                       <th>Order Date</th>
-                      <th>Customer</th>
                       <th>Product</th>
                       <th>Quantity</th>
                       <th>Total (₹)</th>
@@ -435,11 +434,11 @@ export default function StaffMyRecords() {
                   <tbody>
                     {loading ? (
                       <tr>
-                        <td colSpan="10" style={{ textAlign: 'center', padding: '32px' }}>Loading order records...</td>
+                        <td colSpan="9" style={{ textAlign: 'center', padding: '32px' }}>Loading order records...</td>
                       </tr>
                     ) : filteredOrders.length === 0 ? (
                       <tr>
-                        <td colSpan="10">
+                        <td colSpan="9">
                           <div className="empty-state">
                             <div className="empty-state-icon"><ShoppingCart size={24} /></div>
                             <div className="empty-state-title">No orders found</div>
@@ -453,11 +452,7 @@ export default function StaffMyRecords() {
                           <td><strong style={{ color: 'var(--primary-700)' }}>{o.order_number}</strong></td>
                           <td>{o.order_date}</td>
                           <td>
-                            <div><strong>{o.customer_name}</strong></div>
-                            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{o.customer_phone}</div>
-                          </td>
-                          <td>
-                            <div>{o.product_name}</div>
+                            <div><strong>{o.product_name}</strong></div>
                             <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>₹{o.unit_price} / unit</div>
                           </td>
                           <td><strong>{o.quantity}</strong></td>
@@ -528,11 +523,6 @@ export default function StaffMyRecords() {
                       }`}>
                         {o.status}
                       </span>
-                    </div>
-
-                    <div style={{ marginBottom: '8px', fontSize: '13px' }}>
-                      <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{o.customer_name}</span>
-                      {o.customer_phone && <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '6px' }}>({o.customer_phone})</span>}
                     </div>
 
                     <div className="mobile-card-grid">
