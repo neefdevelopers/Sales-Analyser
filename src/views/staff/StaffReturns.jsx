@@ -592,136 +592,228 @@ export default function StaffReturns() {
 
       {/* Returns Table Card */}
       <div className="table-card">
-        <div className="table-responsive">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Return ID</th>
-                <th>Return Date</th>
-                <th>Staff Member</th>
-                <th>Product</th>
-                <th>Payment Method</th>
-                <th style={{ textAlign: 'right' }}>Returned Quantity</th>
-                <th style={{ textAlign: 'center', width: '90px' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
+        {/* Desktop & Laptop Table View */}
+        <div className="responsive-table-view">
+          <div className="table-responsive">
+            <table className="data-table">
+              <thead>
                 <tr>
-                  <td colSpan="7" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
-                    Loading return records...
-                  </td>
+                  <th>Return ID</th>
+                  <th>Return Date</th>
+                  <th>Staff Member</th>
+                  <th>Product</th>
+                  <th>Payment Method</th>
+                  <th style={{ textAlign: 'right' }}>Returned Quantity</th>
+                  <th style={{ textAlign: 'center', width: '90px' }}>Actions</th>
                 </tr>
-              ) : returns.length === 0 ? (
-                <tr>
-                  <td colSpan="7">
-                    <div className="empty-state" style={{ padding: '36px 16px' }}>
-                      <div className="empty-state-icon">
-                        <RotateCcw size={28} />
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan="7" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
+                      Loading return records...
+                    </td>
+                  </tr>
+                ) : returns.length === 0 ? (
+                  <tr>
+                    <td colSpan="7">
+                      <div className="empty-state" style={{ padding: '36px 16px' }}>
+                        <div className="empty-state-icon">
+                          <RotateCcw size={28} />
+                        </div>
+                        <div className="empty-state-title" style={{ fontSize: '16px' }}>No returns recorded</div>
+                        <div className="empty-state-desc" style={{ maxWidth: '360px' }}>
+                          No product returns matching the selected filters were found.
+                        </div>
+                        <button
+                          className="btn btn-primary btn-sm"
+                          onClick={openCreateModal}
+                          style={{ marginTop: '12px' }}
+                        >
+                          <Plus size={14} /> Record Return
+                        </button>
                       </div>
-                      <div className="empty-state-title" style={{ fontSize: '16px' }}>No returns recorded</div>
-                      <div className="empty-state-desc" style={{ maxWidth: '360px' }}>
-                        No product returns matching the selected filters were found.
-                      </div>
-                      <button
-                        className="btn btn-primary btn-sm"
-                        onClick={openCreateModal}
-                        style={{ marginTop: '12px' }}
-                      >
-                        <Plus size={14} /> Record Return
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                returns.map(r => {
-                  const canEdit = isManager || r.staff_id === user?.id || r.returned_by_staff_id === user?.id;
+                    </td>
+                  </tr>
+                ) : (
+                  returns.map(r => {
+                    const canEdit = isManager || r.staff_id === user?.id || r.returned_by_staff_id === user?.id;
 
-                  return (
-                    <tr key={r.id}>
-                      <td>
-                        <strong style={{ color: 'var(--primary-700)', fontFamily: 'monospace', fontSize: '13px' }}>
-                          {r.return_number}
-                        </strong>
-                        {r.order_number && r.order_number !== '-' && (
-                          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                            Ord: {r.order_number}
+                    return (
+                      <tr key={r.id}>
+                        <td>
+                          <strong style={{ color: 'var(--primary-700)', fontFamily: 'monospace', fontSize: '13px' }}>
+                            {r.return_number}
+                          </strong>
+                          {r.order_number && r.order_number !== '-' && (
+                            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                              Ord: {r.order_number}
+                            </div>
+                          )}
+                        </td>
+                        <td>{r.return_date}</td>
+                        <td>
+                          <div>
+                            <strong>{r.returned_by_name || r.staff_name || 'Staff Member'}</strong>
                           </div>
-                        )}
-                      </td>
-                      <td>{r.return_date}</td>
-                      <td>
-                        <div>
-                          <strong>{r.returned_by_name || r.staff_name || 'Staff Member'}</strong>
-                        </div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                          {r.returned_by_code || r.staff_code || ''}
-                        </div>
-                      </td>
-                      <td>
-                        <div>
-                          <strong>{r.product_name}</strong>
-                        </div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                          {r.product_code}
-                        </div>
-                      </td>
-                      <td>
-                        <span className={`badge ${r.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`}>
-                          {r.payment_method || 'Prepaid'}
-                        </span>
-                      </td>
-                      <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '14px' }}>
-                        {r.return_quantity}
-                      </td>
-                      <td style={{ textAlign: 'center' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'center' }}>
-                          <button
-                            type="button"
-                            className="btn btn-sm btn-ghost"
-                            style={{ padding: '4px 6px', color: 'var(--text-muted)' }}
-                            title="View Return Details"
-                            onClick={() => setSelectedReturnDetails(r)}
-                          >
-                            <Eye size={15} />
-                          </button>
-                          {canEdit && (
+                          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                            {r.returned_by_code || r.staff_code || ''}
+                          </div>
+                        </td>
+                        <td>
+                          <div>
+                            <strong>{r.product_name}</strong>
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                            {r.product_code}
+                          </div>
+                        </td>
+                        <td>
+                          <span className={`badge ${r.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`}>
+                            {r.payment_method || 'Prepaid'}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '14px', color: '#dc2626' }}>
+                          {r.return_quantity}
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'center' }}>
                             <button
                               type="button"
-                              className="btn btn-sm btn-ghost"
-                              style={{ padding: '4px 6px', color: 'var(--primary-600)' }}
-                              title="Edit Return"
-                              onClick={() => openEditReturnModal(r)}
+                              className="btn btn-secondary btn-sm"
+                              style={{ padding: '4px 7px' }}
+                              title="View Return Details"
+                              onClick={() => setSelectedReturnDetails(r)}
                             >
-                              <Edit2 size={15} />
+                              <Eye size={13} />
                             </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                            {canEdit && (
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                style={{ padding: '4px 7px', color: 'var(--primary-700)' }}
+                                title="Edit Return"
+                                onClick={() => openEditReturnModal(r)}
+                              >
+                                <Edit2 size={13} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Mobile & Small Tablet Data Card View (<= 768px) */}
+        <div className="responsive-card-view">
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '36px 16px', color: 'var(--text-muted)' }}>
+              Loading return records...
+            </div>
+          ) : returns.length === 0 ? (
+            <div className="empty-state" style={{ padding: '36px 16px' }}>
+              <div className="empty-state-icon"><RotateCcw size={28} /></div>
+              <div className="empty-state-title" style={{ fontSize: '16px' }}>No returns recorded</div>
+              <div className="empty-state-desc">No returns matched your filters.</div>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={openCreateModal}
+                style={{ marginTop: '12px' }}
+              >
+                <Plus size={14} /> Record Return
+              </button>
+            </div>
+          ) : (
+            returns.map(r => {
+              const canEdit = isManager || r.staff_id === user?.id || r.returned_by_staff_id === user?.id;
+
+              return (
+                <div
+                  key={r.id}
+                  className="mobile-data-card clickable"
+                  onClick={() => setSelectedReturnDetails(r)}
+                >
+                  <div className="mobile-card-header">
+                    <div className="mobile-card-title-group">
+                      <span className="mobile-card-title">{r.return_number}</span>
+                      <span className="mobile-card-subtitle">{r.return_date}</span>
+                    </div>
+                    <span className={`badge ${r.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`}>
+                      {r.payment_method || 'Prepaid'}
+                    </span>
+                  </div>
+
+                  <div className="mobile-card-grid">
+                    <div className="mobile-card-item">
+                      <span className="mobile-card-label">Product</span>
+                      <span className="mobile-card-val">{r.product_name}</span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{r.product_code}</span>
+                    </div>
+
+                    <div className="mobile-card-item">
+                      <span className="mobile-card-label">Returned Qty</span>
+                      <span className="mobile-card-val danger" style={{ fontSize: '14px' }}>
+                        {r.return_quantity} {r.return_quantity === 1 ? 'unit' : 'units'}
+                      </span>
+                    </div>
+
+                    {r.order_number && r.order_number !== '-' && (
+                      <div className="mobile-card-item">
+                        <span className="mobile-card-label">Linked Order</span>
+                        <span className="mobile-card-val" style={{ fontFamily: 'monospace', fontSize: '12px' }}>
+                          {r.order_number}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="mobile-card-item">
+                      <span className="mobile-card-label">Staff Member</span>
+                      <span className="mobile-card-val">{r.returned_by_name || r.staff_name || 'Staff'}</span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{r.returned_by_code || r.staff_code}</span>
+                    </div>
+                  </div>
+
+                  <div className="mobile-card-footer" onClick={e => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => setSelectedReturnDetails(r)}
+                      style={{ flex: 1, justifyContent: 'center' }}
+                    >
+                      <Eye size={14} />
+                      <span>View Details</span>
+                    </button>
+
+                    {canEdit && (
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={() => openEditReturnModal(r)}
+                        style={{ flex: 1, justifyContent: 'center', color: 'var(--primary-700)' }}
+                      >
+                        <Edit2 size={14} />
+                        <span>Edit</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
 
         {/* Pagination Footer */}
         {totalPages > 1 && (
-          <div
-            style={{
-              padding: '12px 20px',
-              borderTop: '1px solid var(--border-subtle)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              fontSize: '13px'
-            }}
-          >
-            <div style={{ color: 'var(--text-muted)' }}>
+          <div className="pagination-bar">
+            <div style={{ color: 'var(--text-muted)', fontSize: '12.5px' }}>
               Showing {returns.length} of {totalReturns} returns
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="pagination-controls" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <button
                 className="btn btn-secondary btn-sm"
                 disabled={page <= 1}
@@ -729,7 +821,7 @@ export default function StaffReturns() {
               >
                 <ChevronLeft size={14} /> Previous
               </button>
-              <span style={{ fontWeight: 600, padding: '0 8px' }}>
+              <span style={{ fontWeight: 600, padding: '0 8px', fontSize: '12.5px' }}>
                 Page {page} of {totalPages}
               </span>
               <button

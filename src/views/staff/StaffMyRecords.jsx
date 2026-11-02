@@ -376,146 +376,278 @@ export default function StaffMyRecords() {
 
         {/* Tab 1: Order History */}
         {activeTab === 'orders' && (
-          <div className="table-responsive">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Order #</th>
-                  <th>Order Date</th>
-                  <th>Customer</th>
-                  <th>Product</th>
-                  <th>Quantity</th>
-                  <th>Total (₹)</th>
-                  <th>Payment</th>
-                  <th>Incentive Earned</th>
-                  <th>Status</th>
-                  <th>Return Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan="10" style={{ textAlign: 'center', padding: '32px' }}>Loading order records...</td>
-                  </tr>
-                ) : filteredOrders.length === 0 ? (
-                  <tr>
-                    <td colSpan="10">
-                      <div className="empty-state">
-                        <div className="empty-state-icon"><ShoppingCart size={24} /></div>
-                        <div className="empty-state-title">No orders found</div>
-                        <div className="empty-state-desc">You have no order history matching the selected period.</div>
+          <>
+            {/* Desktop Table View */}
+            <div className="responsive-table-view">
+              <div className="table-responsive">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Order #</th>
+                      <th>Order Date</th>
+                      <th>Customer</th>
+                      <th>Product</th>
+                      <th>Quantity</th>
+                      <th>Total (₹)</th>
+                      <th>Payment</th>
+                      <th>Incentive Earned</th>
+                      <th>Status</th>
+                      <th>Return Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loading ? (
+                      <tr>
+                        <td colSpan="10" style={{ textAlign: 'center', padding: '32px' }}>Loading order records...</td>
+                      </tr>
+                    ) : filteredOrders.length === 0 ? (
+                      <tr>
+                        <td colSpan="10">
+                          <div className="empty-state">
+                            <div className="empty-state-icon"><ShoppingCart size={24} /></div>
+                            <div className="empty-state-title">No orders found</div>
+                            <div className="empty-state-desc">You have no order history matching the selected period.</div>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredOrders.map(o => (
+                        <tr key={o.id}>
+                          <td><strong style={{ color: 'var(--primary-700)' }}>{o.order_number}</strong></td>
+                          <td>{o.order_date}</td>
+                          <td>
+                            <div><strong>{o.customer_name}</strong></div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{o.customer_phone}</div>
+                          </td>
+                          <td>
+                            <div>{o.product_name}</div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>₹{o.unit_price} / unit</div>
+                          </td>
+                          <td><strong>{o.quantity}</strong></td>
+                          <td><strong>₹{Number(o.total_amount).toLocaleString()}</strong></td>
+                          <td>
+                            <span className={`badge ${o.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`}>
+                              {o.payment_method}
+                            </span>
+                          </td>
+                          <td>
+                            <div style={{ color: 'var(--warning-text)', fontWeight: 700 }}>
+                              ₹{o.net_incentive ?? o.incentive_amount}
+                            </div>
+                            {o.reversed_incentive > 0 && (
+                              <div style={{ fontSize: '10.5px', color: 'var(--danger-solid)' }}>
+                                -₹{o.reversed_incentive} rev.
+                              </div>
+                            )}
+                          </td>
+                          <td>
+                            <span className={`badge ${
+                              o.status === 'Delivered' ? 'badge-success' :
+                              o.status === 'Confirmed' ? 'badge-info' :
+                              o.status === 'Pending' ? 'badge-warning' : 'badge-danger'
+                            }`}>
+                              {o.status}
+                            </span>
+                          </td>
+                          <td>
+                            {o.returned_quantity > 0 ? (
+                              <span className="badge badge-danger">
+                                {o.returned_quantity} returned
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '12px', color: 'var(--text-subtle)' }}>None</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Mobile Card View */}
+            <div className="responsive-card-view">
+              {loading ? (
+                <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>Loading order records...</div>
+              ) : filteredOrders.length === 0 ? (
+                <div className="empty-state">
+                  <div className="empty-state-icon"><ShoppingCart size={24} /></div>
+                  <div className="empty-state-title">No orders found</div>
+                  <div className="empty-state-desc">You have no order history matching the selected period.</div>
+                </div>
+              ) : (
+                filteredOrders.map(o => (
+                  <div key={o.id} className="mobile-data-card">
+                    <div className="mobile-card-header">
+                      <div className="mobile-card-title-group">
+                        <span className="mobile-card-id">{o.order_number}</span>
+                        <span className="mobile-card-date">{o.order_date}</span>
                       </div>
-                    </td>
-                  </tr>
-                ) : (
-                  filteredOrders.map(o => (
-                    <tr key={o.id}>
-                      <td><strong style={{ color: 'var(--primary-700)' }}>{o.order_number}</strong></td>
-                      <td>{o.order_date}</td>
-                      <td>
-                        <div><strong>{o.customer_name}</strong></div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{o.customer_phone}</div>
-                      </td>
-                      <td>
-                        <div>{o.product_name}</div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>₹{o.unit_price} / unit</div>
-                      </td>
-                      <td><strong>{o.quantity}</strong></td>
-                      <td><strong>₹{Number(o.total_amount).toLocaleString()}</strong></td>
-                      <td>
-                        <span className={`badge ${o.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`}>
+                      <span className={`badge ${
+                        o.status === 'Delivered' ? 'badge-success' :
+                        o.status === 'Confirmed' ? 'badge-info' :
+                        o.status === 'Pending' ? 'badge-warning' : 'badge-danger'
+                      }`}>
+                        {o.status}
+                      </span>
+                    </div>
+
+                    <div style={{ marginBottom: '8px', fontSize: '13px' }}>
+                      <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{o.customer_name}</span>
+                      {o.customer_phone && <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '6px' }}>({o.customer_phone})</span>}
+                    </div>
+
+                    <div className="mobile-card-grid">
+                      <div className="mobile-card-item" style={{ gridColumn: 'span 2' }}>
+                        <span className="mobile-card-label">Product</span>
+                        <span className="mobile-card-val">{o.product_name}</span>
+                      </div>
+                      <div className="mobile-card-item">
+                        <span className="mobile-card-label">Quantity</span>
+                        <span className="mobile-card-val">{o.quantity} units</span>
+                      </div>
+                      <div className="mobile-card-item">
+                        <span className="mobile-card-label">Order Total</span>
+                        <span className="mobile-card-val" style={{ fontWeight: 700, color: '#b45309' }}>
+                          ₹{Number(o.total_amount).toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="mobile-card-item">
+                        <span className="mobile-card-label">Payment</span>
+                        <span className={`badge ${o.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`} style={{ display: 'inline-block', width: 'fit-content', marginTop: '2px' }}>
                           {o.payment_method}
                         </span>
-                      </td>
-                      <td>
-                        <div style={{ color: 'var(--warning-text)', fontWeight: 700 }}>
+                      </div>
+                      <div className="mobile-card-item">
+                        <span className="mobile-card-label">Net Incentive</span>
+                        <span className="mobile-card-val" style={{ color: '#16a34a', fontWeight: 700 }}>
                           ₹{o.net_incentive ?? o.incentive_amount}
-                        </div>
-                        {o.reversed_incentive > 0 && (
-                          <div style={{ fontSize: '10.5px', color: 'var(--danger-solid)' }}>
-                            -₹{o.reversed_incentive} rev.
-                          </div>
-                        )}
-                      </td>
-                      <td>
-                        <span className={`badge ${
-                          o.status === 'Delivered' ? 'badge-success' :
-                          o.status === 'Confirmed' ? 'badge-info' :
-                          o.status === 'Pending' ? 'badge-warning' : 'badge-danger'
-                        }`}>
-                          {o.status}
+                          {o.reversed_incentive > 0 && (
+                            <span style={{ fontSize: '10px', color: 'var(--danger-solid)', marginLeft: '4px' }}>
+                              (-₹{o.reversed_incentive})
+                            </span>
+                          )}
                         </span>
-                      </td>
-                      <td>
-                        {o.returned_quantity > 0 ? (
-                          <span className="badge badge-danger">
-                            {o.returned_quantity} returned
+                      </div>
+                      {o.returned_quantity > 0 && (
+                        <div className="mobile-card-item" style={{ gridColumn: 'span 2' }}>
+                          <span className="mobile-card-label">Return Status</span>
+                          <span className="badge badge-danger" style={{ display: 'inline-block', width: 'fit-content', marginTop: '2px' }}>
+                            {o.returned_quantity} units returned
                           </span>
-                        ) : (
-                          <span style={{ fontSize: '12px', color: 'var(--text-subtle)' }}>None</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </>
         )}
 
         {/* Tab 2: Return History */}
         {activeTab === 'returns' && (
-          <div className="table-responsive">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Return ID</th>
-                  <th>Return Date</th>
-                  <th>Product</th>
-                  <th>Payment Method</th>
-                  <th style={{ textAlign: 'right' }}>Returned Quantity</th>
-                  <th style={{ textAlign: 'right' }}>Incentive Reversed</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan="6" style={{ textAlign: 'center', padding: '32px' }}>Loading return records...</td>
-                  </tr>
-                ) : filteredReturns.length === 0 ? (
-                  <tr>
-                    <td colSpan="6">
-                      <div className="empty-state">
-                        <div className="empty-state-icon"><RotateCcw size={24} /></div>
-                        <div className="empty-state-title">No returns found</div>
-                        <div className="empty-state-desc">You have no return history matching the selected period.</div>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  filteredReturns.map(r => (
-                    <tr key={r.id}>
-                      <td><strong style={{ color: '#dc2626', fontFamily: 'monospace', fontSize: '13px' }}>{r.return_number}</strong></td>
-                      <td>{r.return_date}</td>
-                      <td>
-                        <div><strong>{r.product_name}</strong></div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{r.product_code || ''}</div>
-                      </td>
-                      <td>
-                        <span className={`badge ${r.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`}>
-                          {r.payment_method || 'Prepaid'}
-                        </span>
-                      </td>
-                      <td style={{ textAlign: 'right', fontWeight: 600 }}>{r.return_quantity} units</td>
-                      <td style={{ textAlign: 'right', color: '#dc2626', fontWeight: 700, fontSize: '14px' }}>
-                        -₹{Number(r.reversed_incentive).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                      </td>
+          <>
+            {/* Desktop Table View */}
+            <div className="responsive-table-view">
+              <div className="table-responsive">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Return ID</th>
+                      <th>Return Date</th>
+                      <th>Product</th>
+                      <th>Payment Method</th>
+                      <th style={{ textAlign: 'right' }}>Returned Quantity</th>
+                      <th style={{ textAlign: 'right' }}>Incentive Reversed</th>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                  </thead>
+                  <tbody>
+                    {loading ? (
+                      <tr>
+                        <td colSpan="6" style={{ textAlign: 'center', padding: '32px' }}>Loading return records...</td>
+                      </tr>
+                    ) : filteredReturns.length === 0 ? (
+                      <tr>
+                        <td colSpan="6">
+                          <div className="empty-state">
+                            <div className="empty-state-icon"><RotateCcw size={24} /></div>
+                            <div className="empty-state-title">No returns found</div>
+                            <div className="empty-state-desc">You have no return history matching the selected period.</div>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredReturns.map(r => (
+                        <tr key={r.id}>
+                          <td><strong style={{ color: '#dc2626', fontFamily: 'monospace', fontSize: '13px' }}>{r.return_number}</strong></td>
+                          <td>{r.return_date}</td>
+                          <td>
+                            <div><strong>{r.product_name}</strong></div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{r.product_code || ''}</div>
+                          </td>
+                          <td>
+                            <span className={`badge ${r.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`}>
+                              {r.payment_method || 'Prepaid'}
+                            </span>
+                          </td>
+                          <td style={{ textAlign: 'right', fontWeight: 600 }}>{r.return_quantity} units</td>
+                          <td style={{ textAlign: 'right', color: '#dc2626', fontWeight: 700, fontSize: '14px' }}>
+                            -₹{Number(r.reversed_incentive).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Mobile Card View */}
+            <div className="responsive-card-view">
+              {loading ? (
+                <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>Loading return records...</div>
+              ) : filteredReturns.length === 0 ? (
+                <div className="empty-state">
+                  <div className="empty-state-icon"><RotateCcw size={24} /></div>
+                  <div className="empty-state-title">No returns found</div>
+                  <div className="empty-state-desc">You have no return history matching the selected period.</div>
+                </div>
+              ) : (
+                filteredReturns.map(r => (
+                  <div key={r.id} className="mobile-data-card">
+                    <div className="mobile-card-header">
+                      <div className="mobile-card-title-group">
+                        <span className="mobile-card-id" style={{ color: '#dc2626' }}>{r.return_number}</span>
+                        <span className="mobile-card-date">{r.return_date}</span>
+                      </div>
+                      <span className={`badge ${r.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`}>
+                        {r.payment_method || 'Prepaid'}
+                      </span>
+                    </div>
+
+                    <div className="mobile-card-grid">
+                      <div className="mobile-card-item" style={{ gridColumn: 'span 2' }}>
+                        <span className="mobile-card-label">Product</span>
+                        <span className="mobile-card-val">{r.product_name} {r.product_code ? `(${r.product_code})` : ''}</span>
+                      </div>
+                      <div className="mobile-card-item">
+                        <span className="mobile-card-label">Returned Quantity</span>
+                        <span className="mobile-card-val" style={{ fontWeight: 600 }}>{r.return_quantity} units</span>
+                      </div>
+                      <div className="mobile-card-item">
+                        <span className="mobile-card-label">Reversed Incentive</span>
+                        <span className="mobile-card-val" style={{ color: '#dc2626', fontWeight: 700, fontSize: '14px' }}>
+                          -₹{Number(r.reversed_incentive).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </>
         )}
       </div>
     </div>

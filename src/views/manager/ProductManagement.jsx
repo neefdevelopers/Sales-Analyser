@@ -313,79 +313,148 @@ export default function ProductManagement() {
 
       {/* Product Table Card */}
       <div className="table-card">
-        <div className="table-responsive">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Product Name</th>
-                <th>Prepaid Incentive</th>
-                <th>COD Incentive</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
+        {/* Desktop & Laptop Table View */}
+        <div className="responsive-table-view">
+          <div className="table-responsive">
+            <table className="data-table">
+              <thead>
                 <tr>
-                  <td colSpan="5" style={{ textAlign: 'center', padding: '32px' }}>Loading catalog...</td>
+                  <th>Product Name</th>
+                  <th>Prepaid Incentive</th>
+                  <th>COD Incentive</th>
+                  <th>Status</th>
+                  <th style={{ textAlign: 'center', width: '130px' }}>Actions</th>
                 </tr>
-              ) : filteredProducts.length === 0 ? (
-                <tr>
-                  <td colSpan="5">
-                    <div className="empty-state">
-                      <div className="empty-state-icon"><Package size={24} /></div>
-                      <div className="empty-state-title">No products found</div>
-                      <div className="empty-state-desc">Create your first product to enable staff sales and order entry.</div>
-                      <button className="btn btn-primary btn-sm" onClick={openCreateModal}>
-                        <Plus size={14} /> Add Product
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                filteredProducts.map((p) => (
-                  <tr key={p.id}>
-                    <td>
-                      <strong>{p.name}</strong>
-                    </td>
-                    <td>
-                      <strong style={{ color: 'var(--primary-700)' }}>
-                        ₹{p.prepaid_incentive_value}
-                      </strong>
-                    </td>
-                    <td>
-                      <strong style={{ color: 'var(--warning-text)' }}>
-                        ₹{p.cod_incentive_value}
-                      </strong>
-                    </td>
-                    <td>
-                      <span className={`badge ${p.status === 'active' ? 'badge-success' : 'badge-neutral'}`}>
-                        {p.status}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '6px' }}>
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => openEditModal(p)}
-                          title="Edit Product"
-                        >
-                          <Edit2 size={13} />
-                        </button>
-                        <button
-                          className={`btn ${p.status === 'active' ? 'btn-danger' : 'btn-secondary'} btn-sm`}
-                          onClick={() => handleToggleStatus(p)}
-                          title={p.status === 'active' ? 'Deactivate Product' : 'Activate Product'}
-                        >
-                          {p.status === 'active' ? 'Deactivate' : 'Activate'}
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan="5" style={{ textAlign: 'center', padding: '32px' }}>Loading catalog...</td>
+                  </tr>
+                ) : filteredProducts.length === 0 ? (
+                  <tr>
+                    <td colSpan="5">
+                      <div className="empty-state">
+                        <div className="empty-state-icon"><Package size={24} /></div>
+                        <div className="empty-state-title">No products found</div>
+                        <div className="empty-state-desc">Create your first product to enable staff sales and order entry.</div>
+                        <button className="btn btn-primary btn-sm" onClick={openCreateModal}>
+                          <Plus size={14} /> Add Product
                         </button>
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  filteredProducts.map((p) => (
+                    <tr key={p.id}>
+                      <td>
+                        <strong>{p.name}</strong>
+                      </td>
+                      <td>
+                        <strong style={{ color: 'var(--primary-700)' }}>
+                          ₹{p.prepaid_incentive_value}
+                        </strong>
+                      </td>
+                      <td>
+                        <strong style={{ color: 'var(--warning-text)' }}>
+                          ₹{p.cod_incentive_value}
+                        </strong>
+                      </td>
+                      <td>
+                        <span className={`badge ${p.status === 'active' ? 'badge-success' : 'badge-neutral'}`}>
+                          {p.status}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <div style={{ display: 'inline-flex', gap: '6px' }}>
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => openEditModal(p)}
+                            title="Edit Product"
+                          >
+                            <Edit2 size={13} />
+                          </button>
+                          <button
+                            className={`btn ${p.status === 'active' ? 'btn-danger' : 'btn-secondary'} btn-sm`}
+                            onClick={() => handleToggleStatus(p)}
+                            title={p.status === 'active' ? 'Deactivate Product' : 'Activate Product'}
+                          >
+                            {p.status === 'active' ? 'Deactivate' : 'Activate'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Mobile & Small Tablet Data Card View (<= 768px) */}
+        <div className="responsive-card-view">
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>Loading catalog...</div>
+          ) : filteredProducts.length === 0 ? (
+            <div className="empty-state" style={{ padding: '32px 16px' }}>
+              <div className="empty-state-icon"><Package size={24} /></div>
+              <div className="empty-state-title">No products found</div>
+              <div className="empty-state-desc">Create your first product to enable staff sales and order entry.</div>
+              <button className="btn btn-primary btn-sm" onClick={openCreateModal} style={{ marginTop: '12px' }}>
+                <Plus size={14} /> Add Product
+              </button>
+            </div>
+          ) : (
+            filteredProducts.map((p) => (
+              <div key={p.id} className="mobile-data-card">
+                <div className="mobile-card-header">
+                  <div className="mobile-card-title-group">
+                    <span className="mobile-card-title">{p.name}</span>
+                  </div>
+                  <span className={`badge ${p.status === 'active' ? 'badge-success' : 'badge-neutral'}`}>
+                    {p.status}
+                  </span>
+                </div>
+
+                <div className="mobile-card-grid">
+                  <div className="mobile-card-item">
+                    <span className="mobile-card-label">Prepaid Incentive</span>
+                    <span className="mobile-card-val success" style={{ fontSize: '14px' }}>
+                      ₹{p.prepaid_incentive_value}
+                    </span>
+                  </div>
+
+                  <div className="mobile-card-item">
+                    <span className="mobile-card-label">COD Incentive</span>
+                    <span className="mobile-card-val accent" style={{ fontSize: '14px' }}>
+                      ₹{p.cod_incentive_value}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mobile-card-footer">
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => openEditModal(p)}
+                    style={{ flex: 1, justifyContent: 'center' }}
+                  >
+                    <Edit2 size={14} />
+                    <span>Edit Product</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className={`btn ${p.status === 'active' ? 'btn-danger' : 'btn-secondary'} btn-sm`}
+                    onClick={() => handleToggleStatus(p)}
+                    style={{ flex: 1, justifyContent: 'center' }}
+                  >
+                    {p.status === 'active' ? 'Deactivate' : 'Activate'}
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 

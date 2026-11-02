@@ -734,73 +734,128 @@ export default function SalesReports() {
             </div>
           </div>
 
-          <div className="table-responsive">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Order ID</th>
-                  <th>Order Date</th>
-                  <th>Product</th>
-                  <th style={{ textAlign: 'center' }}>Quantity</th>
-                  <th>Payment Method</th>
-                  <th style={{ textAlign: 'right' }}>Unit Price</th>
-                  <th style={{ textAlign: 'right' }}>Order Amount</th>
-                  <th>Order Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
+          {/* Desktop Table View */}
+          <div className="responsive-table-view">
+            <div className="table-responsive">
+              <table className="data-table">
+                <thead>
                   <tr>
-                    <td colSpan="8" style={{ textAlign: 'center', padding: '28px', color: 'var(--text-muted)' }}>
-                      Loading orders...
-                    </td>
+                    <th>Order ID</th>
+                    <th>Order Date</th>
+                    <th>Product</th>
+                    <th style={{ textAlign: 'center' }}>Quantity</th>
+                    <th>Payment Method</th>
+                    <th style={{ textAlign: 'right' }}>Unit Price</th>
+                    <th style={{ textAlign: 'right' }}>Order Amount</th>
+                    <th>Order Status</th>
                   </tr>
-                ) : ordersList.length === 0 ? (
-                  <tr>
-                    <td colSpan="8">
-                      <div className="empty-state" style={{ padding: '24px' }}>
-                        <div className="empty-state-icon"><ShoppingCart size={22} /></div>
-                        <div className="empty-state-title">No orders found</div>
-                        <div className="empty-state-desc">No sales orders placed by this staff member in the selected period.</div>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  ordersList.map(o => (
-                    <tr key={o.id}>
-                      <td style={{ fontWeight: 600 }}>{o.order_number}</td>
-                      <td>{o.order_date}</td>
-                      <td>{o.product_name}</td>
-                      <td style={{ textAlign: 'center', fontWeight: 600 }}>{o.quantity}</td>
-                      <td>
-                        <span className={`badge ${o.payment_method === 'Prepaid' ? 'badge-info' : 'badge-neutral'}`} style={{ fontSize: '10.5px' }}>
-                          {o.payment_method}
-                        </span>
-                      </td>
-                      <td style={{ textAlign: 'right' }}>₹{o.unit_price?.toLocaleString()}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 600, color: '#b45309' }}>
-                        ₹{o.order_amount?.toLocaleString()}
-                      </td>
-                      <td>
-                        <span className="badge badge-success" style={{ fontSize: '10.5px' }}>{o.status}</span>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan="8" style={{ textAlign: 'center', padding: '28px', color: 'var(--text-muted)' }}>
+                        Loading orders...
                       </td>
                     </tr>
-                  ))
+                  ) : ordersList.length === 0 ? (
+                    <tr>
+                      <td colSpan="8">
+                        <div className="empty-state" style={{ padding: '24px' }}>
+                          <div className="empty-state-icon"><ShoppingCart size={22} /></div>
+                          <div className="empty-state-title">No orders found</div>
+                          <div className="empty-state-desc">No sales orders placed by this staff member in the selected period.</div>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    ordersList.map(o => (
+                      <tr key={o.id}>
+                        <td style={{ fontWeight: 600 }}>{o.order_number}</td>
+                        <td>{o.order_date}</td>
+                        <td>{o.product_name}</td>
+                        <td style={{ textAlign: 'center', fontWeight: 600 }}>{o.quantity}</td>
+                        <td>
+                          <span className={`badge ${o.payment_method === 'Prepaid' ? 'badge-info' : 'badge-neutral'}`} style={{ fontSize: '10.5px' }}>
+                            {o.payment_method}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>₹{o.unit_price?.toLocaleString()}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 600, color: '#b45309' }}>
+                          ₹{o.order_amount?.toLocaleString()}
+                        </td>
+                        <td>
+                          <span className="badge badge-success" style={{ fontSize: '10.5px' }}>{o.status}</span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {ordersList.length > 0 && (
+                  <tfoot>
+                    <tr style={{ background: '#f8fafc', fontWeight: 700 }}>
+                      <td>Total ({ordersList.length} orders)</td>
+                      <td colSpan="2"></td>
+                      <td style={{ textAlign: 'center' }}>{ordersSummary.ordered_quantity}</td>
+                      <td colSpan="2"></td>
+                      <td style={{ textAlign: 'right', color: '#b45309' }}>₹{ordersSummary.total_order_amount?.toLocaleString()}</td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
                 )}
-              </tbody>
-              {ordersList.length > 0 && (
-                <tfoot>
-                  <tr style={{ background: '#f8fafc', fontWeight: 700 }}>
-                    <td>Total ({ordersList.length} orders)</td>
-                    <td colSpan="2"></td>
-                    <td style={{ textAlign: 'center' }}>{ordersSummary.ordered_quantity}</td>
-                    <td colSpan="2"></td>
-                    <td style={{ textAlign: 'right', color: '#b45309' }}>₹{ordersSummary.total_order_amount?.toLocaleString()}</td>
-                    <td></td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
+              </table>
+            </div>
+          </div>
+
+          {/* Mobile Card View */}
+          <div className="responsive-card-view">
+            {loading ? (
+              <div style={{ textAlign: 'center', padding: '28px', color: 'var(--text-muted)' }}>Loading orders...</div>
+            ) : ordersList.length === 0 ? (
+              <div className="empty-state" style={{ padding: '24px' }}>
+                <div className="empty-state-icon"><ShoppingCart size={22} /></div>
+                <div className="empty-state-title">No orders found</div>
+                <div className="empty-state-desc">No sales orders placed by this staff member in the selected period.</div>
+              </div>
+            ) : (
+              ordersList.map(o => (
+                <div key={o.id} className="mobile-data-card">
+                  <div className="mobile-card-header">
+                    <div className="mobile-card-title-group">
+                      <span className="mobile-card-id">{o.order_number}</span>
+                      <span className="mobile-card-date">{o.order_date}</span>
+                    </div>
+                    <span className="badge badge-success" style={{ fontSize: '11px' }}>{o.status}</span>
+                  </div>
+
+                  <div className="mobile-card-grid">
+                    <div className="mobile-card-item" style={{ gridColumn: 'span 2' }}>
+                      <span className="mobile-card-label">Product</span>
+                      <span className="mobile-card-val">{o.product_name}</span>
+                    </div>
+                    <div className="mobile-card-item">
+                      <span className="mobile-card-label">Quantity</span>
+                      <span className="mobile-card-val">{o.quantity} units</span>
+                    </div>
+                    <div className="mobile-card-item">
+                      <span className="mobile-card-label">Payment</span>
+                      <span className={`badge ${o.payment_method === 'Prepaid' ? 'badge-info' : 'badge-neutral'}`} style={{ display: 'inline-block', width: 'fit-content' }}>
+                        {o.payment_method}
+                      </span>
+                    </div>
+                    <div className="mobile-card-item">
+                      <span className="mobile-card-label">Unit Price</span>
+                      <span className="mobile-card-val">₹{o.unit_price?.toLocaleString()}</span>
+                    </div>
+                    <div className="mobile-card-item">
+                      <span className="mobile-card-label">Order Amount</span>
+                      <span className="mobile-card-val" style={{ fontWeight: 700, color: '#b45309' }}>
+                        ₹{o.order_amount?.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
@@ -818,61 +873,103 @@ export default function SalesReports() {
             </div>
           </div>
 
-          <div className="table-responsive">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Return ID</th>
-                  <th>Return Date</th>
-                  <th>Product</th>
-                  <th style={{ textAlign: 'center' }}>Returned Quantity</th>
-                  <th style={{ textAlign: 'right' }}>Refund Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
+          {/* Desktop Table View */}
+          <div className="responsive-table-view">
+            <div className="table-responsive">
+              <table className="data-table">
+                <thead>
                   <tr>
-                    <td colSpan="5" style={{ textAlign: 'center', padding: '28px', color: 'var(--text-muted)' }}>
-                      Loading returns...
-                    </td>
+                    <th>Return ID</th>
+                    <th>Return Date</th>
+                    <th>Product</th>
+                    <th style={{ textAlign: 'center' }}>Returned Quantity</th>
+                    <th style={{ textAlign: 'right' }}>Refund Amount</th>
                   </tr>
-                ) : returnsList.length === 0 ? (
-                  <tr>
-                    <td colSpan="5">
-                      <div className="empty-state" style={{ padding: '24px' }}>
-                        <div className="empty-state-icon"><RotateCcw size={22} /></div>
-                        <div className="empty-state-title">No returns recorded</div>
-                        <div className="empty-state-desc">No product returns recorded against this staff member in the selected period.</div>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  returnsList.map(r => (
-                    <tr key={r.id}>
-                      <td style={{ fontWeight: 600 }}>{r.return_number}</td>
-                      <td>{r.return_date}</td>
-                      <td>{r.product_name}</td>
-                      <td style={{ textAlign: 'center', fontWeight: 600, color: '#dc2626' }}>
-                        {r.return_quantity}
-                      </td>
-                      <td style={{ textAlign: 'right', fontWeight: 600, color: '#dc2626' }}>
-                        ₹{r.return_amount?.toLocaleString()}
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan="5" style={{ textAlign: 'center', padding: '28px', color: 'var(--text-muted)' }}>
+                        Loading returns...
                       </td>
                     </tr>
-                  ))
+                  ) : returnsList.length === 0 ? (
+                    <tr>
+                      <td colSpan="5">
+                        <div className="empty-state" style={{ padding: '24px' }}>
+                          <div className="empty-state-icon"><RotateCcw size={22} /></div>
+                          <div className="empty-state-title">No returns recorded</div>
+                          <div className="empty-state-desc">No product returns recorded against this staff member in the selected period.</div>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    returnsList.map(r => (
+                      <tr key={r.id}>
+                        <td style={{ fontWeight: 600 }}>{r.return_number}</td>
+                        <td>{r.return_date}</td>
+                        <td>{r.product_name}</td>
+                        <td style={{ textAlign: 'center', fontWeight: 600, color: '#dc2626' }}>
+                          {r.return_quantity}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 600, color: '#dc2626' }}>
+                          ₹{r.return_amount?.toLocaleString()}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {returnsList.length > 0 && (
+                  <tfoot>
+                    <tr style={{ background: '#f8fafc', fontWeight: 700 }}>
+                      <td>Total ({returnsList.length} returns)</td>
+                      <td colSpan="2"></td>
+                      <td style={{ textAlign: 'center', color: '#dc2626' }}>{returnsSummary.returned_quantity}</td>
+                      <td style={{ textAlign: 'right', color: '#dc2626' }}>₹{returnsSummary.total_refunded_amount?.toLocaleString()}</td>
+                    </tr>
+                  </tfoot>
                 )}
-              </tbody>
-              {returnsList.length > 0 && (
-                <tfoot>
-                  <tr style={{ background: '#f8fafc', fontWeight: 700 }}>
-                    <td>Total ({returnsList.length} returns)</td>
-                    <td colSpan="2"></td>
-                    <td style={{ textAlign: 'center', color: '#dc2626' }}>{returnsSummary.returned_quantity}</td>
-                    <td style={{ textAlign: 'right', color: '#dc2626' }}>₹{returnsSummary.total_refunded_amount?.toLocaleString()}</td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
+              </table>
+            </div>
+          </div>
+
+          {/* Mobile Card View */}
+          <div className="responsive-card-view">
+            {loading ? (
+              <div style={{ textAlign: 'center', padding: '28px', color: 'var(--text-muted)' }}>Loading returns...</div>
+            ) : returnsList.length === 0 ? (
+              <div className="empty-state" style={{ padding: '24px' }}>
+                <div className="empty-state-icon"><RotateCcw size={22} /></div>
+                <div className="empty-state-title">No returns recorded</div>
+                <div className="empty-state-desc">No product returns recorded against this staff member in the selected period.</div>
+              </div>
+            ) : (
+              returnsList.map(r => (
+                <div key={r.id} className="mobile-data-card">
+                  <div className="mobile-card-header">
+                    <div className="mobile-card-title-group">
+                      <span className="mobile-card-id" style={{ color: '#dc2626' }}>{r.return_number}</span>
+                      <span className="mobile-card-date">{r.return_date}</span>
+                    </div>
+                  </div>
+
+                  <div className="mobile-card-grid">
+                    <div className="mobile-card-item" style={{ gridColumn: 'span 2' }}>
+                      <span className="mobile-card-label">Product</span>
+                      <span className="mobile-card-val">{r.product_name}</span>
+                    </div>
+                    <div className="mobile-card-item">
+                      <span className="mobile-card-label">Returned Quantity</span>
+                      <span className="mobile-card-val" style={{ color: '#dc2626', fontWeight: 600 }}>{r.return_quantity} units</span>
+                    </div>
+                    <div className="mobile-card-item">
+                      <span className="mobile-card-label">Refund Amount</span>
+                      <span className="mobile-card-val" style={{ color: '#dc2626', fontWeight: 700 }}>₹{r.return_amount?.toLocaleString()}</span>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>
@@ -1431,114 +1528,196 @@ export default function SalesReports() {
             </span>
           </div>
 
-          <div className="table-responsive">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th style={{ cursor: 'pointer' }} onClick={() => toggleStaffSort('staff_name')}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                      Staff Name <ArrowUpDown size={12} />
-                    </span>
-                  </th>
-                  <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleStaffSort('total_orders')}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
-                      Total Orders <ArrowUpDown size={12} />
-                    </span>
-                  </th>
-                  <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleStaffSort('gross_sales')}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
-                      Gross Sales <ArrowUpDown size={12} />
-                    </span>
-                  </th>
-                  <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleStaffSort('total_returns')}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
-                      Total Returns <ArrowUpDown size={12} />
-                    </span>
-                  </th>
-                  <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleStaffSort('net_sales')}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end', color: '#15803d' }}>
-                      Net Sales <ArrowUpDown size={12} />
-                    </span>
-                  </th>
-                  <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleStaffSort('product_quantity')}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
-                      Product Quantity <ArrowUpDown size={12} />
-                    </span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
+          {/* Desktop Table View */}
+          <div className="responsive-table-view">
+            <div className="table-responsive">
+              <table className="data-table">
+                <thead>
                   <tr>
-                    <td colSpan="6" style={{ textAlign: 'center', padding: '32px' }}>Loading staff report data...</td>
+                    <th style={{ cursor: 'pointer' }} onClick={() => toggleStaffSort('staff_name')}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        Staff Name <ArrowUpDown size={12} />
+                      </span>
+                    </th>
+                    <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleStaffSort('total_orders')}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
+                        Total Orders <ArrowUpDown size={12} />
+                      </span>
+                    </th>
+                    <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleStaffSort('gross_sales')}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
+                        Gross Sales <ArrowUpDown size={12} />
+                      </span>
+                    </th>
+                    <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleStaffSort('total_returns')}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
+                        Total Returns <ArrowUpDown size={12} />
+                      </span>
+                    </th>
+                    <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleStaffSort('net_sales')}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end', color: '#15803d' }}>
+                        Net Sales <ArrowUpDown size={12} />
+                      </span>
+                    </th>
+                    <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleStaffSort('product_quantity')}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
+                        Product Quantity <ArrowUpDown size={12} />
+                      </span>
+                    </th>
                   </tr>
-                ) : sortedStaff.length === 0 ? (
-                  <tr>
-                    <td colSpan="6">
-                      <div className="empty-state">
-                        <div className="empty-state-icon"><Users size={24} /></div>
-                        <div className="empty-state-title">No staff records match filter</div>
-                        <div className="empty-state-desc">Adjust the selected reporting period or clear the search.</div>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  sortedStaff.map((s) => (
-                    <tr
-                      key={s.staff_id}
-                      className="table-row-clickable"
-                      onClick={() => setSelectedStaffId(s.staff_id || s.id)}
-                      title={`Click to view ${s.staff_name}'s individual sales report`}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <div>
-                            <strong style={{ color: 'var(--primary-700)' }}>{s.staff_name}</strong>
-                            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                              <span className="badge badge-neutral" style={{ padding: '1px 5px', fontSize: '10px', marginRight: '4px' }}>
-                                {s.staff_code}
-                              </span>
-                              @{s.username}
-                            </div>
-                          </div>
-                          <Eye size={14} color="var(--primary-500)" style={{ marginLeft: 'auto', opacity: 0.6 }} />
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan="6" style={{ textAlign: 'center', padding: '32px' }}>Loading staff report data...</td>
+                    </tr>
+                  ) : sortedStaff.length === 0 ? (
+                    <tr>
+                      <td colSpan="6">
+                        <div className="empty-state">
+                          <div className="empty-state-icon"><Users size={24} /></div>
+                          <div className="empty-state-title">No staff records match filter</div>
+                          <div className="empty-state-desc">Adjust the selected reporting period or clear the search.</div>
                         </div>
                       </td>
-                      <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                        {s.total_orders}
-                      </td>
-                      <td style={{ textAlign: 'right', color: s.gross_sales > 0 ? '#b45309' : 'var(--text-muted)' }}>
-                        ₹{s.gross_sales?.toLocaleString()}
-                      </td>
-                      <td style={{ textAlign: 'right', color: s.returns > 0 ? '#dc2626' : 'var(--text-muted)' }}>
-                        {s.returns > 0 ? `-₹${s.returns?.toLocaleString()}` : '₹0'}
-                      </td>
-                      <td style={{ textAlign: 'right', color: '#15803d', fontWeight: 700 }}>
-                        ₹{s.net_sales?.toLocaleString()}
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <strong>{s.product_quantity}</strong> units
-                      </td>
                     </tr>
-                  ))
+                  ) : (
+                    sortedStaff.map((s) => (
+                      <tr
+                        key={s.staff_id}
+                        className="table-row-clickable"
+                        onClick={() => setSelectedStaffId(s.staff_id || s.id)}
+                        title={`Click to view ${s.staff_name}'s individual sales report`}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div>
+                              <strong style={{ color: 'var(--primary-700)' }}>{s.staff_name}</strong>
+                              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                <span className="badge badge-neutral" style={{ padding: '1px 5px', fontSize: '10px', marginRight: '4px' }}>
+                                  {s.staff_code}
+                                </span>
+                                @{s.username}
+                              </div>
+                            </div>
+                            <Eye size={14} color="var(--primary-500)" style={{ marginLeft: 'auto', opacity: 0.6 }} />
+                          </div>
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                          {s.total_orders}
+                        </td>
+                        <td style={{ textAlign: 'right', color: s.gross_sales > 0 ? '#b45309' : 'var(--text-muted)' }}>
+                          ₹{s.gross_sales?.toLocaleString()}
+                        </td>
+                        <td style={{ textAlign: 'right', color: s.returns > 0 ? '#dc2626' : 'var(--text-muted)' }}>
+                          {s.returns > 0 ? `-₹${s.returns?.toLocaleString()}` : '₹0'}
+                        </td>
+                        <td style={{ textAlign: 'right', color: '#15803d', fontWeight: 700 }}>
+                          ₹{s.net_sales?.toLocaleString()}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <strong>{s.product_quantity}</strong> units
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {sortedStaff.length > 0 && (
+                  <tfoot>
+                    <tr style={{ background: '#f8fafc', fontWeight: 700 }}>
+                      <td>Total ({sortedStaff.length} staff members)</td>
+                      <td style={{ textAlign: 'right' }}>{summary.total_orders}</td>
+                      <td style={{ textAlign: 'right', color: '#b45309' }}>₹{summary.gross_sales?.toLocaleString()}</td>
+                      <td style={{ textAlign: 'right', color: summary.total_returns > 0 ? '#dc2626' : 'var(--text-main)' }}>
+                        {summary.total_returns > 0 ? `-₹${summary.total_returns?.toLocaleString()}` : '₹0'}
+                      </td>
+                      <td style={{ textAlign: 'right', color: '#15803d' }}>₹{summary.net_sales?.toLocaleString()}</td>
+                      <td style={{ textAlign: 'right' }}>{summary.ordered_quantity} units</td>
+                    </tr>
+                  </tfoot>
                 )}
-              </tbody>
-              {sortedStaff.length > 0 && (
-                <tfoot>
-                  <tr style={{ background: '#f8fafc', fontWeight: 700 }}>
-                    <td>Total ({sortedStaff.length} staff members)</td>
-                    <td style={{ textAlign: 'right' }}>{summary.total_orders}</td>
-                    <td style={{ textAlign: 'right', color: '#b45309' }}>₹{summary.gross_sales?.toLocaleString()}</td>
-                    <td style={{ textAlign: 'right', color: summary.total_returns > 0 ? '#dc2626' : 'var(--text-main)' }}>
-                      {summary.total_returns > 0 ? `-₹${summary.total_returns?.toLocaleString()}` : '₹0'}
-                    </td>
-                    <td style={{ textAlign: 'right', color: '#15803d' }}>₹{summary.net_sales?.toLocaleString()}</td>
-                    <td style={{ textAlign: 'right' }}>{summary.ordered_quantity} units</td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
+              </table>
+            </div>
+          </div>
+
+          {/* Mobile Card View */}
+          <div className="responsive-card-view">
+            {loading ? (
+              <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>Loading staff report data...</div>
+            ) : sortedStaff.length === 0 ? (
+              <div className="empty-state">
+                <div className="empty-state-icon"><Users size={24} /></div>
+                <div className="empty-state-title">No staff records match filter</div>
+                <div className="empty-state-desc">Adjust the selected reporting period or clear the search.</div>
+              </div>
+            ) : (
+              sortedStaff.map((s) => (
+                <div
+                  key={s.staff_id}
+                  className="mobile-data-card"
+                  onClick={() => setSelectedStaffId(s.staff_id || s.id)}
+                >
+                  <div className="mobile-card-header">
+                    <div className="mobile-card-title-group">
+                      <span className="mobile-card-id">{s.staff_name}</span>
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '2px' }}>
+                        <span className="badge badge-neutral" style={{ padding: '1px 5px', fontSize: '10.5px' }}>
+                          {s.staff_code}
+                        </span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>@{s.username}</span>
+                      </div>
+                    </div>
+                    <span className="badge badge-success" style={{ fontSize: '12px', fontWeight: 800 }}>
+                      ₹{s.net_sales?.toLocaleString()}
+                    </span>
+                  </div>
+
+                  <div className="mobile-card-grid">
+                    <div className="mobile-card-item">
+                      <span className="mobile-card-label">Total Orders</span>
+                      <span className="mobile-card-val">{s.total_orders}</span>
+                    </div>
+                    <div className="mobile-card-item">
+                      <span className="mobile-card-label">Units Sold</span>
+                      <span className="mobile-card-val">{s.product_quantity} units</span>
+                    </div>
+                    <div className="mobile-card-item">
+                      <span className="mobile-card-label">Gross Sales</span>
+                      <span className="mobile-card-val" style={{ color: '#b45309', fontWeight: 600 }}>
+                        ₹{s.gross_sales?.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="mobile-card-item">
+                      <span className="mobile-card-label">Total Returns</span>
+                      <span className="mobile-card-val" style={{ color: s.returns > 0 ? '#dc2626' : 'inherit', fontWeight: s.returns > 0 ? 600 : 400 }}>
+                        {s.returns > 0 ? `-₹${s.returns?.toLocaleString()}` : '₹0'}
+                      </span>
+                    </div>
+                    <div className="mobile-card-item" style={{ gridColumn: 'span 2' }}>
+                      <span className="mobile-card-label">Net Sales</span>
+                      <span className="mobile-card-val" style={{ color: '#15803d', fontWeight: 800, fontSize: '15px' }}>
+                        ₹{s.net_sales?.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mobile-card-footer">
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ width: '100%', justifyContent: 'center' }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedStaffId(s.staff_id || s.id);
+                      }}
+                    >
+                      View Individual Sales Report &rarr;
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}
@@ -1564,114 +1743,181 @@ export default function SalesReports() {
             </span>
           </div>
 
-          <div className="table-responsive">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th style={{ cursor: 'pointer' }} onClick={() => toggleProdSort('product_code')}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                      Product Code <ArrowUpDown size={12} />
-                    </span>
-                  </th>
-                  <th style={{ cursor: 'pointer' }} onClick={() => toggleProdSort('product_name')}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                      Product Name <ArrowUpDown size={12} />
-                    </span>
-                  </th>
-                  <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleProdSort('orders')}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
-                      Orders <ArrowUpDown size={12} />
-                    </span>
-                  </th>
-                  <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleProdSort('ordered_quantity')}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
-                      Ordered Qty <ArrowUpDown size={12} />
-                    </span>
-                  </th>
-                  <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleProdSort('returned_quantity')}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
-                      Returned Qty <ArrowUpDown size={12} />
-                    </span>
-                  </th>
-                  <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleProdSort('net_quantity')}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
-                      Net Qty <ArrowUpDown size={12} />
-                    </span>
-                  </th>
-                  <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleProdSort('gross_sales')}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
-                      Gross Sales <ArrowUpDown size={12} />
-                    </span>
-                  </th>
-                  <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleProdSort('net_sales')}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end', color: '#15803d' }}>
-                      Net Sales <ArrowUpDown size={12} />
-                    </span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
+          {/* Desktop Table View */}
+          <div className="responsive-table-view">
+            <div className="table-responsive">
+              <table className="data-table">
+                <thead>
                   <tr>
-                    <td colSpan="8" style={{ textAlign: 'center', padding: '32px' }}>Loading product report data...</td>
+                    <th style={{ cursor: 'pointer' }} onClick={() => toggleProdSort('product_code')}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        Product Code <ArrowUpDown size={12} />
+                      </span>
+                    </th>
+                    <th style={{ cursor: 'pointer' }} onClick={() => toggleProdSort('product_name')}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        Product Name <ArrowUpDown size={12} />
+                      </span>
+                    </th>
+                    <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleProdSort('orders')}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
+                        Orders <ArrowUpDown size={12} />
+                      </span>
+                    </th>
+                    <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleProdSort('ordered_quantity')}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
+                        Ordered Qty <ArrowUpDown size={12} />
+                      </span>
+                    </th>
+                    <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleProdSort('returned_quantity')}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
+                        Returned Qty <ArrowUpDown size={12} />
+                      </span>
+                    </th>
+                    <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleProdSort('net_quantity')}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
+                        Net Qty <ArrowUpDown size={12} />
+                      </span>
+                    </th>
+                    <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleProdSort('gross_sales')}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
+                        Gross Sales <ArrowUpDown size={12} />
+                      </span>
+                    </th>
+                    <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleProdSort('net_sales')}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end', color: '#15803d' }}>
+                        Net Sales <ArrowUpDown size={12} />
+                      </span>
+                    </th>
                   </tr>
-                ) : sortedProducts.length === 0 ? (
-                  <tr>
-                    <td colSpan="8">
-                      <div className="empty-state">
-                        <div className="empty-state-icon"><Package size={24} /></div>
-                        <div className="empty-state-title">No products match filter</div>
-                        <div className="empty-state-desc">Try clearing the search term or adjusting filters.</div>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  sortedProducts.map((p) => (
-                    <tr key={p.product_id}>
-                      <td>
-                        <span className="badge badge-neutral" style={{ fontWeight: 600 }}>{p.product_code}</span>
-                      </td>
-                      <td>
-                        <strong>{p.product_name}</strong>
-                      </td>
-                      <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                        {p.orders}
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        {p.ordered_quantity} units
-                      </td>
-                      <td style={{ textAlign: 'right', color: p.returned_quantity > 0 ? '#dc2626' : 'var(--text-muted)' }}>
-                        {p.returned_quantity > 0 ? `-${p.returned_quantity} units` : '0 units'}
-                      </td>
-                      <td style={{ textAlign: 'right', fontWeight: 700, color: '#0891b2' }}>
-                        {p.net_quantity} units
-                      </td>
-                      <td style={{ textAlign: 'right', color: p.gross_sales > 0 ? '#b45309' : 'var(--text-muted)' }}>
-                        ₹{p.gross_sales?.toLocaleString()}
-                      </td>
-                      <td style={{ textAlign: 'right', color: '#15803d', fontWeight: 700 }}>
-                        ₹{p.net_sales?.toLocaleString()}
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan="8" style={{ textAlign: 'center', padding: '32px' }}>Loading product report data...</td>
+                    </tr>
+                  ) : sortedProducts.length === 0 ? (
+                    <tr>
+                      <td colSpan="8">
+                        <div className="empty-state">
+                          <div className="empty-state-icon"><Package size={24} /></div>
+                          <div className="empty-state-title">No products match filter</div>
+                          <div className="empty-state-desc">Try clearing the search term or adjusting filters.</div>
+                        </div>
                       </td>
                     </tr>
-                  ))
+                  ) : (
+                    sortedProducts.map((p) => (
+                      <tr key={p.product_id}>
+                        <td>
+                          <span className="badge badge-neutral" style={{ fontWeight: 600 }}>{p.product_code}</span>
+                        </td>
+                        <td>
+                          <strong>{p.product_name}</strong>
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                          {p.orders}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          {p.ordered_quantity} units
+                        </td>
+                        <td style={{ textAlign: 'right', color: p.returned_quantity > 0 ? '#dc2626' : 'var(--text-muted)' }}>
+                          {p.returned_quantity > 0 ? `-${p.returned_quantity} units` : '0 units'}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 700, color: '#0891b2' }}>
+                          {p.net_quantity} units
+                        </td>
+                        <td style={{ textAlign: 'right', color: p.gross_sales > 0 ? '#b45309' : 'var(--text-muted)' }}>
+                          ₹{p.gross_sales?.toLocaleString()}
+                        </td>
+                        <td style={{ textAlign: 'right', color: '#15803d', fontWeight: 700 }}>
+                          ₹{p.net_sales?.toLocaleString()}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {sortedProducts.length > 0 && (
+                  <tfoot>
+                    <tr style={{ background: '#f8fafc', fontWeight: 700 }}>
+                      <td colSpan="2">Total ({sortedProducts.length} catalog items)</td>
+                      <td style={{ textAlign: 'right' }}>{summary.total_orders}</td>
+                      <td style={{ textAlign: 'right' }}>{summary.ordered_quantity} units</td>
+                      <td style={{ textAlign: 'right', color: summary.returned_quantity > 0 ? '#dc2626' : 'var(--text-main)' }}>
+                        {summary.returned_quantity > 0 ? `-${summary.returned_quantity} units` : '0 units'}
+                      </td>
+                      <td style={{ textAlign: 'right', color: '#0891b2' }}>{summary.net_quantity} units</td>
+                      <td style={{ textAlign: 'right', color: '#b45309' }}>₹{summary.gross_sales?.toLocaleString()}</td>
+                      <td style={{ textAlign: 'right', color: '#15803d' }}>₹{summary.net_sales?.toLocaleString()}</td>
+                    </tr>
+                  </tfoot>
                 )}
-              </tbody>
-              {sortedProducts.length > 0 && (
-                <tfoot>
-                  <tr style={{ background: '#f8fafc', fontWeight: 700 }}>
-                    <td colSpan="2">Total ({sortedProducts.length} catalog items)</td>
-                    <td style={{ textAlign: 'right' }}>{summary.total_orders}</td>
-                    <td style={{ textAlign: 'right' }}>{summary.ordered_quantity} units</td>
-                    <td style={{ textAlign: 'right', color: summary.returned_quantity > 0 ? '#dc2626' : 'var(--text-main)' }}>
-                      {summary.returned_quantity > 0 ? `-${summary.returned_quantity} units` : '0 units'}
-                    </td>
-                    <td style={{ textAlign: 'right', color: '#0891b2' }}>{summary.net_quantity} units</td>
-                    <td style={{ textAlign: 'right', color: '#b45309' }}>₹{summary.gross_sales?.toLocaleString()}</td>
-                    <td style={{ textAlign: 'right', color: '#15803d' }}>₹{summary.net_sales?.toLocaleString()}</td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
+              </table>
+            </div>
+          </div>
+
+          {/* Mobile Card View */}
+          <div className="responsive-card-view">
+            {loading ? (
+              <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>Loading product report data...</div>
+            ) : sortedProducts.length === 0 ? (
+              <div className="empty-state">
+                <div className="empty-state-icon"><Package size={24} /></div>
+                <div className="empty-state-title">No products match filter</div>
+                <div className="empty-state-desc">Try clearing the search term or adjusting filters.</div>
+              </div>
+            ) : (
+              sortedProducts.map((p) => (
+                <div key={p.product_id} className="mobile-data-card">
+                  <div className="mobile-card-header">
+                    <div className="mobile-card-title-group">
+                      <span className="mobile-card-id">{p.product_name}</span>
+                      <span className="badge badge-neutral" style={{ width: 'fit-content', marginTop: '2px', fontWeight: 600 }}>
+                        {p.product_code}
+                      </span>
+                    </div>
+                    <span className="badge badge-success" style={{ fontSize: '12px', fontWeight: 800 }}>
+                      ₹{p.net_sales?.toLocaleString()}
+                    </span>
+                  </div>
+
+                  <div className="mobile-card-grid">
+                    <div className="mobile-card-item">
+                      <span className="mobile-card-label">Orders</span>
+                      <span className="mobile-card-val">{p.orders}</span>
+                    </div>
+                    <div className="mobile-card-item">
+                      <span className="mobile-card-label">Ordered Qty</span>
+                      <span className="mobile-card-val">{p.ordered_quantity} units</span>
+                    </div>
+                    <div className="mobile-card-item">
+                      <span className="mobile-card-label">Returned Qty</span>
+                      <span className="mobile-card-val" style={{ color: p.returned_quantity > 0 ? '#dc2626' : 'inherit' }}>
+                        {p.returned_quantity > 0 ? `-${p.returned_quantity} units` : '0 units'}
+                      </span>
+                    </div>
+                    <div className="mobile-card-item">
+                      <span className="mobile-card-label">Net Qty</span>
+                      <span className="mobile-card-val" style={{ color: '#0891b2', fontWeight: 700 }}>
+                        {p.net_quantity} units
+                      </span>
+                    </div>
+                    <div className="mobile-card-item">
+                      <span className="mobile-card-label">Gross Sales</span>
+                      <span className="mobile-card-val" style={{ color: '#b45309', fontWeight: 600 }}>
+                        ₹{p.gross_sales?.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="mobile-card-item">
+                      <span className="mobile-card-label">Net Sales</span>
+                      <span className="mobile-card-val" style={{ color: '#15803d', fontWeight: 800 }}>
+                        ₹{p.net_sales?.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}

@@ -350,88 +350,166 @@ export default function StaffManagement() {
 
       {/* Staff Table Card */}
       <div className="table-card">
-        <div className="table-responsive">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Staff ID</th>
-                <th>Staff Name</th>
-                <th>Login Username</th>
-                <th>Account Status</th>
-                <th>Member Since</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
+        {/* Desktop & Laptop Table View */}
+        <div className="responsive-table-view">
+          <div className="table-responsive">
+            <table className="data-table">
+              <thead>
                 <tr>
-                  <td colSpan="6" style={{ textAlign: 'center', padding: '32px' }}>Loading staff accounts...</td>
+                  <th>Staff ID</th>
+                  <th>Staff Name</th>
+                  <th>Login Username</th>
+                  <th>Account Status</th>
+                  <th>Member Since</th>
+                  <th style={{ textAlign: 'center', width: '130px' }}>Actions</th>
                 </tr>
-              ) : filteredStaff.length === 0 ? (
-                <tr>
-                  <td colSpan="6">
-                    <div className="empty-state">
-                      <div className="empty-state-icon"><Users size={24} /></div>
-                      <div className="empty-state-title">No staff members found</div>
-                      <div className="empty-state-desc">Create your sales staff accounts to begin receiving customer orders.</div>
-                      <button className="btn btn-primary btn-sm" onClick={openCreateModal}>
-                        <Plus size={14} /> Add Staff Member
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                filteredStaff.map((s) => (
-                  <tr key={s.id}>
-                    <td>
-                      <strong style={{ color: 'var(--primary-700)' }}>{s.staff_id}</strong>
-                    </td>
-                    <td>
-                      <strong>{s.name}</strong>
-                    </td>
-                    <td>
-                      <span style={{ color: 'var(--text-muted)' }}>@{s.username}</span>
-                    </td>
-                    <td>
-                      <span className={`badge ${s.status === 'active' ? 'badge-success' : 'badge-neutral'}`}>
-                        {s.status}
-                      </span>
-                    </td>
-                    <td style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                      {s.created_at ? s.created_at.split('T')[0] : '—'}
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '6px' }}>
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => openEditModal(s)}
-                          title="Edit Staff Details"
-                        >
-                          <Edit2 size={13} />
-                        </button>
-
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => openResetPasswordModal(s)}
-                          title="Reset Password"
-                        >
-                          <KeyRound size={13} />
-                        </button>
-
-                        <button
-                          className={`btn ${s.status === 'active' ? 'btn-danger' : 'btn-secondary'} btn-sm`}
-                          onClick={() => handleToggleStatus(s)}
-                          title={s.status === 'active' ? 'Deactivate Account' : 'Activate Account'}
-                        >
-                          {s.status === 'active' ? 'Deactivate' : 'Activate'}
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan="6" style={{ textAlign: 'center', padding: '32px' }}>Loading staff accounts...</td>
+                  </tr>
+                ) : filteredStaff.length === 0 ? (
+                  <tr>
+                    <td colSpan="6">
+                      <div className="empty-state">
+                        <div className="empty-state-icon"><Users size={24} /></div>
+                        <div className="empty-state-title">No staff members found</div>
+                        <div className="empty-state-desc">Create your sales staff accounts to begin receiving customer orders.</div>
+                        <button className="btn btn-primary btn-sm" onClick={openCreateModal}>
+                          <Plus size={14} /> Add Staff Member
                         </button>
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  filteredStaff.map((s) => (
+                    <tr key={s.id}>
+                      <td>
+                        <strong style={{ color: 'var(--primary-700)' }}>{s.staff_id}</strong>
+                      </td>
+                      <td>
+                        <strong>{s.name}</strong>
+                      </td>
+                      <td>
+                        <span style={{ color: 'var(--text-muted)' }}>@{s.username}</span>
+                      </td>
+                      <td>
+                        <span className={`badge ${s.status === 'active' ? 'badge-success' : 'badge-neutral'}`}>
+                          {s.status}
+                        </span>
+                      </td>
+                      <td style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                        {s.created_at ? s.created_at.split('T')[0] : '—'}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <div style={{ display: 'inline-flex', gap: '6px' }}>
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => openEditModal(s)}
+                            title="Edit Staff Details"
+                          >
+                            <Edit2 size={13} />
+                          </button>
+
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => openResetPasswordModal(s)}
+                            title="Reset Password"
+                          >
+                            <KeyRound size={13} />
+                          </button>
+
+                          <button
+                            className={`btn ${s.status === 'active' ? 'btn-danger' : 'btn-secondary'} btn-sm`}
+                            onClick={() => handleToggleStatus(s)}
+                            title={s.status === 'active' ? 'Deactivate Account' : 'Activate Account'}
+                          >
+                            {s.status === 'active' ? 'Deactivate' : 'Activate'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Mobile & Small Tablet Data Card View (<= 768px) */}
+        <div className="responsive-card-view">
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>Loading staff accounts...</div>
+          ) : filteredStaff.length === 0 ? (
+            <div className="empty-state" style={{ padding: '32px 16px' }}>
+              <div className="empty-state-icon"><Users size={24} /></div>
+              <div className="empty-state-title">No staff members found</div>
+              <div className="empty-state-desc">Create your sales staff accounts to begin receiving customer orders.</div>
+              <button className="btn btn-primary btn-sm" onClick={openCreateModal} style={{ marginTop: '12px' }}>
+                <Plus size={14} /> Add Staff Member
+              </button>
+            </div>
+          ) : (
+            filteredStaff.map((s) => (
+              <div key={s.id} className="mobile-data-card">
+                <div className="mobile-card-header">
+                  <div className="mobile-card-title-group">
+                    <span className="mobile-card-title">{s.name}</span>
+                    <span className="mobile-card-subtitle" style={{ fontWeight: 600, color: 'var(--primary-700)' }}>
+                      {s.staff_id}
+                    </span>
+                  </div>
+                  <span className={`badge ${s.status === 'active' ? 'badge-success' : 'badge-neutral'}`}>
+                    {s.status}
+                  </span>
+                </div>
+
+                <div className="mobile-card-grid">
+                  <div className="mobile-card-item">
+                    <span className="mobile-card-label">Username</span>
+                    <span className="mobile-card-val" style={{ color: 'var(--text-muted)' }}>@{s.username}</span>
+                  </div>
+
+                  <div className="mobile-card-item">
+                    <span className="mobile-card-label">Member Since</span>
+                    <span className="mobile-card-val">{s.created_at ? s.created_at.split('T')[0] : '—'}</span>
+                  </div>
+                </div>
+
+                <div className="mobile-card-footer">
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => openEditModal(s)}
+                    style={{ flex: 1, justifyContent: 'center' }}
+                  >
+                    <Edit2 size={13} />
+                    <span>Edit</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => openResetPasswordModal(s)}
+                    style={{ flex: 1, justifyContent: 'center' }}
+                  >
+                    <KeyRound size={13} />
+                    <span>Password</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className={`btn ${s.status === 'active' ? 'btn-danger' : 'btn-secondary'} btn-sm`}
+                    onClick={() => handleToggleStatus(s)}
+                    style={{ flex: 1, justifyContent: 'center' }}
+                  >
+                    {s.status === 'active' ? 'Deactivate' : 'Activate'}
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 

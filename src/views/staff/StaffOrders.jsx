@@ -593,127 +593,219 @@ export default function StaffOrders() {
 
       {/* Orders Table Card */}
       <div className="table-card">
-        {/* Orders Table */}
-        <div className="table-responsive">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Order ID</th>
-                <th>Order Date</th>
-                <th>Sales Staff</th>
-                <th>Product</th>
-                <th style={{ textAlign: 'center' }}>Quantity</th>
-                <th>Payment Method</th>
-                <th style={{ textAlign: 'right' }}>Order Amount</th>
-                <th style={{ textAlign: 'center', width: '90px' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
+        {/* Desktop & Laptop Table View */}
+        <div className="responsive-table-view">
+          <div className="table-responsive">
+            <table className="data-table">
+              <thead>
                 <tr>
-                  <td colSpan="8" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
-                    Loading orders...
-                  </td>
+                  <th>Order ID</th>
+                  <th>Order Date</th>
+                  <th>Sales Staff</th>
+                  <th>Product</th>
+                  <th style={{ textAlign: 'center' }}>Quantity</th>
+                  <th>Payment Method</th>
+                  <th style={{ textAlign: 'right' }}>Order Amount</th>
+                  <th style={{ textAlign: 'center', width: '90px' }}>Actions</th>
                 </tr>
-              ) : orders.length === 0 ? (
-                <tr>
-                  <td colSpan="8">
-                    <div className="empty-state" style={{ padding: '36px 16px' }}>
-                      <div className="empty-state-icon"><ShoppingCart size={28} /></div>
-                      <div className="empty-state-title" style={{ fontSize: '16px' }}>No orders found</div>
-                      <div className="empty-state-desc" style={{ maxWidth: '360px' }}>
-                        No orders matched the specified filters or criteria.
-                      </div>
-                      <button
-                        className="btn btn-primary btn-sm"
-                        onClick={openCreateOrderModal}
-                        style={{ marginTop: '12px' }}
-                      >
-                        <Plus size={14} /> Create Order
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                orders.map((o) => (
-                  <tr
-                    key={o.id}
-                    className="table-row-clickable"
-                    onClick={() => setSelectedOrderDetails(o)}
-                    title="Click to view complete order information and incentive calculation"
-                  >
-                    <td>
-                      <strong style={{ color: 'var(--primary-700)', fontFamily: 'monospace', fontSize: '13px' }}>
-                        {o.order_number}
-                      </strong>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan="8" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
+                      Loading orders...
                     </td>
-                    <td>{o.order_date}</td>
-                    <td>
-                      <div><strong>{o.staff_name}</strong></div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{o.staff_code}</div>
-                    </td>
-                    <td>
-                      <div><strong>{o.product_name}</strong></div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{o.product_code}</div>
-                    </td>
-                    <td style={{ textAlign: 'center', fontWeight: 700 }}>
-                      {o.quantity}
-                    </td>
-                    <td>
-                      <span className={`badge ${o.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`}>
-                        {o.payment_method}
-                      </span>
-                    </td>
-                    <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '13.5px' }}>
-                      ₹{Number(o.total_amount).toLocaleString()}
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }} onClick={e => e.stopPropagation()}>
+                  </tr>
+                ) : orders.length === 0 ? (
+                  <tr>
+                    <td colSpan="8">
+                      <div className="empty-state" style={{ padding: '36px 16px' }}>
+                        <div className="empty-state-icon"><ShoppingCart size={28} /></div>
+                        <div className="empty-state-title" style={{ fontSize: '16px' }}>No orders found</div>
+                        <div className="empty-state-desc" style={{ maxWidth: '360px' }}>
+                          No orders matched the specified filters or criteria.
+                        </div>
                         <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => setSelectedOrderDetails(o)}
-                          title="View Details"
-                          style={{ padding: '4px 7px' }}
+                          className="btn btn-primary btn-sm"
+                          onClick={openCreateOrderModal}
+                          style={{ marginTop: '12px' }}
                         >
-                          <Eye size={13} />
+                          <Plus size={14} /> Create Order
                         </button>
-                        {(isManager || o.staff_id === user?.id) && (
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            onClick={() => openEditOrderModal(o)}
-                            title="Edit Order"
-                            style={{ padding: '4px 7px', color: 'var(--primary-700)' }}
-                          >
-                            <Edit2 size={13} />
-                          </button>
-                        )}
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  orders.map((o) => (
+                    <tr
+                      key={o.id}
+                      className="table-row-clickable"
+                      onClick={() => setSelectedOrderDetails(o)}
+                      title="Click to view complete order information and incentive calculation"
+                    >
+                      <td>
+                        <strong style={{ color: 'var(--primary-700)', fontFamily: 'monospace', fontSize: '13px' }}>
+                          {o.order_number}
+                        </strong>
+                      </td>
+                      <td>{o.order_date}</td>
+                      <td>
+                        <div><strong>{o.staff_name}</strong></div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{o.staff_code}</div>
+                      </td>
+                      <td>
+                        <div><strong>{o.product_name}</strong></div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{o.product_code}</div>
+                      </td>
+                      <td style={{ textAlign: 'center', fontWeight: 700 }}>
+                        {o.quantity}
+                      </td>
+                      <td>
+                        <span className={`badge ${o.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`}>
+                          {o.payment_method}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '13.5px' }}>
+                        ₹{Number(o.total_amount).toLocaleString()}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }} onClick={e => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => setSelectedOrderDetails(o)}
+                            title="View Details"
+                            style={{ padding: '4px 7px' }}
+                          >
+                            <Eye size={13} />
+                          </button>
+                          {(isManager || o.staff_id === user?.id) && (
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => openEditOrderModal(o)}
+                              title="Edit Order"
+                              style={{ padding: '4px 7px', color: 'var(--primary-700)' }}
+                            >
+                              <Edit2 size={13} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Mobile & Small Tablet Data Card View (<= 768px) */}
+        <div className="responsive-card-view">
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '36px 16px', color: 'var(--text-muted)' }}>
+              Loading orders...
+            </div>
+          ) : orders.length === 0 ? (
+            <div className="empty-state" style={{ padding: '36px 16px' }}>
+              <div className="empty-state-icon"><ShoppingCart size={28} /></div>
+              <div className="empty-state-title" style={{ fontSize: '16px' }}>No orders found</div>
+              <div className="empty-state-desc">No orders matched the specified filters.</div>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={openCreateOrderModal}
+                style={{ marginTop: '12px' }}
+              >
+                <Plus size={14} /> Create Order
+              </button>
+            </div>
+          ) : (
+            orders.map((o) => (
+              <div
+                key={o.id}
+                className="mobile-data-card clickable"
+                onClick={() => setSelectedOrderDetails(o)}
+              >
+                <div className="mobile-card-header">
+                  <div className="mobile-card-title-group">
+                    <span className="mobile-card-title">{o.order_number}</span>
+                    <span className="mobile-card-subtitle">{o.order_date}</span>
+                  </div>
+                  <span className={`badge ${o.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`}>
+                    {o.payment_method}
+                  </span>
+                </div>
+
+                <div className="mobile-card-grid">
+                  <div className="mobile-card-item">
+                    <span className="mobile-card-label">Product</span>
+                    <span className="mobile-card-val">{o.product_name}</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{o.product_code}</span>
+                  </div>
+
+                  <div className="mobile-card-item">
+                    <span className="mobile-card-label">Quantity</span>
+                    <span className="mobile-card-val">{o.quantity} {o.quantity === 1 ? 'unit' : 'units'}</span>
+                  </div>
+
+                  <div className="mobile-card-item">
+                    <span className="mobile-card-label">Order Amount</span>
+                    <span className="mobile-card-val accent" style={{ fontSize: '14px' }}>
+                      ₹{Number(o.total_amount).toLocaleString()}
+                    </span>
+                  </div>
+
+                  {isManager ? (
+                    <div className="mobile-card-item">
+                      <span className="mobile-card-label">Sales Staff</span>
+                      <span className="mobile-card-val">{o.staff_name}</span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{o.staff_code}</span>
+                    </div>
+                  ) : (
+                    <div className="mobile-card-item">
+                      <span className="mobile-card-label">Earned Incentive</span>
+                      <span className="mobile-card-val success" style={{ fontSize: '14px' }}>
+                        ₹{o.incentive_amount || 0}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mobile-card-footer" onClick={e => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setSelectedOrderDetails(o)}
+                    style={{ flex: 1, justifyContent: 'center' }}
+                  >
+                    <Eye size={14} />
+                    <span>View Details</span>
+                  </button>
+
+                  {(isManager || o.staff_id === user?.id) && (
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={() => openEditOrderModal(o)}
+                      style={{ flex: 1, justifyContent: 'center', color: 'var(--primary-700)' }}
+                    >
+                      <Edit2 size={14} />
+                      <span>Edit</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
         </div>
 
         {/* Pagination Footer */}
         {totalPages > 1 && (
-          <div
-            style={{
-              padding: '12px 20px',
-              borderTop: '1px solid var(--border-subtle)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              fontSize: '13px'
-            }}
-          >
-            <div style={{ color: 'var(--text-muted)' }}>
+          <div className="pagination-bar">
+            <div style={{ color: 'var(--text-muted)', fontSize: '12.5px' }}>
               Showing {orders.length} of {totalOrders} orders
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="pagination-controls" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <button
                 className="btn btn-secondary btn-sm"
                 disabled={page <= 1}
@@ -721,7 +813,7 @@ export default function StaffOrders() {
               >
                 <ChevronLeft size={14} /> Previous
               </button>
-              <span style={{ fontWeight: 600, padding: '0 8px' }}>
+              <span style={{ fontWeight: 600, padding: '0 8px', fontSize: '12.5px' }}>
                 Page {page} of {totalPages}
               </span>
               <button
