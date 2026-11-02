@@ -391,22 +391,8 @@ export default function StaffReturns() {
 
       {/* Compact Applied Filtration Pill Bar (when collapsed) */}
       {!showFilters && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '10px',
-            background: '#f8fafc',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 'var(--radius-md)',
-            padding: '8px 14px',
-            marginBottom: '18px',
-            fontSize: '12.5px'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+        <div className="filter-pill-bar">
+          <div className="filter-pill-items">
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontWeight: 600, color: 'var(--text-secondary)' }}>
               <Filter size={13} color="var(--primary-600)" /> Active Filters:
             </span>
@@ -436,12 +422,12 @@ export default function StaffReturns() {
               </span>
             )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="filter-pill-actions">
             <button
               type="button"
               className="btn btn-sm btn-outline"
               onClick={() => setShowFilters(true)}
-              style={{ fontSize: '11.5px', padding: '3px 10px', height: 'auto' }}
+              style={{ fontSize: '11.5px', padding: '5px 12px', height: 'auto' }}
             >
               Change Filters ▾
             </button>
@@ -450,7 +436,7 @@ export default function StaffReturns() {
                 type="button"
                 className="btn btn-sm btn-ghost"
                 onClick={handleResetFilters}
-                style={{ fontSize: '11.5px', padding: '3px 8px', color: '#dc2626', height: 'auto' }}
+                style={{ fontSize: '11.5px', padding: '5px 10px', color: '#dc2626', height: 'auto' }}
                 title="Reset all filters"
               >
                 <X size={12} style={{ marginRight: '4px' }} /> Reset
@@ -462,153 +448,143 @@ export default function StaffReturns() {
 
       {/* Dedicated Filtration Section Card (when expanded) */}
       {showFilters && (
-        <div className="table-card" style={{ marginBottom: '18px', padding: '16px 20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ width: '26px', height: '26px', borderRadius: '6px', background: 'var(--primary-50)', color: 'var(--primary-600)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="filter-card">
+          <div className="filter-card-header">
+            <div className="filter-title-wrap">
+              <div className="filter-icon-box">
                 <Filter size={15} />
               </div>
-              <strong style={{ fontSize: '13.5px', color: 'var(--text-main)', letterSpacing: '0.2px' }}>Filtration</strong>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+              <strong className="filter-title">Filtration</strong>
+              <span className="filter-desc">
                 (Filter returns by keyword, payment method, staff, and date range)
               </span>
             </div>
             <button
               type="button"
-              className="btn btn-sm btn-ghost"
+              className="filter-hide-btn"
               onClick={() => setShowFilters(false)}
-              style={{ fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--text-muted)' }}
             >
               <X size={14} /> Hide
             </button>
           </div>
-          <div
-            className="table-toolbar"
-            style={{
-              padding: 0,
-              borderBottom: 'none',
-              display: 'flex',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '12px'
-            }}
-          >
-            {/* Search by Return ID, Product, Staff, Payment Method */}
-            <div style={{ display: 'flex', gap: '10px', flex: '1 1 260px', flexWrap: 'wrap' }}>
-              <div className="search-input-wrap" style={{ minWidth: '220px', flex: 1 }}>
-                <Search size={16} />
-                <input
-                  type="text"
-                  className="search-input"
-                  placeholder="Search Return ID, Product, Staff..."
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      setPage(1);
-                      fetchReturns();
-                    }
-                  }}
-                />
-              </div>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => {
-                  setPage(1);
-                  fetchReturns();
-                }}
-              >
-                Search
-              </button>
-            </div>
 
-            {/* Payment Method, Date & Staff Filters */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              {/* Payment Method Filter (Prepaid or COD) */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Payment:</span>
-                <select
-                  className="form-control"
-                  style={{ width: 'auto', padding: '5px 10px', fontSize: '12.5px' }}
-                  value={paymentMethodFilter}
-                  onChange={e => {
-                    setPaymentMethodFilter(e.target.value);
-                    setPage(1);
-                  }}
-                >
-                  <option value="all">All Methods</option>
-                  <option value="Prepaid">Prepaid</option>
-                  <option value="COD">COD</option>
-                </select>
-              </div>
-
-              {/* Start Date */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>From:</span>
-                <input
-                  type="date"
-                  className="form-control"
-                  style={{ width: 'auto', padding: '5px 10px', fontSize: '12.5px' }}
-                  value={startDate}
-                  onChange={e => {
-                    setStartDate(e.target.value);
-                    setPage(1);
-                  }}
-                />
-              </div>
-
-              {/* End Date */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>To:</span>
-                <input
-                  type="date"
-                  className="form-control"
-                  style={{ width: 'auto', padding: '5px 10px', fontSize: '12.5px' }}
-                  value={endDate}
-                  onChange={e => {
-                    setEndDate(e.target.value);
-                    setPage(1);
-                  }}
-                />
-              </div>
-
-              {/* Staff Filter (Brand Manager only) */}
-              {isManager && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Staff:</span>
-                  <select
-                    className="form-control"
-                    style={{ width: 'auto', padding: '5px 10px', fontSize: '12.5px' }}
-                    value={staffFilter}
-                    onChange={e => {
-                      setStaffFilter(e.target.value);
-                      setPage(1);
+          <div className="filter-body">
+            <div className="filter-row">
+              {/* Search by Return ID, Product, Staff, Payment Method */}
+              <div className="filter-search-row">
+                <div className="search-input-wrap">
+                  <Search size={16} />
+                  <input
+                    type="text"
+                    className="search-input"
+                    placeholder="Search Return ID, Product, Staff..."
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        setPage(1);
+                        fetchReturns();
+                      }
                     }}
-                  >
-                    <option value="all">All Sales Staff</option>
-                    {staffList.map(s => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} ({s.staff_id})
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
-              )}
-
-              {/* Reset Filters */}
-              {hasActiveFilters && (
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
-                  onClick={handleResetFilters}
-                  title="Reset all filters"
-                  style={{ padding: '5px 10px', fontSize: '12px' }}
+                  onClick={() => {
+                    setPage(1);
+                    fetchReturns();
+                  }}
+                  style={{ minHeight: '36px', padding: '0 14px' }}
                 >
-                  <X size={13} style={{ marginRight: '4px' }} /> Reset
+                  Search
                 </button>
-              )}
+              </div>
+
+              {/* Payment Method, Date & Staff Filters Grid */}
+              <div className="filter-fields-wrap">
+                {/* Payment Method Filter */}
+                <div className="filter-field">
+                  <span className="filter-field-label">Payment</span>
+                  <select
+                    className="form-control"
+                    value={paymentMethodFilter}
+                    onChange={e => {
+                      setPaymentMethodFilter(e.target.value);
+                      setPage(1);
+                    }}
+                  >
+                    <option value="all">All Methods</option>
+                    <option value="Prepaid">Prepaid</option>
+                    <option value="COD">COD</option>
+                  </select>
+                </div>
+
+                {/* Staff Filter (Brand Manager only) */}
+                {isManager && (
+                  <div className="filter-field">
+                    <span className="filter-field-label">Sales Staff</span>
+                    <select
+                      className="form-control"
+                      value={staffFilter}
+                      onChange={e => {
+                        setStaffFilter(e.target.value);
+                        setPage(1);
+                      }}
+                    >
+                      <option value="all">All Sales Staff</option>
+                      {staffList.map(s => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.staff_id})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Start Date */}
+                <div className="filter-field">
+                  <span className="filter-field-label">From Date</span>
+                  <input
+                    type="date"
+                    className="form-control"
+                    value={startDate}
+                    onChange={e => {
+                      setStartDate(e.target.value);
+                      setPage(1);
+                    }}
+                  />
+                </div>
+
+                {/* End Date */}
+                <div className="filter-field">
+                  <span className="filter-field-label">To Date</span>
+                  <input
+                    type="date"
+                    className="form-control"
+                    value={endDate}
+                    onChange={e => {
+                      setEndDate(e.target.value);
+                      setPage(1);
+                    }}
+                  />
+                </div>
+
+                {/* Reset Filters */}
+                {hasActiveFilters && (
+                  <div className="filter-field" style={{ justifyContent: 'flex-end' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={handleResetFilters}
+                      style={{ minHeight: '36px', padding: '6px 12px', fontSize: '12px' }}
+                      title="Reset all filters"
+                    >
+                      <X size={13} style={{ marginRight: '4px' }} /> Reset
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

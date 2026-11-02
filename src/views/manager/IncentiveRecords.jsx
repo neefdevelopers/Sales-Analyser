@@ -386,22 +386,8 @@ export default function IncentiveRecords() {
 
         {/* Compact Applied Filtration Pill Bar (when collapsed) */}
         {!showFilters && (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: '10px',
-              background: '#f8fafc',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-md)',
-              padding: '8px 14px',
-              marginBottom: '18px',
-              fontSize: '12.5px'
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <div className="filter-pill-bar">
+            <div className="filter-pill-items">
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontWeight: 600, color: 'var(--text-secondary)' }}>
                 <Filter size={13} color="var(--primary-600)" /> Active Filters:
               </span>
@@ -417,12 +403,12 @@ export default function IncentiveRecords() {
                 </span>
               )}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="filter-pill-actions">
               <button
                 type="button"
                 className="btn btn-sm btn-outline"
                 onClick={() => setShowFilters(true)}
-                style={{ fontSize: '11.5px', padding: '3px 10px', height: 'auto' }}
+                style={{ fontSize: '11.5px', padding: '5px 12px', height: 'auto' }}
               >
                 Change Filters ▾
               </button>
@@ -431,7 +417,7 @@ export default function IncentiveRecords() {
                   type="button"
                   className="btn btn-sm btn-ghost"
                   onClick={() => setSearch('')}
-                  style={{ fontSize: '11.5px', padding: '3px 8px', color: '#dc2626', height: 'auto' }}
+                  style={{ fontSize: '11.5px', padding: '5px 10px', color: '#dc2626', height: 'auto' }}
                 >
                   <X size={12} style={{ marginRight: '4px' }} /> Clear Search
                 </button>
@@ -442,161 +428,163 @@ export default function IncentiveRecords() {
 
         {/* Table Selector & Search Toolbar (Filtration Card) */}
         {showFilters && (
-          <div className="table-card" style={{ marginBottom: '20px', padding: '16px 20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '26px', height: '26px', borderRadius: '6px', background: 'var(--primary-50)', color: 'var(--primary-600)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="filter-card">
+            <div className="filter-card-header">
+              <div className="filter-title-wrap">
+                <div className="filter-icon-box">
                   <Filter size={15} />
                 </div>
-                <strong style={{ fontSize: '13.5px', color: 'var(--text-main)', letterSpacing: '0.2px' }}>Filtration</strong>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                <strong className="filter-title">Filtration</strong>
+                <span className="filter-desc">
                   (Filter by period, table mode, or search keywords)
                 </span>
               </div>
               <button
                 type="button"
-                className="btn btn-sm btn-ghost"
+                className="filter-hide-btn"
                 onClick={() => setShowFilters(false)}
-                style={{ fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--text-muted)' }}
               >
                 <X size={14} /> Hide
               </button>
             </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
-            {/* 1. Period Filter (Month & Year) */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Period:</span>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <button className="btn btn-secondary btn-sm" onClick={handlePrevMonth} title="Previous Month">
-                  <ChevronLeft size={15} />
-                </button>
-                <select
-                  className="form-control"
-                  style={{ width: 'auto', padding: '5px 10px', fontSize: '13px', fontWeight: 600 }}
-                  value={currentMonth}
-                  onChange={e => setCurrentMonth(parseInt(e.target.value, 10))}
-                >
-                  {MONTHS.map(m => (
-                    <option key={m.value} value={m.value}>{m.label}</option>
-                  ))}
-                </select>
-                <select
-                  className="form-control"
-                  style={{ width: 'auto', padding: '5px 10px', fontSize: '13px', fontWeight: 600 }}
-                  value={currentYear}
-                  onChange={e => setCurrentYear(parseInt(e.target.value, 10))}
-                >
-                  {YEARS.map(y => (
-                    <option key={y} value={y}>{y}</option>
-                  ))}
-                </select>
-                <button className="btn btn-secondary btn-sm" onClick={handleNextMonth} title="Next Month">
-                  <ChevronRight size={15} />
-                </button>
-                <button className="btn btn-secondary btn-sm" onClick={handleCurrentMonth} style={{ fontSize: '12px', padding: '5px 10px' }}>
-                  Current
-                </button>
+            <div className="filter-body">
+              <div className="filter-row">
+                {/* 1. Period Filter (Month & Year) */}
+                <div className="filter-field">
+                  <span className="filter-field-label">Period</span>
+                  <div className="filter-month-nav">
+                    <button className="btn btn-secondary btn-sm" onClick={handlePrevMonth} title="Previous Month">
+                      <ChevronLeft size={15} />
+                    </button>
+                    <select
+                      className="form-control"
+                      value={currentMonth}
+                      onChange={e => setCurrentMonth(parseInt(e.target.value, 10))}
+                    >
+                      {MONTHS.map(m => (
+                        <option key={m.value} value={m.value}>{m.label}</option>
+                      ))}
+                    </select>
+                    <select
+                      className="form-control"
+                      value={currentYear}
+                      onChange={e => setCurrentYear(parseInt(e.target.value, 10))}
+                    >
+                      {YEARS.map(y => (
+                        <option key={y} value={y}>{y}</option>
+                      ))}
+                    </select>
+                    <button className="btn btn-secondary btn-sm" onClick={handleNextMonth} title="Next Month">
+                      <ChevronRight size={15} />
+                    </button>
+                    <button className="btn btn-secondary btn-sm" onClick={handleCurrentMonth} style={{ fontSize: '12px', padding: '5px 10px' }}>
+                      Current
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. Table Mode Filter Tabs */}
+                <div className="filter-field">
+                  <span className="filter-field-label">View Mode</span>
+                  <div className="filter-tabs-toggle">
+                    <button
+                      type="button"
+                      onClick={() => setDetailTab('orders')}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 14px',
+                        borderRadius: 'var(--radius-sm)',
+                        border: 'none',
+                        background: detailTab === 'orders' ? '#ffffff' : 'transparent',
+                        color: detailTab === 'orders' ? 'var(--primary-700)' : 'var(--text-muted)',
+                        fontWeight: detailTab === 'orders' ? 700 : 500,
+                        boxShadow: detailTab === 'orders' ? 'var(--shadow-xs)' : 'none',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <ShoppingCart size={14} />
+                      <span>Orders ({orders.length})</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setDetailTab('returns')}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 14px',
+                        borderRadius: 'var(--radius-sm)',
+                        border: 'none',
+                        background: detailTab === 'returns' ? '#ffffff' : 'transparent',
+                        color: detailTab === 'returns' ? '#dc2626' : 'var(--text-muted)',
+                        fontWeight: detailTab === 'returns' ? 700 : 500,
+                        boxShadow: detailTab === 'returns' ? 'var(--shadow-xs)' : 'none',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <RotateCcw size={14} />
+                      <span>Returns ({returns.length})</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setDetailTab('both')}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 12px',
+                        borderRadius: 'var(--radius-sm)',
+                        border: 'none',
+                        background: detailTab === 'both' ? '#ffffff' : 'transparent',
+                        color: detailTab === 'both' ? 'var(--primary-700)' : 'var(--text-muted)',
+                        fontWeight: detailTab === 'both' ? 700 : 500,
+                        boxShadow: detailTab === 'both' ? 'var(--shadow-xs)' : 'none',
+                        cursor: 'pointer',
+                        fontSize: '12.5px',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <span>Both</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3. Search Filter */}
+                <div className="filter-search-row">
+                  <div className="search-input-wrap">
+                    <Search size={15} />
+                    <input
+                      type="text"
+                      className="search-input"
+                      placeholder={detailTab === 'returns' ? 'Search returns...' : 'Search orders...'}
+                      value={search}
+                      onChange={e => setSearch(e.target.value)}
+                    />
+                  </div>
+                  {search && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => setSearch('')}
+                      title="Clear search"
+                      style={{ minHeight: '36px', padding: '0 12px', fontSize: '12px' }}
+                    >
+                      <X size={13} style={{ marginRight: '4px' }} /> Clear
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-
-            {/* 2. Table Mode Filter Tabs */}
-            <div style={{ display: 'inline-flex', background: '#f1f5f9', padding: '4px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-              <button
-                type="button"
-                onClick={() => setDetailTab('orders')}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '6px 14px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: 'none',
-                  background: detailTab === 'orders' ? '#ffffff' : 'transparent',
-                  color: detailTab === 'orders' ? 'var(--primary-700)' : 'var(--text-muted)',
-                  fontWeight: detailTab === 'orders' ? 700 : 500,
-                  boxShadow: detailTab === 'orders' ? 'var(--shadow-xs)' : 'none',
-                  cursor: 'pointer',
-                  fontSize: '13px',
-                  transition: 'all 0.15s ease'
-                }}
-              >
-                <ShoppingCart size={14} />
-                <span>Orders ({orders.length})</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setDetailTab('returns')}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '6px 14px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: 'none',
-                  background: detailTab === 'returns' ? '#ffffff' : 'transparent',
-                  color: detailTab === 'returns' ? '#dc2626' : 'var(--text-muted)',
-                  fontWeight: detailTab === 'returns' ? 700 : 500,
-                  boxShadow: detailTab === 'returns' ? 'var(--shadow-xs)' : 'none',
-                  cursor: 'pointer',
-                  fontSize: '13px',
-                  transition: 'all 0.15s ease'
-                }}
-              >
-                <RotateCcw size={14} />
-                <span>Returns ({returns.length})</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setDetailTab('both')}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '6px 12px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: 'none',
-                  background: detailTab === 'both' ? '#ffffff' : 'transparent',
-                  color: detailTab === 'both' ? 'var(--primary-700)' : 'var(--text-muted)',
-                  fontWeight: detailTab === 'both' ? 700 : 500,
-                  boxShadow: detailTab === 'both' ? 'var(--shadow-xs)' : 'none',
-                  cursor: 'pointer',
-                  fontSize: '12.5px',
-                  transition: 'all 0.15s ease'
-                }}
-              >
-                <span>Both</span>
-              </button>
-            </div>
-
-            {/* 3. Search Filter */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 220px', maxWidth: '400px' }}>
-              <div className="search-input-wrap" style={{ flex: 1 }}>
-                <Search size={15} />
-                <input
-                  type="text"
-                  className="search-input"
-                  placeholder={detailTab === 'returns' ? 'Search returns by #, product...' : 'Search by order #, product...'}
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                />
-              </div>
-              {search && (
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => setSearch('')}
-                  title="Clear search"
-                  style={{ padding: '6px 10px', fontSize: '12px' }}
-                >
-                  <X size={13} style={{ marginRight: '4px' }} /> Clear
-                </button>
-              )}
             </div>
           </div>
-        </div>
         )}
 
         {/* TABLE 1: ORDERS & EARNED INCENTIVES */}
@@ -1089,22 +1077,8 @@ export default function IncentiveRecords() {
 
       {/* Compact Applied Filtration Pill Bar (when collapsed) */}
       {!showFilters && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '10px',
-            background: '#f8fafc',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 'var(--radius-md)',
-            padding: '8px 14px',
-            marginBottom: '18px',
-            fontSize: '12.5px'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+        <div className="filter-pill-bar">
+          <div className="filter-pill-items">
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontWeight: 600, color: 'var(--text-secondary)' }}>
               <Filter size={13} color="var(--primary-600)" /> Active Filters:
             </span>
@@ -1117,12 +1091,12 @@ export default function IncentiveRecords() {
               </span>
             )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="filter-pill-actions">
             <button
               type="button"
               className="btn btn-sm btn-outline"
               onClick={() => setShowFilters(true)}
-              style={{ fontSize: '11.5px', padding: '3px 10px', height: 'auto' }}
+              style={{ fontSize: '11.5px', padding: '5px 12px', height: 'auto' }}
             >
               Change Filters ▾
             </button>
@@ -1131,7 +1105,7 @@ export default function IncentiveRecords() {
                 type="button"
                 className="btn btn-sm btn-ghost"
                 onClick={() => setSearch('')}
-                style={{ fontSize: '11.5px', padding: '3px 8px', color: '#dc2626', height: 'auto' }}
+                style={{ fontSize: '11.5px', padding: '5px 10px', color: '#dc2626', height: 'auto' }}
               >
                 <X size={12} style={{ marginRight: '4px' }} /> Clear Search
               </button>
@@ -1142,87 +1116,86 @@ export default function IncentiveRecords() {
 
       {/* Dedicated Filtration Section Card */}
       {showFilters && (
-        <div className="table-card" style={{ marginBottom: '20px', padding: '16px 20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ width: '26px', height: '26px', borderRadius: '6px', background: 'var(--primary-50)', color: 'var(--primary-600)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="filter-card">
+          <div className="filter-card-header">
+            <div className="filter-title-wrap">
+              <div className="filter-icon-box">
                 <Filter size={15} />
               </div>
-              <strong style={{ fontSize: '13.5px', color: 'var(--text-main)', letterSpacing: '0.2px' }}>Filtration</strong>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+              <strong className="filter-title">Filtration</strong>
+              <span className="filter-desc">
                 (Period selection and staff search filtration)
               </span>
             </div>
             <button
               type="button"
-              className="btn btn-sm btn-ghost"
+              className="filter-hide-btn"
               onClick={() => setShowFilters(false)}
-              style={{ fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--text-muted)' }}
             >
               <X size={14} /> Hide
             </button>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
-            {/* 1. Period Controls */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Period:</span>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <button className="btn btn-secondary btn-sm" onClick={handlePrevMonth} title="Previous Month">
-                  <ChevronLeft size={15} />
-                </button>
-                <select
-                  className="form-control"
-                  style={{ width: 'auto', padding: '5px 10px', fontSize: '13px', fontWeight: 600 }}
-                  value={currentMonth}
-                  onChange={e => setCurrentMonth(parseInt(e.target.value, 10))}
-                >
-                  {MONTHS.map(m => (
-                    <option key={m.value} value={m.value}>{m.label}</option>
-                  ))}
-                </select>
-                <select
-                  className="form-control"
-                  style={{ width: 'auto', padding: '5px 10px', fontSize: '13px', fontWeight: 600 }}
-                  value={currentYear}
-                  onChange={e => setCurrentYear(parseInt(e.target.value, 10))}
-                >
-                  {YEARS.map(y => (
-                    <option key={y} value={y}>{y}</option>
-                  ))}
-                </select>
-                <button className="btn btn-secondary btn-sm" onClick={handleNextMonth} title="Next Month">
-                  <ChevronRight size={15} />
-                </button>
-                <button className="btn btn-secondary btn-sm" onClick={handleCurrentMonth} style={{ fontSize: '12px', padding: '5px 10px' }}>
-                  Current
-                </button>
+          <div className="filter-body">
+            <div className="filter-row">
+              {/* 1. Period Controls */}
+              <div className="filter-field">
+                <span className="filter-field-label">Period</span>
+                <div className="filter-month-nav">
+                  <button className="btn btn-secondary btn-sm" onClick={handlePrevMonth} title="Previous Month">
+                    <ChevronLeft size={15} />
+                  </button>
+                  <select
+                    className="form-control"
+                    value={currentMonth}
+                    onChange={e => setCurrentMonth(parseInt(e.target.value, 10))}
+                  >
+                    {MONTHS.map(m => (
+                      <option key={m.value} value={m.value}>{m.label}</option>
+                    ))}
+                  </select>
+                  <select
+                    className="form-control"
+                    value={currentYear}
+                    onChange={e => setCurrentYear(parseInt(e.target.value, 10))}
+                  >
+                    {YEARS.map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                  <button className="btn btn-secondary btn-sm" onClick={handleNextMonth} title="Next Month">
+                    <ChevronRight size={15} />
+                  </button>
+                  <button className="btn btn-secondary btn-sm" onClick={handleCurrentMonth} style={{ fontSize: '12px', padding: '5px 10px' }}>
+                    Current
+                  </button>
+                </div>
               </div>
-            </div>
 
-            {/* 2. Staff Search */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 220px', maxWidth: '400px' }}>
-              <div className="search-input-wrap" style={{ flex: 1 }}>
-                <Search size={15} />
-                <input
-                  type="text"
-                  className="search-input"
-                  placeholder="Search staff by name or Staff ID..."
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                />
+              {/* 2. Staff Search */}
+              <div className="filter-search-row">
+                <div className="search-input-wrap">
+                  <Search size={15} />
+                  <input
+                    type="text"
+                    className="search-input"
+                    placeholder="Search staff by name or Staff ID..."
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                  />
+                </div>
+                {search && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setSearch('')}
+                    title="Clear search"
+                    style={{ minHeight: '36px', padding: '0 12px', fontSize: '12px' }}
+                  >
+                    <X size={13} style={{ marginRight: '4px' }} /> Clear
+                  </button>
+                )}
               </div>
-              {search && (
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => setSearch('')}
-                  title="Clear search"
-                  style={{ padding: '6px 10px', fontSize: '12px' }}
-                >
-                  <X size={13} style={{ marginRight: '4px' }} /> Clear
-                </button>
-              )}
             </div>
           </div>
         </div>

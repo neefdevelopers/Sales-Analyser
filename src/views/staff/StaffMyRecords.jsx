@@ -193,22 +193,8 @@ export default function StaffMyRecords() {
 
       {/* Compact Applied Filtration Pill Bar (when collapsed) */}
       {!showFilters && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '10px',
-            background: '#f8fafc',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 'var(--radius-md)',
-            padding: '8px 14px',
-            marginBottom: '18px',
-            fontSize: '12.5px'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+        <div className="filter-pill-bar">
+          <div className="filter-pill-items">
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontWeight: 600, color: 'var(--text-secondary)' }}>
               <Filter size={13} color="var(--primary-600)" /> Active Filters:
             </span>
@@ -231,12 +217,12 @@ export default function StaffMyRecords() {
               </span>
             )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="filter-pill-actions">
             <button
               type="button"
               className="btn btn-sm btn-outline"
               onClick={() => setShowFilters(true)}
-              style={{ fontSize: '11.5px', padding: '3px 10px', height: 'auto' }}
+              style={{ fontSize: '11.5px', padding: '5px 12px', height: 'auto' }}
             >
               Change Filters ▾
             </button>
@@ -245,7 +231,7 @@ export default function StaffMyRecords() {
                 type="button"
                 className="btn btn-sm btn-ghost"
                 onClick={handleResetFilters}
-                style={{ fontSize: '11.5px', padding: '3px 8px', color: '#dc2626', height: 'auto' }}
+                style={{ fontSize: '11.5px', padding: '5px 10px', color: '#dc2626', height: 'auto' }}
                 title="Reset all filters"
               >
                 <X size={12} style={{ marginRight: '4px' }} /> Reset
@@ -257,124 +243,132 @@ export default function StaffMyRecords() {
 
       {/* Dedicated Filtration Section Card (when expanded) */}
       {showFilters && (
-        <div className="table-card" style={{ marginBottom: '18px', padding: '16px 20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ width: '26px', height: '26px', borderRadius: '6px', background: 'var(--primary-50)', color: 'var(--primary-600)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="filter-card">
+          <div className="filter-card-header">
+            <div className="filter-title-wrap">
+              <div className="filter-icon-box">
                 <Filter size={15} />
               </div>
-              <strong style={{ fontSize: '13.5px', color: 'var(--text-main)', letterSpacing: '0.2px' }}>Filtration</strong>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+              <strong className="filter-title">Filtration</strong>
+              <span className="filter-desc">
                 (Filter your records by history type, search query, or date range)
               </span>
             </div>
             <button
               type="button"
-              className="btn btn-sm btn-ghost"
+              className="filter-hide-btn"
               onClick={() => setShowFilters(false)}
-              style={{ fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '4px', color: 'var(--text-muted)' }}
             >
               <X size={14} /> Hide
             </button>
           </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
-          {/* History Type Toggle */}
-          <div style={{ display: 'inline-flex', background: '#f1f5f9', padding: '4px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-            <button
-              type="button"
-              onClick={() => setActiveTab('orders')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 14px',
-                borderRadius: 'var(--radius-sm)',
-                border: 'none',
-                background: activeTab === 'orders' ? '#ffffff' : 'transparent',
-                color: activeTab === 'orders' ? 'var(--primary-700)' : 'var(--text-muted)',
-                fontWeight: activeTab === 'orders' ? 700 : 500,
-                boxShadow: activeTab === 'orders' ? 'var(--shadow-xs)' : 'none',
-                cursor: 'pointer',
-                fontSize: '13px',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              <ShoppingCart size={14} />
-              <span>Order History ({orders.length})</span>
-            </button>
+          <div className="filter-body">
+            <div className="filter-row">
+              {/* History Type Toggle */}
+              <div className="filter-field">
+                <span className="filter-field-label">View History</span>
+                <div className="filter-tabs-toggle">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('orders')}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '6px 14px',
+                      borderRadius: 'var(--radius-sm)',
+                      border: 'none',
+                      background: activeTab === 'orders' ? '#ffffff' : 'transparent',
+                      color: activeTab === 'orders' ? 'var(--primary-700)' : 'var(--text-muted)',
+                      fontWeight: activeTab === 'orders' ? 700 : 500,
+                      boxShadow: activeTab === 'orders' ? 'var(--shadow-xs)' : 'none',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <ShoppingCart size={14} />
+                    <span>Orders ({orders.length})</span>
+                  </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveTab('returns')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 14px',
-                borderRadius: 'var(--radius-sm)',
-                border: 'none',
-                background: activeTab === 'returns' ? '#ffffff' : 'transparent',
-                color: activeTab === 'returns' ? '#dc2626' : 'var(--text-muted)',
-                fontWeight: activeTab === 'returns' ? 700 : 500,
-                boxShadow: activeTab === 'returns' ? 'var(--shadow-xs)' : 'none',
-                cursor: 'pointer',
-                fontSize: '13px',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              <RotateCcw size={14} />
-              <span>Return History ({returns.length})</span>
-            </button>
-          </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('returns')}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '6px 14px',
+                      borderRadius: 'var(--radius-sm)',
+                      border: 'none',
+                      background: activeTab === 'returns' ? '#ffffff' : 'transparent',
+                      color: activeTab === 'returns' ? '#dc2626' : 'var(--text-muted)',
+                      fontWeight: activeTab === 'returns' ? 700 : 500,
+                      boxShadow: activeTab === 'returns' ? 'var(--shadow-xs)' : 'none',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <RotateCcw size={14} />
+                    <span>Returns ({returns.length})</span>
+                  </button>
+                </div>
+              </div>
 
-          {/* Search, Dates, and Reset */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            <div className="search-input-wrap" style={{ minWidth: '220px', maxWidth: '300px' }}>
-              <Search size={15} />
-              <input
-                type="text"
-                className="search-input"
-                placeholder={`Search ${activeTab === 'orders' ? 'orders' : 'returns'}...`}
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                style={{ padding: '6px 10px 6px 32px', fontSize: '12.5px' }}
-              />
+              {/* Search, Dates, and Reset */}
+              <div className="filter-search-row">
+                <div className="search-input-wrap">
+                  <Search size={15} />
+                  <input
+                    type="text"
+                    className="search-input"
+                    placeholder={`Search ${activeTab === 'orders' ? 'orders' : 'returns'}...`}
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="filter-fields-wrap">
+                <div className="filter-field">
+                  <span className="filter-field-label">From Date</span>
+                  <input
+                    type="date"
+                    className="form-control"
+                    value={startDate}
+                    onChange={e => setStartDate(e.target.value)}
+                  />
+                </div>
+
+                <div className="filter-field">
+                  <span className="filter-field-label">To Date</span>
+                  <input
+                    type="date"
+                    className="form-control"
+                    value={endDate}
+                    onChange={e => setEndDate(e.target.value)}
+                  />
+                </div>
+
+                {hasActiveFilters && (
+                  <div className="filter-field" style={{ justifyContent: 'flex-end' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={handleResetFilters}
+                      style={{ minHeight: '36px', padding: '6px 12px', fontSize: '12px' }}
+                      title="Reset filters"
+                    >
+                      <X size={13} style={{ marginRight: '4px' }} /> Reset
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>From:</span>
-              <input
-                type="date"
-                className="form-control"
-                style={{ width: 'auto', padding: '5px 8px', fontSize: '12px' }}
-                value={startDate}
-                onChange={e => setStartDate(e.target.value)}
-              />
-              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>To:</span>
-              <input
-                type="date"
-                className="form-control"
-                style={{ width: 'auto', padding: '5px 8px', fontSize: '12px' }}
-                value={endDate}
-                onChange={e => setEndDate(e.target.value)}
-              />
-            </div>
-
-            {hasActiveFilters && (
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={handleResetFilters}
-                style={{ padding: '5px 10px', fontSize: '12px' }}
-                title="Reset filters"
-              >
-                <X size={13} style={{ marginRight: '4px' }} /> Reset
-              </button>
-            )}
           </div>
         </div>
-      </div>
       )}
 
       {/* Table Card */}
