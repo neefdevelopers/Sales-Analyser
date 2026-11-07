@@ -601,7 +601,7 @@ export default function StaffOrders() {
                 <tr>
                   <th>Order ID</th>
                   <th>Order Date</th>
-                  <th>Sales Staff</th>
+                  {isManager && <th>Sales Staff</th>}
                   <th>Product</th>
                   <th style={{ textAlign: 'center' }}>Quantity</th>
                   <th>Payment Method</th>
@@ -612,13 +612,13 @@ export default function StaffOrders() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="8" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
+                    <td colSpan={isManager ? 8 : 7} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
                       Loading orders...
                     </td>
                   </tr>
                 ) : orders.length === 0 ? (
                   <tr>
-                    <td colSpan="8">
+                    <td colSpan={isManager ? 8 : 7}>
                       <div className="empty-state" style={{ padding: '36px 16px' }}>
                         <div className="empty-state-icon"><ShoppingCart size={28} /></div>
                         <div className="empty-state-title" style={{ fontSize: '16px' }}>No orders found</div>
@@ -649,10 +649,12 @@ export default function StaffOrders() {
                         </strong>
                       </td>
                       <td>{o.order_date}</td>
-                      <td>
-                        <div><strong>{o.staff_name}</strong></div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{o.staff_code}</div>
-                      </td>
+                      {isManager && (
+                        <td>
+                          <div><strong>{o.staff_name}</strong></div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{o.staff_code}</div>
+                        </td>
+                      )}
                       <td>
                         <div><strong>{o.product_name}</strong></div>
                         <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{o.product_code}</div>

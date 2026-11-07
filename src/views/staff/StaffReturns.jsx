@@ -600,7 +600,7 @@ export default function StaffReturns() {
                 <tr>
                   <th>Return ID</th>
                   <th>Return Date</th>
-                  <th>Staff Member</th>
+                  {isManager && <th>Staff Member</th>}
                   <th>Product</th>
                   <th>Payment Method</th>
                   <th style={{ textAlign: 'right' }}>Returned Quantity</th>
@@ -610,13 +610,13 @@ export default function StaffReturns() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="7" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
+                    <td colSpan={isManager ? 7 : 6} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
                       Loading return records...
                     </td>
                   </tr>
                 ) : returns.length === 0 ? (
                   <tr>
-                    <td colSpan="7">
+                    <td colSpan={isManager ? 7 : 6}>
                       <div className="empty-state" style={{ padding: '36px 16px' }}>
                         <div className="empty-state-icon">
                           <RotateCcw size={28} />
@@ -652,14 +652,16 @@ export default function StaffReturns() {
                           )}
                         </td>
                         <td>{r.return_date}</td>
-                        <td>
-                          <div>
-                            <strong>{r.returned_by_name || r.staff_name || 'Staff Member'}</strong>
-                          </div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                            {r.returned_by_code || r.staff_code || ''}
-                          </div>
-                        </td>
+                        {isManager && (
+                          <td>
+                            <div>
+                              <strong>{r.returned_by_name || r.staff_name || 'Staff Member'}</strong>
+                            </div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                              {r.returned_by_code || r.staff_code || ''}
+                            </div>
+                          </td>
+                        )}
                         <td>
                           <div>
                             <strong>{r.product_name}</strong>
@@ -771,11 +773,13 @@ export default function StaffReturns() {
                       </div>
                     )}
 
-                    <div className="mobile-card-item">
-                      <span className="mobile-card-label">Staff Member</span>
-                      <span className="mobile-card-val">{r.returned_by_name || r.staff_name || 'Staff'}</span>
-                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{r.returned_by_code || r.staff_code}</span>
-                    </div>
+                    {isManager && (
+                      <div className="mobile-card-item">
+                        <span className="mobile-card-label">Staff Member</span>
+                        <span className="mobile-card-val">{r.returned_by_name || r.staff_name || 'Staff'}</span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{r.returned_by_code || r.staff_code}</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="mobile-card-footer" onClick={e => e.stopPropagation()}>
