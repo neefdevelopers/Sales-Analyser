@@ -209,6 +209,16 @@ function initSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_orders_cust ON orders(customer_id);
     CREATE INDEX IF NOT EXISTS idx_returns_order ON returns(order_id);
     CREATE INDEX IF NOT EXISTS idx_returns_staff ON returns(staff_id);
+
+    CREATE TABLE IF NOT EXISTS import_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      file_hash TEXT UNIQUE NOT NULL,
+      file_name TEXT NOT NULL,
+      total_rows INTEGER NOT NULL,
+      updated_count INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      created_by INTEGER REFERENCES users(id)
+    );
   `);
 
   // Ensure returns table allows nullable order_id

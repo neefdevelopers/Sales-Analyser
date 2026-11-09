@@ -20,8 +20,10 @@ import {
   Filter,
   ChevronDown,
   Edit2,
-  RotateCcw
+  RotateCcw,
+  FileSpreadsheet
 } from 'lucide-react';
+import BulkOrderImportModal from '../../components/BulkOrderImportModal';
 
 export default function StaffOrders() {
   const { user } = useAuth();
@@ -45,6 +47,9 @@ export default function StaffOrders() {
 
   // Toggle filtration panel
   const [showFilters, setShowFilters] = useState(false);
+
+  // Bulk Excel Import Modal State (Brand Manager)
+  const [showImportModal, setShowImportModal] = useState(false);
 
   // Add Order Modal State
   const [showAddModal, setShowAddModal] = useState(false);
@@ -357,6 +362,27 @@ export default function StaffOrders() {
               }}
             />
           </button>
+
+          {isManager && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setShowImportModal(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                borderColor: '#10b981',
+                color: '#047857',
+                background: '#ecfdf5',
+                fontWeight: 600
+              }}
+              title="Upload an Excel sheet to bulk update existing staff orders"
+            >
+              <FileSpreadsheet size={16} />
+              <span>Import Orders (Excel)</span>
+            </button>
+          )}
 
           <button
             className="btn btn-primary"
@@ -1466,6 +1492,14 @@ export default function StaffOrders() {
             </form>
           </div>
         </div>
+      )}
+      {/* Bulk Order Import Modal (Brand Manager Only) */}
+      {isManager && (
+        <BulkOrderImportModal
+          isOpen={showImportModal}
+          onClose={() => setShowImportModal(false)}
+          onImportSuccess={fetchOrders}
+        />
       )}
     </div>
   );

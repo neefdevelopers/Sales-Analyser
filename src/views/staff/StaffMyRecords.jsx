@@ -420,25 +420,24 @@ export default function StaffMyRecords() {
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th>Order #</th>
-                      <th>Order Date</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Order #</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Order Date</th>
                       <th>Product</th>
-                      <th>Quantity</th>
-                      <th>Total (₹)</th>
-                      <th>Payment</th>
-                      <th>Incentive Earned</th>
-                      <th>Status</th>
-                      <th>Return Status</th>
+                      <th style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>Qty</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Total (₹)</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Payment</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Incentive Earned</th>
+                      <th style={{ whiteSpace: 'nowrap' }}>Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {loading ? (
                       <tr>
-                        <td colSpan="9" style={{ textAlign: 'center', padding: '32px' }}>Loading order records...</td>
+                        <td colSpan="8" style={{ textAlign: 'center', padding: '32px' }}>Loading order records...</td>
                       </tr>
                     ) : filteredOrders.length === 0 ? (
                       <tr>
-                        <td colSpan="9">
+                        <td colSpan="8">
                           <div className="empty-state">
                             <div className="empty-state-icon"><ShoppingCart size={24} /></div>
                             <div className="empty-state-title">No orders found</div>
@@ -449,20 +448,26 @@ export default function StaffMyRecords() {
                     ) : (
                       filteredOrders.map(o => (
                         <tr key={o.id}>
-                          <td><strong style={{ color: 'var(--primary-700)' }}>{o.order_number}</strong></td>
-                          <td>{o.order_date}</td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <strong style={{ color: 'var(--primary-700)', fontFamily: 'monospace', fontSize: '12.5px' }}>
+                              {o.order_number}
+                            </strong>
+                          </td>
+                          <td style={{ whiteSpace: 'nowrap', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                            {o.order_date}
+                          </td>
                           <td>
                             <div><strong>{o.product_name}</strong></div>
                             <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>₹{o.unit_price} / unit</div>
                           </td>
-                          <td><strong>{o.quantity}</strong></td>
-                          <td><strong>₹{Number(o.total_amount).toLocaleString()}</strong></td>
-                          <td>
+                          <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}><strong>{o.quantity}</strong></td>
+                          <td style={{ whiteSpace: 'nowrap' }}><strong>₹{Number(o.total_amount).toLocaleString()}</strong></td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
                             <span className={`badge ${o.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`}>
                               {o.payment_method}
                             </span>
                           </td>
-                          <td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
                             <div style={{ color: 'var(--warning-text)', fontWeight: 700 }}>
                               ₹{o.net_incentive ?? o.incentive_amount}
                             </div>
@@ -472,7 +477,7 @@ export default function StaffMyRecords() {
                               </div>
                             )}
                           </td>
-                          <td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
                             <span className={`badge ${
                               o.status === 'Delivered' ? 'badge-success' :
                               o.status === 'Confirmed' ? 'badge-info' :
@@ -480,14 +485,12 @@ export default function StaffMyRecords() {
                             }`}>
                               {o.status}
                             </span>
-                          </td>
-                          <td>
-                            {o.returned_quantity > 0 ? (
-                              <span className="badge badge-danger">
-                                {o.returned_quantity} returned
-                              </span>
-                            ) : (
-                              <span style={{ fontSize: '12px', color: 'var(--text-subtle)' }}>None</span>
+                            {o.returned_quantity > 0 && (
+                              <div style={{ marginTop: '3px' }}>
+                                <span className="badge badge-danger" style={{ fontSize: '10px', padding: '1px 5px' }}>
+                                  {o.returned_quantity} returned
+                                </span>
+                              </div>
                             )}
                           </td>
                         </tr>
