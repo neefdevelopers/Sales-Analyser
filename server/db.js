@@ -311,14 +311,8 @@ function initSchema(db) {
 }
 
 function seedDatabase(db) {
-  console.log('Seeding initial database with sample data...');
+  console.log('Seeding initial database with default manager and staff accounts...');
   const now = new Date().toISOString();
-  const today = now.split('T')[0];
-  
-  // Calculate yesterday date
-  const yestDate = new Date();
-  yestDate.setDate(yestDate.getDate() - 1);
-  const yesterday = yestDate.toISOString().split('T')[0];
 
   const adminHash = bcrypt.hashSync('admin123', 10);
   const staffHash = bcrypt.hashSync('staff123', 10);
@@ -332,16 +326,6 @@ function seedDatabase(db) {
     ('STF-003', 'Vikram Singh', 'vikram', ?, 'sales_staff', 'active', ?, ?);
   `, [adminHash, now, now, staffHash, now, now, staffHash, now, now, staffHash, now, now]);
 
-  // 2. Seed Products
-  db.run(`
-    INSERT INTO products (name, code, price, status, prepaid_incentive_type, prepaid_incentive_basis, prepaid_incentive_value, cod_incentive_type, cod_incentive_basis, cod_incentive_value, created_at, updated_at) VALUES
-    ('Aura Smartwatch Pro', 'PRD-AURA-01', 4999.00, 'active', 'percentage', 'per_order', 5.0, 'fixed', 'per_unit', 200.0, ?, ?),
-    ('Nova Wireless Earbuds', 'PRD-NOVA-02', 1999.00, 'active', 'fixed', 'per_unit', 150.0, 'fixed', 'per_unit', 100.0, ?, ?),
-    ('Lumina 4K Action Camera', 'PRD-LUMI-03', 8999.00, 'active', 'percentage', 'per_unit', 8.0, 'percentage', 'per_unit', 5.0, ?, ?),
-    ('Pulse Fitness Tracker', 'PRD-PULS-04', 1499.00, 'active', 'fixed', 'per_unit', 100.0, 'fixed', 'per_unit', 50.0, ?, ?),
-    ('Zenith Pro Headphone (Legacy)', 'PRD-ZEN-05', 3499.00, 'inactive', 'fixed', 'per_unit', 120.0, 'fixed', 'per_unit', 80.0, ?, ?);
-  `, [now, now, now, now, now, now, now, now, now, now]);
-
-  console.log('Database initialized with default staff and product configurations!');
+  console.log('Database initialized with default staff accounts.');
 }
 
