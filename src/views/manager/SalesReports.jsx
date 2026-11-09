@@ -24,6 +24,7 @@ import {
   Eye,
   ChevronDown
 } from 'lucide-react';
+import BulkOrderImportModal from '../../components/BulkOrderImportModal';
 
 const PRESETS = [
   { id: 'today', label: 'Today' },
@@ -61,6 +62,19 @@ export default function SalesReports() {
 
   // Toggle for filtration panel across views
   const [showFilters, setShowFilters] = useState(false);
+
+  // Bulk Excel Import Modal State
+  const [showImportModal, setShowImportModal] = useState(false);
+
+  function handleImportSuccess() {
+    if (selectedStaffId === null) {
+      fetchMainReport();
+    } else {
+      fetchStaffReport(selectedStaffId);
+    }
+    setToastMessage('Orders successfully imported from Excel! Sales reports updated.');
+    setTimeout(() => setToastMessage(''), 5000);
+  }
 
   // Sorting state for main tables
   const [staffSortField, setStaffSortField] = useState('net_sales');
@@ -452,6 +466,27 @@ export default function SalesReports() {
                   transition: 'transform 0.2s ease'
                 }}
               />
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setShowImportModal(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                borderColor: '#10b981',
+                color: '#047857',
+                background: '#ecfdf5',
+                padding: '9px 15px',
+                fontWeight: 600,
+                fontSize: '13px'
+              }}
+              title="Upload an Excel sheet to bulk update existing staff orders"
+            >
+              <FileSpreadsheet size={16} />
+              <span>Import Orders (Excel)</span>
             </button>
 
             <button
@@ -972,6 +1007,12 @@ export default function SalesReports() {
             )}
           </div>
         </div>
+        {/* Bulk Order Import Modal */}
+        <BulkOrderImportModal
+          isOpen={showImportModal}
+          onClose={() => setShowImportModal(false)}
+          onImportSuccess={handleImportSuccess}
+        />
       </div>
     );
   }
@@ -1078,6 +1119,27 @@ export default function SalesReports() {
                 transition: 'transform 0.2s ease'
               }}
             />
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => setShowImportModal(true)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              borderColor: '#10b981',
+              color: '#047857',
+              background: '#ecfdf5',
+              padding: '9px 15px',
+              fontWeight: 600,
+              fontSize: '13px'
+            }}
+            title="Upload an Excel sheet to bulk update existing staff orders"
+          >
+            <FileSpreadsheet size={16} />
+            <span>Import Orders (Excel)</span>
           </button>
 
           <button
@@ -1921,6 +1983,13 @@ export default function SalesReports() {
           </div>
         </div>
       )}
+
+      {/* Bulk Order Import Modal */}
+      <BulkOrderImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImportSuccess={handleImportSuccess}
+      />
     </div>
   );
 }
