@@ -311,21 +311,17 @@ function initSchema(db) {
 }
 
 function seedDatabase(db) {
-  console.log('Seeding initial database with default manager and staff accounts...');
+  console.log('Seeding initial database with default manager account...');
   const now = new Date().toISOString();
 
   const adminHash = bcrypt.hashSync('admin123', 10);
-  const staffHash = bcrypt.hashSync('staff123', 10);
 
-  // 1. Seed Users
+  // 1. Seed Manager
   db.run(`
     INSERT INTO users (staff_id, name, username, password_hash, role, status, created_at, updated_at) VALUES
-    ('MGR-001', 'Arun Varma (Brand Manager)', 'manager', ?, 'brand_manager', 'active', ?, ?),
-    ('STF-001', 'Rahul Sharma', 'rahul', ?, 'sales_staff', 'active', ?, ?),
-    ('STF-002', 'Priya Patel', 'priya', ?, 'sales_staff', 'active', ?, ?),
-    ('STF-003', 'Vikram Singh', 'vikram', ?, 'sales_staff', 'active', ?, ?);
-  `, [adminHash, now, now, staffHash, now, now, staffHash, now, now, staffHash, now, now]);
+    ('MGR-001', 'Arun Varma (Brand Manager)', 'manager', ?, 'brand_manager', 'active', ?, ?);
+  `, [adminHash, now, now]);
 
-  console.log('Database initialized with default staff accounts.');
+  console.log('Database initialized with default manager account.');
 }
 
