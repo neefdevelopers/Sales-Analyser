@@ -53,7 +53,7 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
     try {
       setDownloadingTemplate(true);
       setError('');
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('sales_token') || localStorage.getItem('token');
       const response = await fetch('/api/orders/bulk-template', {
         headers: {
           'Authorization': `Bearer ${token}`
