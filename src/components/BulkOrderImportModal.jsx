@@ -1,5 +1,5 @@
 // src/components/BulkOrderImportModal.jsx
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
 import {
   FileSpreadsheet,
@@ -13,7 +13,13 @@ import {
   X,
   FileCheck,
   Info,
-  HelpCircle
+  Layers,
+  Users,
+  Package,
+  Calendar,
+  Sparkles,
+  Link,
+  ChevronDown
 } from 'lucide-react';
 
 export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess }) {
@@ -24,14 +30,51 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [error, setError] = useState('');
 
+  // Target report month/year (defaults to current YYYY-MM)
+  const [monthYear, setMonthYear] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+
+  // System master data for manual mapping dropdowns
+  const [systemStaffList, setSystemStaffList] = useState([]);
+  const [systemProductList, setSystemProductList] = useState([]);
+
+  // Manual mappings defined by the user for unmatched entities:
+  // staffMappings: { [rawKey]: systemStaffDbId }
+  // productMappings: { [rawProductName]: systemProductDbId }
+  const [staffMappings, setStaffMappings] = useState({});
+  const [productMappings, setProductMappings] = useState({});
+
   // Preview data
   const [previewData, setPreviewData] = useState(null);
-  const [previewFilter, setPreviewFilter] = useState('all'); // 'all' | 'update' | 'no_change' | 'unmatched' | 'invalid'
+  const [previewFilter, setPreviewFilter] = useState('all'); // 'all' | 'update' | 'create' | 'no_change' | 'unmatched' | 'invalid'
+  const [confirmDuplicate, setConfirmDuplicate] = useState(false);
 
   // Result data
   const [resultData, setResultData] = useState(null);
 
   const fileInputRef = useRef(null);
+
+  // Fetch staff and products when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      loadMasterEntities();
+    }
+  }, [isOpen]);
+
+  async function loadMasterEntities() {
+    try {
+      const [staffRes, prodRes] = await Promise.all([
+        api.get('/staff').catch(() => ({ staff: [] })),
+        api.get('/products').catch(() => ({ products: [] }))
+      ]);
+      setSystemStaffList(staffRes.staff || []);
+      setSystemProductList(prodRes.products || []);
+    } catch (err) {
+      console.error('Failed to load master entities:', err);
+    }
+  }
 
   if (!isOpen) return null;
 
@@ -41,6 +84,9 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
     setError('');
     setPreviewData(null);
     setPreviewFilter('all');
+    setConfirmDuplicate(false);
+    setStaffMappings({});
+    setProductMappings({});
     setResultData(null);
   }
 
@@ -70,48 +116,62 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
       a.download = `orders_bulk_update_template_${new Date().toISOString().slice(0, 10)}.xlsx`;
       document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
-      a.remove();
     } catch (err) {
-      setError(err.message || 'Failed to download template');
+      setError(err.message || 'Failed to download Excel template');
     } finally {
       setDownloadingTemplate(false);
     }
   }
 
-  function handleFileSelect(selectedFile) {
-    setError('');
+  function handleFileSelected(selectedFile) {
     if (!selectedFile) return;
-    if (!selectedFile.name.endsWith('.xlsx')) {
-      setError('Please select a valid Excel (.xlsx) file.');
+    const name = selectedFile.name.toLowerCase();
+    if (!name.endsWith('.xlsx')) {
+      setError('Please upload a valid Excel file (.xlsx format only).');
       return;
     }
+    setError('');
     setFile(selectedFile);
+  }
+
+  function handleDragOver(e) {
+    e.preventDefault();
+    setIsDragging(true);
+  }
+
+  function handleDragLeave(e) {
+    e.preventDefault();
+    setIsDragging(false);
   }
 
   function handleDrop(e) {
     e.preventDefault();
     setIsDragging(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      handleFileSelect(e.dataTransfer.files[0]);
+      handleFileSelected(e.dataTransfer.files[0]);
     }
   }
 
-  async function handleUploadAndPreview() {
+  // Generate / refresh preview with current manual mappings
+  async function handleInspectFile(customMappings = null) {
     if (!file) {
       setError('Please select an Excel file to upload.');
       return;
     }
-
     setLoading(true);
     setError('');
+
+    const activeStaffMappings = customMappings?.staffMappings || staffMappings;
+    const activeProductMappings = customMappings?.productMappings || productMappings;
 
     try {
       const base64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
           const res = reader.result;
-          const base64String = res.includes(',') ? res.split(',')[1] : res;
+          const base64String = typeof res === 'string' && res.includes(',') ? res.split(',')[1] : res;
           resolve(base64String);
         };
         reader.onerror = () => reject(new Error('Failed to read file'));
@@ -120,26 +180,75 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
 
       const res = await api.post('/orders/bulk-update-preview', {
         fileBase64: base64,
-        fileName: file.name
+        fileName: file.name,
+        monthYear,
+        manualMappings: {
+          staffMappings: activeStaffMappings,
+          productMappings: activeProductMappings
+        }
       });
+      setPreviewData(res);
+      setStep('preview');
 
-      if (res && res.previewToken) {
-        setPreviewData(res);
-        setStep('preview');
-      } else {
-        throw new Error('Invalid preview response received from server.');
+      // Pre-fill any newly mapped items in local state
+      if (res.summary?.detectedStaff) {
+        const sm = { ...activeStaffMappings };
+        res.summary.detectedStaff.forEach(s => {
+          if (s.matchedStaff && !sm[s.rawId || s.sheetName]) {
+            sm[s.rawId || s.sheetName] = String(s.matchedStaff.id);
+          }
+        });
+        setStaffMappings(sm);
+      }
+
+      if (res.summary?.detectedProducts) {
+        const pm = { ...activeProductMappings };
+        res.summary.detectedProducts.forEach(p => {
+          if (p.matchedProduct && !pm[p.rawName]) {
+            pm[p.rawName] = String(p.matchedProduct.id);
+          }
+        });
+        setProductMappings(pm);
       }
     } catch (err) {
-      console.error('Bulk update preview error:', err);
-      setError(err.message || 'Failed to process Excel file.');
+      console.error('Preview error:', err);
+      setError(err.message || 'Failed to inspect Excel file. Please verify file structure.');
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleConfirmUpdate() {
+  function handleStaffMapChange(key, staffDbId) {
+    setStaffMappings(prev => ({
+      ...prev,
+      [key]: staffDbId
+    }));
+  }
+
+  function handleProductMapChange(rawName, prodDbId) {
+    setProductMappings(prev => ({
+      ...prev,
+      [rawName]: prodDbId
+    }));
+  }
+
+  async function handleApplyMappingsAndReinspect() {
+    await handleInspectFile({ staffMappings, productMappings });
+  }
+
+  async function handleConfirmImport() {
     if (!previewData || !previewData.previewToken) {
-      setError('Preview session expired. Please re-upload your Excel file.');
+      setError('Import session expired. Please re-upload the file.');
+      return;
+    }
+
+    if (previewData.isDuplicate && !confirmDuplicate) {
+      setError('Please check the confirmation box to proceed with re-importing this file.');
+      return;
+    }
+
+    if (!previewData.canConfirm) {
+      setError('Cannot proceed: there are unmatched staff members or products that must be mapped.');
       return;
     }
 
@@ -148,103 +257,162 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
 
     try {
       const res = await api.post('/orders/bulk-update-confirm', {
-        previewToken: previewData.previewToken
+        previewToken: previewData.previewToken,
+        confirmDuplicate
       });
-
       setResultData(res);
       setStep('result');
       if (onImportSuccess) {
-        onImportSuccess();
+        onImportSuccess(res);
       }
     } catch (err) {
-      console.error('Bulk update confirmation error:', err);
-      setError(err.message || 'Failed to apply order updates to database.');
+      console.error('Import confirm error:', err);
+      setError(err.message || 'Failed to confirm import. Database updates rolled back.');
     } finally {
       setLoading(false);
     }
   }
 
-  // Filter preview items
-  const filteredPreviewRows = (previewData?.rows || []).filter(item => {
+  // Filter preview rows
+  const filteredRows = (previewData?.rows || []).filter(r => {
     if (previewFilter === 'all') return true;
-    if (previewFilter === 'update') return item.status === 'valid_update';
-    if (previewFilter === 'no_change') return item.status === 'no_change';
-    if (previewFilter === 'unmatched') return item.status === 'unmatched';
-    if (previewFilter === 'invalid') return item.status === 'invalid';
+    if (previewFilter === 'update') return r.status === 'valid_update';
+    if (previewFilter === 'create') return r.status === 'valid_create';
+    if (previewFilter === 'no_change') return r.status === 'no_change';
+    if (previewFilter === 'unmatched') return r.status === 'unmatched';
+    if (previewFilter === 'invalid') return r.status === 'invalid';
     return true;
   });
 
   return (
-    <div className="modal-overlay" onClick={handleModalClose}>
+    <div
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(15, 23, 42, 0.65)',
+        backdropFilter: 'blur(3px)',
+        zIndex: 9999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '16px',
+        animation: 'fadeIn 0.15s ease-out'
+      }}
+      onClick={e => {
+        if (e.target === e.currentTarget && !loading) {
+          handleModalClose();
+        }
+      }}
+    >
       <div
-        className="modal-dialog large"
-        onClick={e => e.stopPropagation()}
-        style={{ maxWidth: '960px', maxHeight: '92vh' }}
+        style={{
+          backgroundColor: '#ffffff',
+          borderRadius: '14px',
+          width: '100%',
+          maxWidth: step === 'preview' ? '1120px' : '720px',
+          maxHeight: '92vh',
+          display: 'flex',
+          flexDirection: 'column',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+          overflow: 'hidden',
+          transition: 'max-width 0.2s ease'
+        }}
       >
         {/* Modal Header */}
-        <div className="modal-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div
+          style={{
+            padding: '16px 24px',
+            borderBottom: '1px solid #e2e8f0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: 'linear-gradient(to right, #f8fafc, #ffffff)'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div
               style={{
-                width: '38px',
-                height: '38px',
-                borderRadius: '8px',
-                background: '#ecfdf5',
+                width: '40px',
+                height: '40px',
+                borderRadius: '10px',
+                backgroundColor: '#ecfdf5',
                 color: '#059669',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center'
+                justifyContent: 'center',
+                boxShadow: 'inset 0 0 0 1px rgba(5, 150, 105, 0.2)'
               }}
             >
-              <FileSpreadsheet size={20} />
+              <FileSpreadsheet size={22} />
             </div>
             <div>
-              <h3 className="modal-title" style={{ fontSize: '17px', margin: 0 }}>
-                Bulk Update Staff Orders Through Excel
+              <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 700, color: '#0f172a' }}>
+                Bulk Import & Update Staff Orders
               </h3>
-              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                Brand Manager Dashboard • Fast batch synchronization via .xlsx
-              </div>
+              <p style={{ margin: 0, fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                Multi-sheet workbook support with dynamic staff & product detection
+              </p>
             </div>
           </div>
-          <button type="button" className="modal-close" onClick={handleModalClose}>
-            <X size={18} />
+          <button
+            onClick={handleModalClose}
+            disabled={loading}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: '6px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              color: '#94a3b8',
+              borderRadius: '6px'
+            }}
+          >
+            <X size={20} />
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="modal-body" style={{ padding: '20px 24px', overflowY: 'auto' }}>
+        <div
+          style={{
+            padding: '20px 24px',
+            overflowY: 'auto',
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px'
+          }}
+        >
           {error && (
             <div
-              className="alert alert-danger"
               style={{
+                padding: '12px 16px',
+                borderRadius: '8px',
+                backgroundColor: '#fef2f2',
+                border: '1px solid #fecaca',
+                color: '#b91c1c',
+                fontSize: '13px',
                 display: 'flex',
                 alignItems: 'flex-start',
-                gap: '10px',
-                padding: '12px 16px',
-                marginBottom: '16px',
-                borderRadius: 'var(--radius-md)',
-                background: '#fef2f2',
-                border: '1px solid #fecaca',
-                color: '#b91c1c'
+                gap: '10px'
               }}
             >
               <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
-              <div style={{ fontSize: '13px', lineHeight: 1.5 }}>{error}</div>
+              <div style={{ flex: 1 }}>{error}</div>
             </div>
           )}
 
           {/* STEP 1: UPLOAD */}
           {step === 'upload' && (
-            <div>
-              {/* Template download card */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* Report Month / Year Selector */}
               <div
                 style={{
-                  background: '#f0fdf4',
-                  border: '1px solid #bbf7d0',
-                  borderRadius: 'var(--radius-md)',
                   padding: '14px 18px',
-                  marginBottom: '20px',
+                  backgroundColor: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '10px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
@@ -252,84 +420,59 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
                   flexWrap: 'wrap'
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div
-                    style={{
-                      width: '36px',
-                      height: '36px',
-                      borderRadius: '8px',
-                      background: '#dcfce7',
-                      color: '#15803d',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0
-                    }}
-                  >
-                    <Download size={18} />
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '13.5px', color: '#1e293b' }}>
+                    Report Month & Year
                   </div>
-                  <div>
-                    <strong style={{ fontSize: '13.5px', color: '#166534', display: 'block' }}>
-                      Download Official Orders Excel Template
-                    </strong>
-                    <span style={{ fontSize: '12px', color: '#15803d' }}>
-                      Pre-populated with existing orders, staff IDs, product codes, and format validation guide.
-                    </span>
+                  <div style={{ fontSize: '12px', color: '#64748b' }}>
+                    Used for monthly day-based sheets (e.g. Day 1–31)
                   </div>
                 </div>
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  onClick={handleDownloadTemplate}
-                  disabled={downloadingTemplate}
-                  style={{
-                    borderColor: '#16a34a',
-                    color: '#16a34a',
-                    fontWeight: 600,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    whiteSpace: 'nowrap'
-                  }}
-                >
-                  {downloadingTemplate ? (
-                    <>
-                      <RefreshCw size={14} className="spin" /> Generating...
-                    </>
-                  ) : (
-                    <>
-                      <Download size={14} /> Download Template (.xlsx)
-                    </>
-                  )}
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Calendar size={16} color="#0284c7" />
+                  <input
+                    type="month"
+                    value={monthYear}
+                    onChange={e => setMonthYear(e.target.value)}
+                    style={{
+                      padding: '7px 12px',
+                      borderRadius: '6px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      color: '#0f172a',
+                      backgroundColor: '#ffffff'
+                    }}
+                  />
+                </div>
               </div>
 
-              {/* Drag and drop upload zone */}
+              {/* Drag & Drop Box */}
               <div
-                onDragOver={e => {
-                  e.preventDefault();
-                  setIsDragging(true);
-                }}
-                onDragLeave={() => setIsDragging(false)}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
                 style={{
-                  border: `2px dashed ${isDragging ? 'var(--primary-600)' : file ? '#10b981' : 'var(--border-subtle)'}`,
-                  background: isDragging ? '#eff6ff' : file ? '#f0fdf4' : '#fafafa',
-                  borderRadius: 'var(--radius-lg)',
+                  border: isDragging ? '2px dashed #0284c7' : '2px dashed #cbd5e1',
+                  backgroundColor: isDragging ? '#f0f9ff' : '#f8fafc',
+                  borderRadius: '12px',
                   padding: '36px 20px',
                   textAlign: 'center',
                   cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  marginBottom: '16px'
+                  transition: 'all 0.15s ease'
                 }}
               >
                 <input
-                  ref={fileInputRef}
                   type="file"
+                  ref={fileInputRef}
                   accept=".xlsx"
                   style={{ display: 'none' }}
-                  onChange={e => handleFileSelect(e.target.files?.[0])}
+                  onChange={e => {
+                    if (e.target.files && e.target.files[0]) {
+                      handleFileSelected(e.target.files[0]);
+                    }
+                  }}
                 />
 
                 <div
@@ -337,92 +480,336 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
                     width: '52px',
                     height: '52px',
                     borderRadius: '50%',
-                    background: file ? '#dcfce7' : 'var(--primary-50)',
-                    color: file ? '#16a34a' : 'var(--primary-600)',
-                    display: 'inline-flex',
+                    backgroundColor: '#e0f2fe',
+                    color: '#0284c7',
+                    display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    marginBottom: '12px'
+                    margin: '0 auto 12px'
                   }}
                 >
-                  {file ? <FileCheck size={28} /> : <UploadCloud size={28} />}
+                  <UploadCloud size={28} />
                 </div>
 
-                {file ? (
-                  <div>
-                    <strong style={{ fontSize: '15px', color: 'var(--text-main)', display: 'block' }}>
-                      {file.name}
-                    </strong>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                      {(file.size / 1024).toFixed(1)} KB • Ready to inspect and preview
-                    </div>
-                    <div style={{ marginTop: '10px' }}>
-                      <span className="badge badge-success" style={{ fontSize: '11.5px' }}>
-                        Excel File Selected
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <div>
-                    <strong style={{ fontSize: '14.5px', color: 'var(--text-main)', display: 'block' }}>
-                      Click to browse or drag and drop your Excel file here
-                    </strong>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                      Only Microsoft Excel (.xlsx) files are supported
-                    </div>
-                  </div>
-                )}
+                <div style={{ fontSize: '15px', fontWeight: 600, color: '#1e293b' }}>
+                  {file ? file.name : 'Click to select or drag and drop your Excel file'}
+                </div>
+                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
+                  {file
+                    ? `${(file.size / 1024).toFixed(1)} KB — Ready to inspect`
+                    : 'Supports monthly multi-sheet workbooks (.xlsx format)'}
+                </div>
               </div>
 
-              {/* Rules summary banner */}
+              {/* Sample Template & Help Box */}
               <div
                 style={{
-                  background: 'var(--bg-subtle, #f8fafc)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-md)',
-                  padding: '14px 16px',
-                  fontSize: '12.5px',
-                  color: 'var(--text-secondary)'
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '14px 18px',
+                  borderRadius: '10px',
+                  backgroundColor: '#f1f5f9',
+                  border: '1px solid #e2e8f0',
+                  gap: '12px',
+                  flexWrap: 'wrap'
                 }}
               >
-                <div style={{ fontWeight: 700, color: 'var(--text-main)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <HelpCircle size={14} color="var(--primary-600)" />
-                  How Excel Order Updates Work:
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <Info size={18} color="#475569" />
+                  <span style={{ fontSize: '12.5px', color: '#334155' }}>
+                    Need the standard column format? Download our reference template.
+                  </span>
                 </div>
-                <ul style={{ margin: 0, paddingLeft: '18px', lineHeight: 1.6 }}>
-                  <li>Orders are matched using their unique <strong>Order ID</strong> (e.g. <code>ORD-20261102-0001</code>).</li>
-                  <li>Staff ownership is strictly validated with <strong>Staff ID</strong> (e.g. <code>STF-001</code>) to prevent accidental cross-staff modifications.</li>
-                  <li>No duplicate orders are created; unmatched records are flagged for review.</li>
-                  <li>Total amounts and incentives are automatically recalculated using existing business rules.</li>
-                  <li>SHA-256 fingerprinting prevents accidental duplicate imports of the same file twice.</li>
-                </ul>
+                <button
+                  type="button"
+                  onClick={handleDownloadTemplate}
+                  disabled={downloadingTemplate}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '7px 14px',
+                    fontSize: '12.5px',
+                    fontWeight: 600,
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    backgroundColor: '#ffffff',
+                    color: '#0f172a',
+                    cursor: downloadingTemplate ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {downloadingTemplate ? (
+                    <RefreshCw size={14} className="animate-spin" />
+                  ) : (
+                    <Download size={14} />
+                  )}
+                  {downloadingTemplate ? 'Downloading...' : 'Download Template (.xlsx)'}
+                </button>
+              </div>
+
+              {/* Dynamic Detection Highlights */}
+              <div
+                style={{
+                  padding: '14px 18px',
+                  backgroundColor: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '10px',
+                  fontSize: '12px',
+                  color: '#475569',
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                  gap: '12px'
+                }}
+              >
+                <div>
+                  <strong style={{ color: '#0f172a', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <Layers size={14} color="#0284c7" /> Auto-Worksheet Detection
+                  </strong>
+                  <p style={{ margin: '3px 0 0', lineHeight: 1.4 }}>
+                    Scans all staff sheets automatically while skipping consolidated summary sheets (e.g. INCENTIVE).
+                  </p>
+                </div>
+                <div>
+                  <strong style={{ color: '#0f172a', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <Users size={14} color="#059669" /> Dynamic Staff Matching
+                  </strong>
+                  <p style={{ margin: '3px 0 0', lineHeight: 1.4 }}>
+                    Extracts Employee ID from header cells and matches against active Sales Staff in database.
+                  </p>
+                </div>
+                <div>
+                  <strong style={{ color: '#0f172a', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <Package size={14} color="#d97706" /> Dynamic Product Matching
+                  </strong>
+                  <p style={{ margin: '3px 0 0', lineHeight: 1.4 }}>
+                    Detects column names across Prepaid & COD. If any product is unmatched, you can map it manually.
+                  </p>
+                </div>
               </div>
             </div>
           )}
 
-          {/* STEP 2: PREVIEW */}
+          {/* STEP 2: PREVIEW & MAPPING */}
           {step === 'preview' && previewData && (
-            <div>
-              {/* Duplicate Warning Alert if applicable */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* Duplicate Warning */}
               {previewData.isDuplicate && (
                 <div
                   style={{
-                    background: '#fffbeb',
-                    border: '1px solid #fde68a',
-                    borderRadius: 'var(--radius-md)',
                     padding: '12px 16px',
-                    marginBottom: '16px',
+                    borderRadius: '8px',
+                    backgroundColor: '#fffbeb',
+                    border: '1px solid #fde68a',
+                    color: '#92400e',
+                    fontSize: '13px',
                     display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                    color: '#92400e'
+                    flexDirection: 'column',
+                    gap: '8px'
                   }}
                 >
-                  <AlertTriangle size={20} style={{ flexShrink: 0 }} />
-                  <div style={{ fontSize: '12.5px', lineHeight: 1.5 }}>
-                    <strong>Notice: Duplicate File Detected.</strong> This exact file (or identical content) was previously imported on{' '}
-                    {new Date(previewData.previousImport.created_at).toLocaleString()}. You can still re-apply updates if intended.
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
+                    <AlertTriangle size={18} />
+                    Warning: This file was already imported previously!
                   </div>
+                  <div style={{ fontSize: '12px' }}>
+                    Previously imported on {new Date(previewData.duplicateInfo?.importedAt).toLocaleString()} (Updated:{' '}
+                    {previewData.duplicateInfo?.updatedCount} orders). Importing again will overwrite existing values.
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 600 }}>
+                    <input
+                      type="checkbox"
+                      checked={confirmDuplicate}
+                      onChange={e => setConfirmDuplicate(e.target.checked)}
+                    />
+                    I understand and want to re-import this file anyway.
+                  </label>
+                </div>
+              )}
+
+              {/* Skipped Summary Sheets Notice */}
+              {previewData.summary?.skippedSheets?.length > 0 && (
+                <div
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    backgroundColor: '#f1f5f9',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '12.5px',
+                    color: '#334155',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  <Info size={16} color="#0284c7" style={{ flexShrink: 0 }} />
+                  <div>
+                    <strong>Summary sheets skipped to avoid duplication:</strong>{' '}
+                    {previewData.summary.skippedSheets.map(s => s.name).join(', ')}.
+                  </div>
+                </div>
+              )}
+
+              {/* UNMATCHED STAFF PANEL */}
+              {previewData.summary?.unmatchedStaff?.length > 0 && (
+                <div
+                  style={{
+                    padding: '16px',
+                    borderRadius: '10px',
+                    backgroundColor: '#fff7ed',
+                    border: '1px solid #fdba74',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, color: '#c2410c' }}>
+                      <AlertTriangle size={18} />
+                      Unmatched Sales Staff ({previewData.summary.unmatchedStaff.length})
+                    </div>
+                    <span style={{ fontSize: '12px', color: '#9a3412' }}>
+                      Map each sheet's staff member to an existing system account
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '10px' }}>
+                    {previewData.summary.unmatchedStaff.map((stf, idx) => {
+                      const key = stf.rawId || stf.sheetName;
+                      return (
+                        <div
+                          key={idx}
+                          style={{
+                            padding: '10px 12px',
+                            backgroundColor: '#ffffff',
+                            borderRadius: '8px',
+                            border: '1px solid #fed7aa',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '6px'
+                          }}
+                        >
+                          <div style={{ fontSize: '12px', color: '#475569' }}>
+                            Sheet: <strong>{stf.sheetName}</strong> &bull; Raw ID: <strong>{stf.rawId || 'None'}</strong>
+                          </div>
+                          <select
+                            value={staffMappings[key] || ''}
+                            onChange={e => handleStaffMapChange(key, e.target.value)}
+                            style={{
+                              padding: '6px 10px',
+                              borderRadius: '6px',
+                              border: '1px solid #cbd5e1',
+                              fontSize: '12.5px',
+                              fontWeight: 500,
+                              backgroundColor: '#ffffff',
+                              color: '#0f172a'
+                            }}
+                          >
+                            <option value="">-- Map to System Sales Staff --</option>
+                            {systemStaffList.map(s => (
+                              <option key={s.id} value={s.id}>
+                                {s.name} ({s.staff_id})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* UNMATCHED PRODUCTS PANEL */}
+              {previewData.summary?.unmatchedProducts?.length > 0 && (
+                <div
+                  style={{
+                    padding: '16px',
+                    borderRadius: '10px',
+                    backgroundColor: '#fff7ed',
+                    border: '1px solid #fdba74',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, color: '#c2410c' }}>
+                      <AlertTriangle size={18} />
+                      Unmatched Product Headers ({previewData.summary.unmatchedProducts.length})
+                    </div>
+                    <span style={{ fontSize: '12px', color: '#9a3412' }}>
+                      Map detected Excel product columns to existing Product records
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '10px' }}>
+                    {previewData.summary.unmatchedProducts.map((p, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '10px 12px',
+                          backgroundColor: '#ffffff',
+                          borderRadius: '8px',
+                          border: '1px solid #fed7aa',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '6px'
+                        }}
+                      >
+                        <div style={{ fontSize: '12px', color: '#475569' }}>
+                          Header: <strong>{p.columnHeader || p.rawName}</strong>
+                        </div>
+                        <select
+                          value={productMappings[p.rawName] || ''}
+                          onChange={e => handleProductMapChange(p.rawName, e.target.value)}
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            border: '1px solid #cbd5e1',
+                            fontSize: '12.5px',
+                            fontWeight: 500,
+                            backgroundColor: '#ffffff',
+                            color: '#0f172a'
+                          }}
+                        >
+                          <option value="">-- Map to Existing Product --</option>
+                          {systemProductList.map(prod => (
+                            <option key={prod.id} value={prod.id}>
+                              {prod.name} ({prod.code}) &bull; ₹{prod.price}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Re-Inspect / Apply Mappings Button (when mappings exist) */}
+              {(previewData.summary?.unmatchedStaff?.length > 0 ||
+                previewData.summary?.unmatchedProducts?.length > 0) && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    type="button"
+                    onClick={handleApplyMappingsAndReinspect}
+                    disabled={loading}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      backgroundColor: '#ea580c',
+                      color: '#ffffff',
+                      border: 'none',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: loading ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                    Apply Mappings & Re-inspect
+                  </button>
                 </div>
               )}
 
@@ -431,379 +818,429 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
                 style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-                  gap: '10px',
-                  marginBottom: '16px'
+                  gap: '10px'
                 }}
               >
-                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 12px' }}>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>Total Rows</div>
-                  <div style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-main)', marginTop: '2px' }}>
-                    {previewData.totalRows ?? 0}
+                <div
+                  style={{
+                    padding: '12px',
+                    borderRadius: '8px',
+                    backgroundColor: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    textAlign: 'center'
+                  }}
+                >
+                  <div style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 600 }}>
+                    Total Rows
+                  </div>
+                  <div style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', marginTop: '2px' }}>
+                    {previewData.summary?.totalRows || 0}
                   </div>
                 </div>
 
-                <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '8px', padding: '10px 12px' }}>
-                  <div style={{ fontSize: '11px', color: '#047857', fontWeight: 600 }}>Matched Orders</div>
-                  <div style={{ fontSize: '20px', fontWeight: 800, color: '#065f46', marginTop: '2px' }}>
-                    {previewData.matchedCount ?? 0}
+                <div
+                  style={{
+                    padding: '12px',
+                    borderRadius: '8px',
+                    backgroundColor: '#eff6ff',
+                    border: '1px solid #bfdbfe',
+                    textAlign: 'center'
+                  }}
+                >
+                  <div style={{ fontSize: '11px', color: '#1d4ed8', textTransform: 'uppercase', fontWeight: 600 }}>
+                    To Update
+                  </div>
+                  <div style={{ fontSize: '20px', fontWeight: 700, color: '#1d4ed8', marginTop: '2px' }}>
+                    {previewData.summary?.toUpdate || 0}
                   </div>
                 </div>
 
-                <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '10px 12px' }}>
-                  <div style={{ fontSize: '11px', color: '#1d4ed8', fontWeight: 600 }}>To Be Updated</div>
-                  <div style={{ fontSize: '20px', fontWeight: 800, color: '#1e40af', marginTop: '2px' }}>
-                    {previewData.toUpdateCount ?? 0}
+                <div
+                  style={{
+                    padding: '12px',
+                    borderRadius: '8px',
+                    backgroundColor: '#ecfdf5',
+                    border: '1px solid #a7f3d0',
+                    textAlign: 'center'
+                  }}
+                >
+                  <div style={{ fontSize: '11px', color: '#047857', textTransform: 'uppercase', fontWeight: 600 }}>
+                    To Create
+                  </div>
+                  <div style={{ fontSize: '20px', fontWeight: 700, color: '#047857', marginTop: '2px' }}>
+                    {previewData.summary?.toCreate || 0}
                   </div>
                 </div>
 
-                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 12px' }}>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>No Changes</div>
-                  <div style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-muted)', marginTop: '2px' }}>
-                    {previewData.unchangedCount ?? 0}
+                <div
+                  style={{
+                    padding: '12px',
+                    borderRadius: '8px',
+                    backgroundColor: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    textAlign: 'center'
+                  }}
+                >
+                  <div style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 600 }}>
+                    No Change
+                  </div>
+                  <div style={{ fontSize: '20px', fontWeight: 700, color: '#475569', marginTop: '2px' }}>
+                    {previewData.summary?.noChange || 0}
                   </div>
                 </div>
 
-                <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: '8px', padding: '10px 12px' }}>
-                  <div style={{ fontSize: '11px', color: '#b45309', fontWeight: 600 }}>Unmatched</div>
-                  <div style={{ fontSize: '20px', fontWeight: 800, color: '#92400e', marginTop: '2px' }}>
-                    {previewData.unmatchedCount ?? 0}
-                  </div>
-                </div>
-
-                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '10px 12px' }}>
-                  <div style={{ fontSize: '11px', color: '#b91c1c', fontWeight: 600 }}>Invalid Rows</div>
-                  <div style={{ fontSize: '20px', fontWeight: 800, color: '#991b1b', marginTop: '2px' }}>
-                    {previewData.invalidCount ?? 0}
-                  </div>
-                </div>
-              </div>
-
-              {/* Filter Tabs */}
-              <div
-                style={{
-                  display: 'flex',
-                  gap: '6px',
-                  borderBottom: '1px solid var(--border-subtle)',
-                  paddingBottom: '10px',
-                  marginBottom: '14px',
-                  flexWrap: 'wrap'
-                }}
-              >
-                {[
-                  { id: 'all', label: `All Rows (${previewData.rows?.length || 0})` },
-                  { id: 'update', label: `To Update (${previewData.toUpdateCount ?? 0})` },
-                  { id: 'no_change', label: `No Changes (${previewData.unchangedCount ?? 0})` },
-                  { id: 'unmatched', label: `Unmatched (${previewData.unmatchedCount ?? 0})` },
-                  { id: 'invalid', label: `Invalid (${previewData.invalidCount ?? 0})` }
-                ].map(tab => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setPreviewFilter(tab.id)}
+                <div
+                  style={{
+                    padding: '12px',
+                    borderRadius: '8px',
+                    backgroundColor: previewData.summary?.unmatched > 0 ? '#fff7ed' : '#f8fafc',
+                    border: `1px solid ${previewData.summary?.unmatched > 0 ? '#fed7aa' : '#e2e8f0'}`,
+                    textAlign: 'center'
+                  }}
+                >
+                  <div
                     style={{
-                      padding: '5px 12px',
-                      fontSize: '12px',
-                      fontWeight: previewFilter === tab.id ? 700 : 500,
-                      borderRadius: 'var(--radius-sm)',
-                      border: '1px solid',
-                      borderColor: previewFilter === tab.id ? 'var(--primary-600)' : 'var(--border-subtle)',
-                      background: previewFilter === tab.id ? 'var(--primary-50)' : '#ffffff',
-                      color: previewFilter === tab.id ? 'var(--primary-700)' : 'var(--text-secondary)',
-                      cursor: 'pointer'
+                      fontSize: '11px',
+                      color: previewData.summary?.unmatched > 0 ? '#c2410c' : '#64748b',
+                      textTransform: 'uppercase',
+                      fontWeight: 600
                     }}
                   >
-                    {tab.label}
-                  </button>
-                ))}
+                    Unmatched
+                  </div>
+                  <div
+                    style={{
+                      fontSize: '20px',
+                      fontWeight: 700,
+                      color: previewData.summary?.unmatched > 0 ? '#c2410c' : '#475569',
+                      marginTop: '2px'
+                    }}
+                  >
+                    {previewData.summary?.unmatched || 0}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    padding: '12px',
+                    borderRadius: '8px',
+                    backgroundColor: previewData.summary?.invalid > 0 ? '#fef2f2' : '#f8fafc',
+                    border: `1px solid ${previewData.summary?.invalid > 0 ? '#fecaca' : '#e2e8f0'}`,
+                    textAlign: 'center'
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: '11px',
+                      color: previewData.summary?.invalid > 0 ? '#b91c1c' : '#64748b',
+                      textTransform: 'uppercase',
+                      fontWeight: 600
+                    }}
+                  >
+                    Invalid
+                  </div>
+                  <div
+                    style={{
+                      fontSize: '20px',
+                      fontWeight: 700,
+                      color: previewData.summary?.invalid > 0 ? '#b91c1c' : '#475569',
+                      marginTop: '2px'
+                    }}
+                  >
+                    {previewData.summary?.invalid || 0}
+                  </div>
+                </div>
               </div>
 
-              {/* Preview Table */}
-              <div
-                style={{
-                  maxHeight: '340px',
-                  overflowY: 'auto',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-md)'
-                }}
-              >
-                <table className="data-table" style={{ fontSize: '12px', margin: 0 }}>
-                  <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
-                    <tr>
-                      <th style={{ width: '50px' }}>Row</th>
-                      <th>Order ID</th>
-                      <th>Staff</th>
-                      <th>Product</th>
-                      <th>Quantity</th>
-                      <th>Payment</th>
-                      <th>Order Total</th>
-                      <th>Incentive</th>
-                      <th>Review Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredPreviewRows.length === 0 ? (
-                      <tr>
-                        <td colSpan="9" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
-                          No records match the selected filter.
-                        </td>
+              {/* Filter Tabs & Preview Rows Table */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '6px', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px', overflowX: 'auto' }}>
+                  {[
+                    { id: 'all', label: `All (${previewData.summary?.totalRows || 0})` },
+                    { id: 'update', label: `To Update (${previewData.summary?.toUpdate || 0})` },
+                    { id: 'create', label: `To Create (${previewData.summary?.toCreate || 0})` },
+                    { id: 'no_change', label: `No Change (${previewData.summary?.noChange || 0})` },
+                    { id: 'unmatched', label: `Unmatched (${previewData.summary?.unmatched || 0})` },
+                    { id: 'invalid', label: `Invalid (${previewData.summary?.invalid || 0})` }
+                  ].map(tab => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setPreviewFilter(tab.id)}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        border: 'none',
+                        fontSize: '12px',
+                        fontWeight: previewFilter === tab.id ? 700 : 500,
+                        backgroundColor: previewFilter === tab.id ? '#0284c7' : '#f1f5f9',
+                        color: previewFilter === tab.id ? '#ffffff' : '#475569',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div
+                  style={{
+                    maxHeight: '340px',
+                    overflowY: 'auto',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px'
+                  }}
+                >
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                    <thead style={{ backgroundColor: '#f8fafc', position: 'sticky', top: 0, zIndex: 1 }}>
+                      <tr style={{ borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#64748b' }}>
+                        <th style={{ padding: '8px 12px' }}>Sheet / Row</th>
+                        <th style={{ padding: '8px 12px' }}>Order Date</th>
+                        <th style={{ padding: '8px 12px' }}>Sales Staff</th>
+                        <th style={{ padding: '8px 12px' }}>Product</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'center' }}>Qty</th>
+                        <th style={{ padding: '8px 12px' }}>Payment</th>
+                        <th style={{ padding: '8px 12px' }}>Status</th>
                       </tr>
-                    ) : (
-                      filteredPreviewRows.map((row, idx) => {
-                        const isUpdate = row.status === 'valid_update';
-                        const isNoChange = row.status === 'no_change';
-                        const isUnmatched = row.status === 'unmatched';
-                        const isInvalid = row.status === 'invalid';
-
-                        const orderNum = row.excelData?.orderNumber || row.currentOrder?.orderNumber;
-                        const staffCode = row.currentOrder?.staffCode || row.excelData?.staffId;
-                        const staffName = row.currentOrder?.staffName;
-                        const prodName = row.newValues?.productName || row.currentOrder?.productName || row.excelData?.productCode;
-
-                        const curQty = row.currentOrder?.quantity;
-                        const newQty = row.newValues?.quantity;
-                        const qtyChanged = curQty !== undefined && newQty !== undefined && curQty !== newQty;
-
-                        const curPay = row.currentOrder?.paymentMethod;
-                        const newPay = row.newValues?.paymentMethod;
-                        const payChanged = curPay && newPay && curPay !== newPay;
-
-                        const curTotal = row.currentOrder?.totalAmount;
-                        const newTotal = row.newValues?.totalAmount;
-                        const totalChanged = curTotal !== undefined && newTotal !== undefined && curTotal !== newTotal;
-
-                        const curInc = row.currentOrder?.incentiveAmount;
-                        const newInc = row.newValues?.incentiveAmount;
-                        const incChanged = curInc !== undefined && newInc !== undefined && curInc !== newInc;
-
-                        return (
+                    </thead>
+                    <tbody>
+                      {filteredRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} style={{ textAlign: 'center', padding: '24px', color: '#94a3b8' }}>
+                            No rows matching the selected filter.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredRows.map((r, i) => (
                           <tr
-                            key={idx}
+                            key={i}
                             style={{
-                              background: isUpdate ? '#f0fdf4' : isInvalid ? '#fef2f2' : isUnmatched ? '#fffbeb' : '#ffffff'
+                              borderBottom: '1px solid #f1f5f9',
+                              backgroundColor:
+                                r.status === 'valid_update'
+                                  ? '#f0f9ff'
+                                  : r.status === 'valid_create'
+                                  ? '#f0fdf4'
+                                  : r.status === 'unmatched'
+                                  ? '#fffbeb'
+                                  : r.status === 'invalid'
+                                  ? '#fef2f2'
+                                  : '#ffffff'
                             }}
                           >
-                            <td style={{ fontWeight: 600 }}>#{row.rowNumber}</td>
-                            <td>
-                              <strong style={{ fontFamily: 'monospace', color: 'var(--primary-700)' }}>
-                                {orderNum || '-'}
-                              </strong>
+                            <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                              <span style={{ fontWeight: 600, color: '#0f172a' }}>{r.sheetName}</span>
+                              <div style={{ fontSize: '11px', color: '#64748b' }}>Row {r.rowNumber}</div>
                             </td>
-                            <td>
-                              {staffName ? (
-                                <div>
-                                  <div style={{ fontWeight: 600 }}>{staffName}</div>
-                                  <div style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>{staffCode}</div>
-                                </div>
-                              ) : (
-                                <span style={{ color: 'var(--text-muted)' }}>{staffCode || '-'}</span>
-                              )}
+                            <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                              {r.excelData?.date || '—'}
                             </td>
-                            <td>
-                              <div>
-                                <div style={{ fontWeight: 600 }}>{prodName}</div>
-                                {row.newValues?.productCode && row.currentOrder?.productCode && row.newValues.productCode !== row.currentOrder.productCode && (
-                                  <div style={{ fontSize: '10.5px', color: '#16a34a' }}>
-                                    Changed from: {row.currentOrder.productName}
-                                  </div>
-                                )}
+                            <td style={{ padding: '8px 12px' }}>
+                              <span style={{ fontWeight: 600, color: '#1e293b' }}>
+                                {r.matchedStaff ? r.matchedStaff.name : r.excelData?.staffCode || 'Unmatched'}
+                              </span>
+                              <div style={{ fontSize: '11px', color: '#64748b' }}>
+                                {r.matchedStaff?.staff_id || r.sheetName}
                               </div>
                             </td>
-                            <td>
-                              {qtyChanged ? (
-                                <div>
-                                  <span style={{ textDecoration: 'line-through', color: 'var(--text-muted)', marginRight: '4px' }}>
-                                    {curQty}
-                                  </span>
-                                  <strong style={{ color: '#16a34a' }}>{newQty}</strong>
-                                </div>
-                              ) : (
-                                <span>{newQty ?? curQty ?? row.excelData?.quantity ?? '-'}</span>
-                              )}
+                            <td style={{ padding: '8px 12px' }}>
+                              <span style={{ fontWeight: 600, color: '#1e293b' }}>
+                                {r.matchedProduct ? r.matchedProduct.name : r.excelData?.productName || 'Unmatched'}
+                              </span>
+                              <div style={{ fontSize: '11px', color: '#64748b' }}>
+                                {r.matchedProduct?.code || ''}
+                              </div>
                             </td>
-                            <td>
-                              {payChanged ? (
-                                <div>
-                                  <span style={{ textDecoration: 'line-through', color: 'var(--text-muted)', fontSize: '10.5px' }}>
-                                    {curPay}
-                                  </span>
-                                  <span className="badge badge-success" style={{ marginLeft: '4px', fontSize: '10.5px' }}>
-                                    {newPay}
-                                  </span>
-                                </div>
-                              ) : (
-                                <span>{newPay || curPay || row.excelData?.paymentMethod || '-'}</span>
-                              )}
+                            <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700 }}>
+                              {r.excelData?.quantity || 1}
                             </td>
-                            <td>
-                              {totalChanged ? (
-                                <div>
-                                  <div style={{ fontSize: '10.5px', textDecoration: 'line-through', color: 'var(--text-muted)' }}>
-                                    ₹{curTotal?.toLocaleString()}
-                                  </div>
-                                  <strong style={{ color: '#16a34a' }}>
-                                    ₹{newTotal?.toLocaleString()}
-                                  </strong>
-                                </div>
-                              ) : (
-                                <span>{newTotal ? `₹${newTotal.toLocaleString()}` : curTotal ? `₹${curTotal.toLocaleString()}` : '-'}</span>
-                              )}
+                            <td style={{ padding: '8px 12px' }}>
+                              <span
+                                style={{
+                                  padding: '2px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '11px',
+                                  fontWeight: 600,
+                                  backgroundColor: r.excelData?.paymentMethod === 'Prepaid' ? '#dcfce7' : '#f1f5f9',
+                                  color: r.excelData?.paymentMethod === 'Prepaid' ? '#166534' : '#475569'
+                                }}
+                              >
+                                {r.excelData?.paymentMethod || 'Prepaid'}
+                              </span>
                             </td>
-                            <td>
-                              {incChanged ? (
-                                <div>
-                                  <div style={{ fontSize: '10.5px', textDecoration: 'line-through', color: 'var(--text-muted)' }}>
-                                    ₹{curInc}
-                                  </div>
-                                  <strong style={{ color: 'var(--warning-text)' }}>
-                                    ₹{newInc}
-                                  </strong>
-                                </div>
-                              ) : (
-                                <span>{newInc !== undefined ? `₹${newInc}` : curInc !== undefined ? `₹${curInc}` : '-'}</span>
-                              )}
-                            </td>
-                            <td>
-                              {isUpdate && (
-                                <div>
-                                  <span className="badge badge-success" style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                                    <CheckCircle2 size={12} /> Will Update
-                                  </span>
-                                  {row.changes && row.changes.length > 0 && (
-                                    <div style={{ fontSize: '10px', color: '#15803d', marginTop: '2px' }}>
-                                      {row.changes.map(c => c.field).join(', ')}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                              {isNoChange && (
-                                <span className="badge badge-neutral" style={{ fontSize: '11px' }}>
-                                  No Changes
-                                </span>
-                              )}
-                              {isUnmatched && (
-                                <div>
-                                  <span className="badge badge-warning" style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                                    <AlertTriangle size={12} /> Unmatched
-                                  </span>
-                                  <div style={{ fontSize: '10.5px', color: '#92400e', marginTop: '2px' }}>
-                                    {row.error}
-                                  </div>
-                                </div>
-                              )}
-                              {isInvalid && (
-                                <div>
-                                  <span className="badge badge-danger" style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                                    <XCircle size={12} /> Invalid
-                                  </span>
-                                  <div style={{ fontSize: '10.5px', color: '#b91c1c', marginTop: '2px' }}>
-                                    {row.error}
-                                  </div>
+                            <td style={{ padding: '8px 12px' }}>
+                              <span
+                                style={{
+                                  padding: '2px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '11px',
+                                  fontWeight: 600,
+                                  backgroundColor:
+                                    r.status === 'valid_update'
+                                      ? '#bfdbfe'
+                                      : r.status === 'valid_create'
+                                      ? '#bbf7d0'
+                                      : r.status === 'no_change'
+                                      ? '#e2e8f0'
+                                      : r.status === 'unmatched'
+                                      ? '#fed7aa'
+                                      : '#fecaca',
+                                  color:
+                                    r.status === 'valid_update'
+                                      ? '#1e40af'
+                                      : r.status === 'valid_create'
+                                      ? '#15803d'
+                                      : r.status === 'no_change'
+                                      ? '#475569'
+                                      : r.status === 'unmatched'
+                                      ? '#9a3412'
+                                      : '#991b1b'
+                                }}
+                              >
+                                {r.status === 'valid_update'
+                                  ? 'To Update'
+                                  : r.status === 'valid_create'
+                                  ? 'To Create'
+                                  : r.status === 'no_change'
+                                  ? 'No Change'
+                                  : r.status === 'unmatched'
+                                  ? 'Unmatched'
+                                  : 'Invalid'}
+                              </span>
+                              {r.reasons?.length > 0 && (
+                                <div style={{ fontSize: '10.5px', color: '#b91c1c', marginTop: '2px' }}>
+                                  {r.reasons.join(', ')}
                                 </div>
                               )}
                             </td>
                           </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}
 
           {/* STEP 3: RESULT */}
           {step === 'result' && resultData && (
-            <div style={{ textAlign: 'center', padding: '16px 8px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', textAlign: 'center', padding: '20px 0' }}>
               <div
                 style={{
                   width: '64px',
                   height: '64px',
                   borderRadius: '50%',
-                  background: '#dcfce7',
-                  color: '#16a34a',
-                  display: 'inline-flex',
+                  backgroundColor: '#ecfdf5',
+                  color: '#059669',
+                  display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  marginBottom: '16px'
+                  margin: '0 auto'
                 }}
               >
                 <CheckCircle2 size={36} />
               </div>
 
-              <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-main)', margin: '0 0 6px 0' }}>
-                Bulk Order Updates Successfully Applied!
-              </h3>
-              <div style={{ fontSize: '13.5px', color: 'var(--text-secondary)', maxWidth: '480px', margin: '0 auto 20px auto' }}>
-                {resultData.message || `Successfully updated ${resultData.updatedCount} orders in the database.`}
+              <div>
+                <h4 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>
+                  Orders Successfully Imported!
+                </h4>
+                <p style={{ margin: '6px 0 0', fontSize: '13px', color: '#64748b' }}>
+                  Database has been synchronized with the monthly Excel workbook.
+                </p>
               </div>
 
               <div
                 style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '20px',
-                  background: '#f8fafc',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-md)',
-                  padding: '12px 24px',
-                  marginBottom: '20px'
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                  gap: '12px',
+                  textAlign: 'center'
                 }}
               >
-                <div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Updated Orders</div>
-                  <strong style={{ fontSize: '20px', color: '#16a34a' }}>{resultData.updatedCount}</strong>
+                <div style={{ padding: '14px', borderRadius: '10px', backgroundColor: '#eff6ff', border: '1px solid #bfdbfe' }}>
+                  <div style={{ fontSize: '11px', color: '#1d4ed8', fontWeight: 600, textTransform: 'uppercase' }}>
+                    Updated Orders
+                  </div>
+                  <div style={{ fontSize: '24px', fontWeight: 700, color: '#1d4ed8', marginTop: '4px' }}>
+                    {resultData.updatedCount || 0}
+                  </div>
                 </div>
-                <div style={{ width: '1px', height: '28px', background: 'var(--border-subtle)' }} />
-                <div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Failed / Errors</div>
-                  <strong style={{ fontSize: '20px', color: resultData.errors?.length > 0 ? '#dc2626' : 'var(--text-muted)' }}>
-                    {resultData.errors?.length || 0}
-                  </strong>
+
+                <div style={{ padding: '14px', borderRadius: '10px', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0' }}>
+                  <div style={{ fontSize: '11px', color: '#047857', fontWeight: 600, textTransform: 'uppercase' }}>
+                    Created Orders
+                  </div>
+                  <div style={{ fontSize: '24px', fontWeight: 700, color: '#047857', marginTop: '4px' }}>
+                    {resultData.createdCount || 0}
+                  </div>
+                </div>
+
+                <div style={{ padding: '14px', borderRadius: '10px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                  <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>
+                    Linked Returns
+                  </div>
+                  <div style={{ fontSize: '24px', fontWeight: 700, color: '#475569', marginTop: '4px' }}>
+                    {resultData.returnsCreatedCount || 0}
+                  </div>
                 </div>
               </div>
-
-              {resultData.errors && resultData.errors.length > 0 && (
-                <div style={{ textAlign: 'left', marginTop: '16px' }}>
-                  <div style={{ fontWeight: 700, fontSize: '13px', color: '#dc2626', marginBottom: '8px' }}>
-                    Failed Row Details ({resultData.errors.length}):
-                  </div>
-                  <div style={{ maxHeight: '160px', overflowY: 'auto', border: '1px solid #fecaca', borderRadius: '8px', background: '#fef2f2', padding: '10px 14px' }}>
-                    {resultData.errors.map((errItem, idx) => (
-                      <div key={idx} style={{ fontSize: '12px', color: '#991b1b', marginBottom: '4px' }}>
-                        Row #{errItem.rowNumber} (Order: {errItem.orderNumber}): {errItem.reason}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </div>
 
         {/* Modal Footer */}
-        <div className="modal-footer" style={{ padding: '14px 24px', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div
+          style={{
+            padding: '14px 24px',
+            borderTop: '1px solid #e2e8f0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            backgroundColor: '#f8fafc'
+          }}
+        >
           {step === 'upload' && (
             <>
-              <button type="button" className="btn btn-secondary" onClick={handleModalClose}>
+              <button
+                type="button"
+                onClick={handleModalClose}
+                disabled={loading}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#ffffff',
+                  color: '#334155',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
                 Cancel
               </button>
               <button
                 type="button"
-                className="btn btn-primary"
-                onClick={handleUploadAndPreview}
+                onClick={() => handleInspectFile()}
                 disabled={!file || loading}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '8px 20px',
+                  borderRadius: '6px',
+                  backgroundColor: !file || loading ? '#94a3b8' : '#0284c7',
+                  color: '#ffffff',
+                  border: 'none',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: !file || loading ? 'not-allowed' : 'pointer'
+                }}
               >
-                {loading ? (
-                  <>
-                    <RefreshCw size={14} className="spin" /> Inspecting Excel...
-                  </>
-                ) : (
-                  <>
-                    <span>Inspect & Preview</span>
-                    <ArrowRight size={14} />
-                  </>
-                )}
+                {loading ? <RefreshCw size={14} className="animate-spin" /> : null}
+                {loading ? 'Inspecting Sheets...' : 'Inspect & Preview'}
               </button>
             </>
           )}
@@ -812,40 +1249,48 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
             <>
               <button
                 type="button"
-                className="btn btn-secondary"
                 onClick={() => setStep('upload')}
                 disabled={loading}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#ffffff',
+                  color: '#334155',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
               >
                 Back to Upload
               </button>
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                  {previewData?.toUpdateCount || 0} order(s) will be modified
-                </span>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <button
                   type="button"
-                  className="btn btn-success"
-                  onClick={handleConfirmUpdate}
-                  disabled={loading || (previewData?.toUpdateCount === 0)}
+                  onClick={handleConfirmImport}
+                  disabled={loading || !previewData?.canConfirm}
                   style={{
-                    background: '#16a34a',
-                    borderColor: '#16a34a',
-                    color: '#ffffff',
-                    fontWeight: 700,
-                    display: 'inline-flex',
+                    display: 'flex',
                     alignItems: 'center',
-                    gap: '6px'
+                    gap: '6px',
+                    padding: '8px 22px',
+                    borderRadius: '6px',
+                    backgroundColor:
+                      loading || !previewData?.canConfirm ? '#94a3b8' : '#059669',
+                    color: '#ffffff',
+                    border: 'none',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: loading || !previewData?.canConfirm ? 'not-allowed' : 'pointer'
                   }}
                 >
-                  {loading ? (
-                    <>
-                      <RefreshCw size={14} className="spin" /> Updating Database...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 size={15} /> Confirm & Apply Updates
-                    </>
-                  )}
+                  {loading ? <RefreshCw size={14} className="animate-spin" /> : <FileCheck size={16} />}
+                  {loading
+                    ? 'Updating Database...'
+                    : previewData?.canConfirm
+                    ? 'Confirm & Apply Orders'
+                    : 'Map Unmatched Items First'}
                 </button>
               </div>
             </>
@@ -855,9 +1300,17 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
             <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end' }}>
               <button
                 type="button"
-                className="btn btn-primary"
                 onClick={handleModalClose}
-                style={{ minWidth: '120px' }}
+                style={{
+                  padding: '8px 24px',
+                  borderRadius: '6px',
+                  backgroundColor: '#0284c7',
+                  color: '#ffffff',
+                  border: 'none',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
               >
                 Done
               </button>

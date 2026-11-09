@@ -632,14 +632,410 @@ router.get('/bulk-template', authenticate, async (req, res) => {
   }
 });
 
-// 2. POST /api/orders/bulk-update-preview - Upload & parse Excel, match records, generate preview
+// =========================================================================
+// BULK ORDER IMPORT & UPDATE ENGINE (Dynamic Staff & Product Detection)
+// =========================================================================
+
+// Normalizes text for robust comparison
+function normalizeText(str) {
+  if (!str) return '';
+  return String(str)
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Cleans product column header to isolate product name
+function cleanProductName(headerStr) {
+  if (!headerStr) return '';
+  return headerStr
+    .replace(/\b(prepaid|cod|cash\s*on\s*delivery|online|card|upi|returns?|ret|quantity|qty|units?|amount|total|order|orders|nos|rate|rs|inr)\b/gi, ' ')
+    .replace(/[()[\]{}_:;#\-–—/]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Identifies consolidated summary / rollup sheets to skip (e.g. INCENTIVE, SUMMARY)
+function isSummarySheet(sheet) {
+  const nameNorm = normalizeText(sheet.name);
+  const summaryKeywords = [
+    'incentive', 'summary', 'total', 'consolidated', 'overall',
+    'dashboard', 'master', 'combined', 'monthly summary', 'all staff'
+  ];
+  if (summaryKeywords.some(kw => nameNorm.includes(kw))) {
+    return true;
+  }
+  // Check first 5 rows for summary keywords
+  for (let r = 1; r <= Math.min(sheet.rowCount || 5, 5); r++) {
+    const row = sheet.getRow(r);
+    let rowText = '';
+    row.eachCell(cell => { rowText += ' ' + getCellValue(cell); });
+    const rowNorm = normalizeText(rowText);
+    if (rowNorm.includes('consolidated') || rowNorm.includes('monthly summary') || rowNorm.includes('all staff incentive')) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Dynamically extracts Employee ID & Staff Name from a worksheet's header data
+function extractStaffInfo(sheet) {
+  let staffId = '';
+  let staffName = '';
+  let foundIn = '';
+
+  const maxRow = Math.min(sheet.rowCount || 10, 10);
+  for (let r = 1; r <= maxRow; r++) {
+    const row = sheet.getRow(r);
+    const maxCol = Math.min(row.cellCount || 20, 20);
+    for (let c = 1; c <= maxCol; c++) {
+      const cell = row.getCell(c);
+      const val = getCellValue(cell);
+      if (!val) continue;
+
+      const valNorm = normalizeText(val);
+
+      // Check for inline Employee ID match: e.g. "Employee ID: STF-001" or "Emp ID - 102"
+      const inlineIdMatch = val.match(/(?:emp(?:loyee)?\s*(?:id|code|no)|staff\s*(?:id|code|no))\s*[:\-#]?\s*([a-zA-Z0-9_\-]+)/i);
+      if (inlineIdMatch && inlineIdMatch[1] && normalizeText(inlineIdMatch[1]) !== 'id') {
+        staffId = inlineIdMatch[1].trim();
+        foundIn = `Cell ${cell.address} (inline)`;
+      }
+
+      // Check for label cell: e.g. "Employee ID" or "Staff ID"
+      if (!staffId && (
+        valNorm === 'employee id' || valNorm === 'staff id' ||
+        valNorm === 'emp id' || valNorm === 'emp code' ||
+        valNorm === 'staff code' || valNorm === 'empid' || valNorm === 'staffid'
+      )) {
+        // Try cell immediately to the right
+        const rightVal = getCellValue(row.getCell(c + 1));
+        if (rightVal && !normalizeText(rightVal).includes('name')) {
+          staffId = rightVal.trim();
+          foundIn = `Cell ${row.getCell(c + 1).address} (right)`;
+        } else {
+          // Try cell immediately below
+          const belowVal = getCellValue(sheet.getRow(r + 1).getCell(c));
+          if (belowVal) {
+            staffId = belowVal.trim();
+            foundIn = `Cell ${sheet.getRow(r + 1).getCell(c).address} (below)`;
+          }
+        }
+      }
+
+      // Check for Staff Name
+      const inlineNameMatch = val.match(/(?:emp(?:loyee)?\s*name|staff\s*name)\s*[:\-#]?\s*([a-zA-Z\s\.]+)/i);
+      if (inlineNameMatch && inlineNameMatch[1] && normalizeText(inlineNameMatch[1]) !== 'name') {
+        staffName = inlineNameMatch[1].trim();
+      } else if (!staffName && (valNorm === 'employee name' || valNorm === 'staff name' || valNorm === 'emp name')) {
+        const rightVal = getCellValue(row.getCell(c + 1));
+        if (rightVal) staffName = rightVal.trim();
+      }
+
+      // Pattern fallback: explicit ID code like "STF-001" in any header cell
+      if (!staffId) {
+        const codePattern = val.match(/\b([A-Z]{2,4}-\d{2,5})\b/i);
+        if (codePattern) {
+          staffId = codePattern[1].trim();
+          foundIn = `Cell ${cell.address} (pattern)`;
+        }
+      }
+    }
+    if (staffId && staffName) break;
+  }
+
+  // Fallback to sheet name if no explicit staff ID was found in cells
+  if (!staffId && sheet.name) {
+    const sheetCodePattern = sheet.name.match(/\b([A-Z]{2,4}-\d{2,5})\b/i);
+    if (sheetCodePattern) {
+      staffId = sheetCodePattern[1].trim();
+      foundIn = `Sheet name (${sheet.name})`;
+    } else {
+      staffId = sheet.name.trim();
+      foundIn = `Sheet name (${sheet.name})`;
+    }
+  }
+
+  if (!staffName && sheet.name) {
+    staffName = sheet.name.trim();
+  }
+
+  return { rawStaffId: staffId, rawStaffName: staffName, foundIn, sheetName: sheet.name };
+}
+
+// Matches extracted staff against database staff with manual mapping support
+function matchStaffRecord(staffInfo, allStaff, manualMappings) {
+  const { rawStaffId, rawStaffName, sheetName } = staffInfo;
+
+  // 1. Check manual mapping by Brand Manager
+  if (manualMappings?.staffMappings) {
+    const mappedId = manualMappings.staffMappings[rawStaffId] ||
+                     manualMappings.staffMappings[sheetName] ||
+                     manualMappings.staffMappings[rawStaffName];
+    if (mappedId) {
+      const found = allStaff.find(s => String(s.id) === String(mappedId));
+      if (found) return { staff: found, isMatched: true, mappedManually: true };
+    }
+  }
+
+  const idNorm = normalizeText(rawStaffId);
+  const nameNorm = normalizeText(rawStaffName);
+  const sheetNorm = normalizeText(sheetName);
+
+  // 2. Exact match on staff_id (e.g. STF-001)
+  if (rawStaffId) {
+    const byCode = allStaff.find(s => normalizeText(s.staff_id) === idNorm);
+    if (byCode) return { staff: byCode, isMatched: true };
+  }
+
+  // 3. Match on username
+  if (rawStaffId) {
+    const byUser = allStaff.find(s => normalizeText(s.username) === idNorm);
+    if (byUser) return { staff: byUser, isMatched: true };
+  }
+
+  // 4. Match on full staff name
+  if (rawStaffName) {
+    const byName = allStaff.find(s => normalizeText(s.name) === nameNorm);
+    if (byName) return { staff: byName, isMatched: true };
+  }
+
+  // 5. Match sheet name against staff name or code
+  if (sheetName) {
+    const bySheet = allStaff.find(s =>
+      normalizeText(s.staff_id) === sheetNorm ||
+      normalizeText(s.name) === sheetNorm ||
+      normalizeText(s.username) === sheetNorm
+    );
+    if (bySheet) return { staff: bySheet, isMatched: true };
+  }
+
+  return {
+    staff: null,
+    isMatched: false,
+    rawStaffId: rawStaffId || sheetName,
+    rawStaffName: rawStaffName || sheetName,
+    sheetName
+  };
+}
+
+// Matches extracted product against database products with manual mapping support
+function matchProductRecord(rawProductName, allProducts, manualMappings) {
+  if (!rawProductName) return { product: null, isMatched: false, rawProductName: '' };
+
+  const rawClean = cleanProductName(rawProductName);
+  const rawNorm = normalizeText(rawClean);
+
+  // 1. Check manual mapping by Brand Manager
+  if (manualMappings?.productMappings) {
+    const mappedId = manualMappings.productMappings[rawProductName] ||
+                     manualMappings.productMappings[rawClean] ||
+                     manualMappings.productMappings[rawNorm];
+    if (mappedId) {
+      const found = allProducts.find(p => String(p.id) === String(mappedId));
+      if (found) return { product: found, isMatched: true, mappedManually: true, rawProductName };
+    }
+  }
+
+  if (!rawNorm) return { product: null, isMatched: false, rawProductName };
+
+  // 2. Exact normalized name match
+  const exactName = allProducts.find(p => normalizeText(p.name) === rawNorm);
+  if (exactName) return { product: exactName, isMatched: true, rawProductName };
+
+  // 3. Exact normalized code match
+  const exactCode = allProducts.find(p => normalizeText(p.code) === rawNorm);
+  if (exactCode) return { product: exactCode, isMatched: true, rawProductName };
+
+  // 4. Token subset match (e.g. "Hyper Monk" matches "Hyper Monk 500mg" or vice versa)
+  const rawTokens = rawNorm.split(' ').filter(Boolean);
+  const tokenMatch = allProducts.find(p => {
+    const pTokens = normalizeText(p.name).split(' ').filter(Boolean);
+    const pCodeTokens = normalizeText(p.code).split(' ').filter(Boolean);
+    const allInP = rawTokens.length > 0 && rawTokens.every(t => pTokens.includes(t) || pCodeTokens.includes(t));
+    const allInRaw = pTokens.length > 0 && pTokens.every(t => rawTokens.includes(t));
+    return allInP || allInRaw;
+  });
+  if (tokenMatch) return { product: tokenMatch, isMatched: true, rawProductName };
+
+  return { product: null, isMatched: false, rawProductName };
+}
+
+// Detects sheet layout (Matrix vs List) and maps product/date columns
+function detectSheetColumns(sheet, allProducts, manualMappings) {
+  const maxRows = Math.min(sheet.rowCount || 6, 6);
+
+  // Check for List / Tabular layout headers
+  for (let r = 1; r <= maxRows; r++) {
+    const row = sheet.getRow(r);
+    const textMap = {};
+    row.eachCell((cell, colIdx) => {
+      const t = normalizeText(getCellValue(cell));
+      if (t.includes('order') && (t.includes('id') || t.includes('number') || t.includes('no'))) textMap.orderNumber = colIdx;
+      else if (t.includes('date') || t === 'dt') textMap.date = colIdx;
+      else if (t.includes('staff') && (t.includes('id') || t.includes('code'))) textMap.staffCode = colIdx;
+      else if (t.includes('product') || t === 'item' || t === 'sku') textMap.product = colIdx;
+      else if (t.includes('qty') || t.includes('quantity') || t === 'units') textMap.quantity = colIdx;
+      else if (t.includes('payment') || t.includes('paymode') || t === 'method') textMap.paymentMethod = colIdx;
+      else if (t.includes('status')) textMap.status = colIdx;
+      else if (t.includes('remark') || t.includes('note')) textMap.remarks = colIdx;
+      else if (t.includes('return') || t.includes('refund')) textMap.returnQty = colIdx;
+    });
+
+    if (textMap.product && textMap.quantity) {
+      return {
+        layoutType: 'list',
+        headerRow: r,
+        dataStartRow: r + 1,
+        columns: textMap
+      };
+    }
+  }
+
+  // Check for Matrix / Columnar layout (Products in columns across Prepaid / COD)
+  let dateCol = null;
+  let returnCol = null;
+  let remarksCol = null;
+  let headerRowIdx = 1;
+  const productCols = [];
+
+  for (let r = 1; r <= maxRows; r++) {
+    const row = sheet.getRow(r);
+    row.eachCell((cell, colIdx) => {
+      const t = normalizeText(getCellValue(cell));
+      if (!dateCol && (t === 'date' || t === 'day' || t === 'order date' || t === 'dt' || t === 'sl no' || t === 'slno')) {
+        dateCol = colIdx;
+        headerRowIdx = r;
+      }
+    });
+    if (dateCol) break;
+  }
+  if (!dateCol) dateCol = 1;
+
+  const maxCol = Math.min(sheet.columnCount || 30, 30);
+  const rowA = headerRowIdx > 1 ? sheet.getRow(headerRowIdx - 1) : sheet.getRow(headerRowIdx);
+  const rowB = sheet.getRow(headerRowIdx);
+
+  for (let c = 1; c <= maxCol; c++) {
+    if (c === dateCol) continue;
+
+    const valA = getCellValue(rowA.getCell(c));
+    const valB = getCellValue(rowB.getCell(c));
+    const combinedHeader = [valA, valB].filter(Boolean).join(' ');
+    const combinedNorm = normalizeText(combinedHeader);
+
+    if (!combinedNorm) continue;
+
+    // Detect returns column
+    if (combinedNorm.includes('return') || combinedNorm.includes('refund') || combinedNorm.includes('ret qty')) {
+      if (!returnCol) returnCol = c;
+      continue;
+    }
+
+    // Detect remarks column
+    if (combinedNorm.includes('remark') || combinedNorm.includes('note') || combinedNorm.includes('comment')) {
+      if (!remarksCol) remarksCol = c;
+      continue;
+    }
+
+    // Skip rollup / totals
+    if (
+      combinedNorm.includes('total') || combinedNorm.includes('sum') ||
+      combinedNorm.includes('incentive') || combinedNorm.includes('commission') ||
+      combinedNorm.includes('net') || combinedNorm.includes('gross')
+    ) {
+      continue;
+    }
+
+    // Determine payment method
+    let paymentMethod = 'Prepaid';
+    if (combinedNorm.includes('cod') || combinedNorm.includes('cash on delivery') || combinedNorm.includes('cash')) {
+      paymentMethod = 'COD';
+    } else if (combinedNorm.includes('prepaid') || combinedNorm.includes('online') || combinedNorm.includes('card') || combinedNorm.includes('upi')) {
+      paymentMethod = 'Prepaid';
+    }
+
+    // Determine product name
+    const rawProdName = cleanProductName(valA) || cleanProductName(valB) || cleanProductName(combinedHeader);
+    if (!rawProdName) continue;
+
+    const match = matchProductRecord(rawProdName, allProducts, manualMappings);
+
+    productCols.push({
+      colIndex: c,
+      rawProductHeader: combinedHeader,
+      rawProductName: rawProdName,
+      paymentMethod,
+      matchedProduct: match.product,
+      isMatched: match.isMatched,
+      mappedManually: match.mappedManually || false
+    });
+  }
+
+  return {
+    layoutType: 'matrix',
+    headerRow: headerRowIdx,
+    dataStartRow: headerRowIdx + 1,
+    dateCol,
+    returnCol,
+    remarksCol,
+    productCols
+  };
+}
+
+// Helper to normalize and parse dates from cells
+function parseExcelDate(raw, defaultMonthYear) {
+  if (!raw) return null;
+  const s = String(raw).trim();
+
+  // Full ISO date YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  // Day of month number (e.g. 1 through 31)
+  if (/^\d{1,2}$/.test(s)) {
+    const day = parseInt(s, 10);
+    if (day >= 1 && day <= 31) {
+      const my = defaultMonthYear || new Date().toISOString().slice(0, 7);
+      return `${my}-${String(day).padStart(2, '0')}`;
+    }
+  }
+
+  // Format DD/MM/YYYY or DD-MM-YYYY
+  const parts = s.split(/[/.-]/);
+  if (parts.length === 3) {
+    if (parts[0].length === 4) {
+      return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+    } else if (parts[2].length === 4) {
+      return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+    }
+  }
+
+  // JS Date string
+  const d = new Date(raw);
+  if (!isNaN(d.getTime())) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  return null;
+}
+
+// 2. POST /api/orders/bulk-update-preview - Multi-sheet, dynamic staff & product detection with manual mapping
 router.post('/bulk-update-preview', authenticate, async (req, res) => {
   if (req.user.role !== 'brand_manager') {
     return res.status(403).json({ error: 'Only Brand Managers can upload and preview bulk order updates.' });
   }
 
-  const fileName = req.body.fileName || 'bulk_orders.xlsx';
+  const fileName = req.body.fileName || 'monthly_orders.xlsx';
   const fileData = req.body.fileData || req.body.fileBase64;
+  const monthYear = (req.body.monthYear && /^\d{4}-\d{2}$/.test(req.body.monthYear.trim()))
+    ? req.body.monthYear.trim()
+    : new Date().toISOString().slice(0, 7);
+  const manualMappings = req.body.manualMappings || {};
+
   if (!fileData) {
     return res.status(400).json({ error: 'No Excel file data received. Please select a valid .xlsx file.' });
   }
@@ -650,7 +1046,7 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Invalid or empty file content.' });
     }
 
-    // Compute SHA-256 hash to prevent accidental re-imports
+    // Compute SHA-256 hash to detect accidental duplicate uploads
     const fileHash = crypto.createHash('sha256').update(buffer).digest('hex');
     const existingLog = get('SELECT * FROM import_logs WHERE file_hash = ?', [fileHash]);
     const isDuplicate = !!existingLog;
@@ -664,63 +1060,14 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer);
 
-    // Pick first worksheet or one named Orders
-    let sheet = workbook.worksheets.find(w => w.name.toLowerCase().includes('order')) || workbook.worksheets[0];
-    if (!sheet) {
-      return res.status(400).json({ error: 'No readable worksheet found in the uploaded Excel workbook.' });
+    if (!workbook.worksheets || workbook.worksheets.length === 0) {
+      return res.status(400).json({ error: 'No worksheets found in the uploaded Excel workbook.' });
     }
 
-    // Identify header row (typically row 1)
-    const headerMap = {};
-    const headerRow = sheet.getRow(1);
-    headerRow.eachCell((cell, colNumber) => {
-      const text = getCellValue(cell).toLowerCase().replace(/[^a-z0-9]/g, '');
-      if (text.includes('ordernumber') || text.includes('orderid') || text.includes('orderno') || text === 'order' || text.startsWith('order')) {
-        if (!headerMap.orderNumber) headerMap.orderNumber = colNumber;
-      } else if (text.includes('staffid') || text.includes('staffcode') || text === 'staff') {
-        if (!headerMap.staffCode) headerMap.staffCode = colNumber;
-      } else if (text.includes('productcode') || text.includes('sku')) {
-        if (!headerMap.productCode) headerMap.productCode = colNumber;
-      } else if (text.includes('productname') || text === 'product' || text === 'item') {
-        if (!headerMap.productName) headerMap.productName = colNumber;
-      } else if (text.includes('quantity') || text.includes('qty') || text === 'units') {
-        if (!headerMap.quantity) headerMap.quantity = colNumber;
-      } else if (text.includes('payment') || text.includes('method') || text.includes('paymode')) {
-        if (!headerMap.paymentMethod) headerMap.paymentMethod = colNumber;
-      } else if (text.includes('date')) {
-        if (!headerMap.orderDate) headerMap.orderDate = colNumber;
-      } else if (text.includes('status')) {
-        if (!headerMap.status) headerMap.status = colNumber;
-      } else if (text.includes('remark') || text.includes('note') || text.includes('comment')) {
-        if (!headerMap.remarks) headerMap.remarks = colNumber;
-      }
-    });
-
-    // Fallbacks if columns weren't labeled strictly
-    if (!headerMap.orderNumber) headerMap.orderNumber = 1;
-    if (!headerMap.staffCode) headerMap.staffCode = 2;
-    if (!headerMap.quantity) headerMap.quantity = 6;
-    if (!headerMap.paymentMethod) headerMap.paymentMethod = 7;
-    if (!headerMap.orderDate) headerMap.orderDate = 8;
-
-    // Load reference data from DB
-    const allUsers = query('SELECT id, staff_id, name, username, status FROM users WHERE role = "sales_staff"');
-    const staffMap = new Map();
-    for (const u of allUsers) {
-      if (u.staff_id) staffMap.set(u.staff_id.trim().toLowerCase(), u);
-      if (u.username) staffMap.set(u.username.trim().toLowerCase(), u);
-      staffMap.set(String(u.id), u);
-    }
-
+    // Reference data from database
+    const allStaff = query('SELECT id, staff_id, name, username, status FROM users WHERE role = "sales_staff"');
     const allProducts = query('SELECT * FROM products');
-    const productMap = new Map();
-    for (const p of allProducts) {
-      if (p.code) productMap.set(p.code.trim().toUpperCase(), p);
-      if (p.name) productMap.set(p.name.trim().toLowerCase(), p);
-      productMap.set(String(p.id), p);
-    }
-
-    const allOrdersList = query(`
+    const allOrders = query(`
       SELECT
         o.*,
         u.staff_id AS staff_code,
@@ -732,346 +1079,457 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
       JOIN users u ON o.staff_id = u.id
       JOIN products p ON o.product_id = p.id
     `);
-    const orderMap = new Map();
-    for (const o of allOrdersList) {
-      if (o.order_number) orderMap.set(o.order_number.trim().toLowerCase(), o);
-      orderMap.set(String(o.id), o);
+
+    // Index existing orders by order_number and by (staff_id, product_id, payment_method, order_date)
+    const orderByNum = new Map();
+    const orderByKey = new Map();
+    for (const ord of allOrders) {
+      if (ord.order_number) orderByNum.set(ord.order_number.trim().toLowerCase(), ord);
+      const k = `${ord.staff_id}_${ord.product_id}_${ord.payment_method}_${ord.order_date}`;
+      orderByKey.set(k, ord);
     }
+
+    const skippedSheets = [];
+    const detectedStaffMap = new Map();
+    const detectedProductsMap = new Map();
 
     const parsedRows = [];
-    let matchedCount = 0;
-    let toUpdateCount = 0;
-    let unchangedCount = 0;
-    let unmatchedCount = 0;
-    let invalidCount = 0;
-
     const validUpdateRowsToCache = [];
+    const validCreateRowsToCache = [];
 
-    // Helper for date parsing
-    function parseDateString(raw) {
-      if (!raw) return null;
-      const s = String(raw).trim();
-      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-      const parts = s.split(/[/.-]/);
-      if (parts.length === 3) {
-        if (parts[0].length === 4) {
-          return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
-        } else if (parts[2].length === 4) {
-          return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-        }
-      }
-      return null;
-    }
+    let processedSheetsCount = 0;
+    let globalRowIndex = 1;
 
-    // Process rows starting from row 2
-    sheet.eachRow((row, rowNumber) => {
-      if (rowNumber === 1) return; // Skip header
-
-      const rawOrderId = getCellValue(row.getCell(headerMap.orderNumber));
-      const rawStaffId = getCellValue(row.getCell(headerMap.staffCode));
-      const rawQty = getCellValue(row.getCell(headerMap.quantity));
-      const rawPayment = headerMap.paymentMethod ? getCellValue(row.getCell(headerMap.paymentMethod)) : '';
-      const rawProdCode = headerMap.productCode ? getCellValue(row.getCell(headerMap.productCode)) : '';
-      const rawProdName = headerMap.productName ? getCellValue(row.getCell(headerMap.productName)) : '';
-      const rawDate = headerMap.orderDate ? getCellValue(row.getCell(headerMap.orderDate)) : '';
-      const rawStatus = headerMap.status ? getCellValue(row.getCell(headerMap.status)) : '';
-      const rawRemarks = headerMap.remarks ? getCellValue(row.getCell(headerMap.remarks)) : '';
-
-      // Skip completely empty row
-      if (!rawOrderId && !rawStaffId && !rawQty) return;
-
-      const rowResult = {
-        rowNumber,
-        excelData: {
-          orderNumber: rawOrderId,
-          staffId: rawStaffId,
-          productCode: rawProdCode || rawProdName,
-          quantity: rawQty,
-          paymentMethod: rawPayment,
-          orderDate: rawDate,
-          status: rawStatus,
-          remarks: rawRemarks
-        },
-        currentOrder: null,
-        newValues: null,
-        status: 'pending',
-        error: null,
-        changes: []
-      };
-
-      // 1. Order Identification
-      if (!rawOrderId) {
-        rowResult.status = 'invalid';
-        rowResult.error = 'Order ID is missing in Excel row.';
-        invalidCount++;
-        parsedRows.push(rowResult);
-        return;
-      }
-
-      const existingOrder = orderMap.get(rawOrderId.toLowerCase());
-      if (!existingOrder) {
-        rowResult.status = 'unmatched';
-        rowResult.error = `Order ID "${rawOrderId}" not found in database.`;
-        unmatchedCount++;
-        parsedRows.push(rowResult);
-        return;
-      }
-
-      rowResult.currentOrder = {
-        id: existingOrder.id,
-        orderNumber: existingOrder.order_number,
-        staffId: existingOrder.staff_id,
-        staffCode: existingOrder.staff_code,
-        staffName: existingOrder.staff_name,
-        productId: existingOrder.product_id,
-        productCode: existingOrder.product_code,
-        productName: existingOrder.product_name,
-        quantity: existingOrder.quantity,
-        unitPrice: existingOrder.unit_price,
-        totalAmount: existingOrder.total_amount,
-        paymentMethod: existingOrder.payment_method,
-        orderDate: existingOrder.order_date,
-        status: existingOrder.status,
-        remarks: existingOrder.remarks || '',
-        incentiveAmount: existingOrder.incentive_amount,
-        returnedQuantity: existingOrder.returned_quantity
-      };
-
-      // 2. Staff Verification & Matching (Do not modify unrelated staff records)
-      if (!rawStaffId) {
-        rowResult.status = 'invalid';
-        rowResult.error = 'Staff ID is missing in Excel row.';
-        invalidCount++;
-        parsedRows.push(rowResult);
-        return;
-      }
-
-      const matchedStaff = staffMap.get(rawStaffId.toLowerCase());
-      if (!matchedStaff) {
-        rowResult.status = 'invalid';
-        rowResult.error = `Staff ID "${rawStaffId}" does not exist in system.`;
-        invalidCount++;
-        parsedRows.push(rowResult);
-        return;
-      }
-
-      if (matchedStaff.status !== 'active') {
-        rowResult.status = 'invalid';
-        rowResult.error = `Staff member "${matchedStaff.name}" (${matchedStaff.staff_id}) is inactive.`;
-        invalidCount++;
-        parsedRows.push(rowResult);
-        return;
-      }
-
-      // Security & Safety check: Order must match the designated staff
-      if (existingOrder.staff_id !== matchedStaff.id) {
-        rowResult.status = 'unmatched';
-        rowResult.error = `Staff mismatch: Order "${existingOrder.order_number}" belongs to ${existingOrder.staff_name} (${existingOrder.staff_code}), not ${matchedStaff.name} (${matchedStaff.staff_id}).`;
-        unmatchedCount++;
-        parsedRows.push(rowResult);
-        return;
-      }
-
-      // 3. Product Verification (optional in Excel; defaults to current order's product)
-      let targetProduct = productMap.get(String(existingOrder.product_id));
-      if (rawProdCode || rawProdName) {
-        const prodLookupKey = (rawProdCode || rawProdName).trim();
-        const foundProd = productMap.get(prodLookupKey.toUpperCase()) || productMap.get(prodLookupKey.toLowerCase());
-        if (!foundProd) {
-          rowResult.status = 'invalid';
-          rowResult.error = `Product "${prodLookupKey}" was not found in catalog.`;
-          invalidCount++;
-          parsedRows.push(rowResult);
-          return;
-        }
-        if (foundProd.status !== 'active') {
-          rowResult.status = 'invalid';
-          rowResult.error = `Product "${foundProd.name}" (${foundProd.code}) is inactive.`;
-          invalidCount++;
-          parsedRows.push(rowResult);
-          return;
-        }
-        targetProduct = foundProd;
-      }
-
-      // 4. Quantity Validation
-      let targetQty = existingOrder.quantity;
-      if (rawQty !== '') {
-        const parsedQ = parseInt(rawQty, 10);
-        if (isNaN(parsedQ) || parsedQ <= 0) {
-          rowResult.status = 'invalid';
-          rowResult.error = `Quantity must be a positive number (found "${rawQty}").`;
-          invalidCount++;
-          parsedRows.push(rowResult);
-          return;
-        }
-        if (parsedQ < existingOrder.returned_quantity) {
-          rowResult.status = 'invalid';
-          rowResult.error = `Cannot reduce quantity to ${parsedQ}; ${existingOrder.returned_quantity} units have already been returned for this order.`;
-          invalidCount++;
-          parsedRows.push(rowResult);
-          return;
-        }
-        targetQty = parsedQ;
-      }
-
-      // 5. Payment Method Validation
-      let targetPayment = existingOrder.payment_method;
-      if (rawPayment) {
-        const normP = rawPayment.trim().toLowerCase();
-        if (normP === 'prepaid') {
-          targetPayment = 'Prepaid';
-        } else if (normP === 'cod' || normP === 'cash on delivery') {
-          targetPayment = 'COD';
-        } else {
-          rowResult.status = 'invalid';
-          rowResult.error = `Invalid payment method "${rawPayment}". Must be "Prepaid" or "COD".`;
-          invalidCount++;
-          parsedRows.push(rowResult);
-          return;
-        }
-      }
-
-      // 6. Order Date Validation
-      let targetDate = existingOrder.order_date;
-      if (rawDate) {
-        const parsedD = parseDateString(rawDate);
-        if (!parsedD) {
-          rowResult.status = 'invalid';
-          rowResult.error = `Invalid order date format "${rawDate}". Expected YYYY-MM-DD.`;
-          invalidCount++;
-          parsedRows.push(rowResult);
-          return;
-        }
-        targetDate = parsedD;
-      }
-
-      // 7. Status Validation
-      let targetStatus = existingOrder.status;
-      if (rawStatus) {
-        const cleanS = rawStatus.trim();
-        const validStatuses = ['Confirmed', 'Delivered', 'Pending', 'Cancelled'];
-        const matchedS = validStatuses.find(s => s.toLowerCase() === cleanS.toLowerCase());
-        if (!matchedS) {
-          rowResult.status = 'invalid';
-          rowResult.error = `Invalid status "${rawStatus}". Must be Confirmed, Delivered, Pending, or Cancelled.`;
-          invalidCount++;
-          parsedRows.push(rowResult);
-          return;
-        }
-        targetStatus = matchedS;
-      }
-
-      // 8. Remarks
-      const targetRemarks = rawRemarks !== '' ? rawRemarks.trim() : (existingOrder.remarks || '');
-
-      // Successfully matched order!
-      matchedCount++;
-
-      // 9. Recalculate financial snapshot & detect changes
-      const unitPrice = targetProduct.price || 0;
-      const newTotalAmount = Math.round(unitPrice * targetQty * 100) / 100;
-      const newIncentive = calculateIncentive(targetProduct, targetPayment, targetQty, newTotalAmount);
-
-      rowResult.newValues = {
-        productId: targetProduct.id,
-        productCode: targetProduct.code,
-        productName: targetProduct.name,
-        quantity: targetQty,
-        unitPrice: unitPrice,
-        totalAmount: newTotalAmount,
-        paymentMethod: targetPayment,
-        orderDate: targetDate,
-        status: targetStatus,
-        remarks: targetRemarks,
-        incentiveType: newIncentive.type,
-        incentiveBasis: newIncentive.basis,
-        incentiveRate: newIncentive.rate,
-        incentiveAmount: newIncentive.amount
-      };
-
-      // Detect diffs
-      const diffs = [];
-      if (targetQty !== existingOrder.quantity) {
-        diffs.push({ field: 'Quantity', oldVal: `${existingOrder.quantity} units`, newVal: `${targetQty} units` });
-      }
-      if (targetPayment !== existingOrder.payment_method) {
-        diffs.push({ field: 'Payment Method', oldVal: existingOrder.payment_method, newVal: targetPayment });
-      }
-      if (targetProduct.id !== existingOrder.product_id) {
-        diffs.push({ field: 'Product', oldVal: `${existingOrder.product_name} (${existingOrder.product_code})`, newVal: `${targetProduct.name} (${targetProduct.code})` });
-      }
-      if (targetDate !== existingOrder.order_date) {
-        diffs.push({ field: 'Order Date', oldVal: existingOrder.order_date, newVal: targetDate });
-      }
-      if (targetStatus !== existingOrder.status) {
-        diffs.push({ field: 'Status', oldVal: existingOrder.status, newVal: targetStatus });
-      }
-      if (targetRemarks !== (existingOrder.remarks || '')) {
-        diffs.push({ field: 'Remarks', oldVal: existingOrder.remarks || '-', newVal: targetRemarks || '-' });
-      }
-
-      rowResult.changes = diffs;
-
-      if (diffs.length > 0) {
-        rowResult.status = 'valid_update';
-        toUpdateCount++;
-        validUpdateRowsToCache.push({
-          rowNumber,
-          orderId: existingOrder.id,
-          orderNumber: existingOrder.order_number,
-          staffId: matchedStaff.id,
-          newProductId: targetProduct.id,
-          newQuantity: targetQty,
-          newPaymentMethod: targetPayment,
-          newOrderDate: targetDate,
-          newStatus: targetStatus,
-          newRemarks: targetRemarks
+    // Iterate through all worksheets dynamically
+    for (const sheet of workbook.worksheets) {
+      // 1. Check if consolidated summary sheet (e.g. INCENTIVE, SUMMARY, TOTALS)
+      if (isSummarySheet(sheet)) {
+        skippedSheets.push({
+          name: sheet.name,
+          reason: 'Consolidated summary or incentive calculation sheet'
         });
-      } else {
-        rowResult.status = 'no_change';
-        unchangedCount++;
+        continue;
       }
 
-      parsedRows.push(rowResult);
-    });
+      processedSheetsCount++;
 
-    if (parsedRows.length === 0) {
-      return res.status(400).json({ error: 'The uploaded Excel file contains no order rows.' });
+      // 2. Extract and match staff for this worksheet
+      const staffInfo = extractStaffInfo(sheet);
+      const staffMatch = matchStaffRecord(staffInfo, allStaff, manualMappings);
+
+      const staffKey = staffInfo.rawStaffId || sheet.name;
+      if (!detectedStaffMap.has(staffKey)) {
+        detectedStaffMap.set(staffKey, {
+          rawId: staffInfo.rawStaffId,
+          rawName: staffInfo.rawStaffName,
+          sheetName: sheet.name,
+          matchedStaff: staffMatch.staff,
+          isMatched: staffMatch.isMatched,
+          mappedManually: staffMatch.mappedManually || false
+        });
+      }
+
+      // 3. Detect column layout (Matrix vs List) and product headers
+      const layout = detectSheetColumns(sheet, allProducts, manualMappings);
+
+      if (layout.layoutType === 'matrix') {
+        // Register detected products from matrix columns
+        for (const pCol of layout.productCols) {
+          const prodKey = pCol.rawProductName;
+          if (!detectedProductsMap.has(prodKey)) {
+            detectedProductsMap.set(prodKey, {
+              rawName: pCol.rawProductName,
+              columnHeader: pCol.rawProductHeader,
+              matchedProduct: pCol.matchedProduct,
+              isMatched: pCol.isMatched,
+              mappedManually: pCol.mappedManually || false
+            });
+          }
+        }
+
+        // Iterate data rows (daily records)
+        const rowCount = sheet.rowCount || 0;
+        for (let r = layout.dataStartRow; r <= rowCount; r++) {
+          const row = sheet.getRow(r);
+          const rawDateVal = getCellValue(row.getCell(layout.dateCol));
+          if (!rawDateVal) continue;
+
+          // Skip total rows
+          const rawDateNorm = normalizeText(rawDateVal);
+          if (rawDateNorm.includes('total') || rawDateNorm.includes('sum') || rawDateNorm.includes('grand')) {
+            continue;
+          }
+
+          const parsedDate = parseExcelDate(rawDateVal, monthYear);
+          if (!parsedDate) continue;
+
+          // Extract returns if present
+          let returnQty = 0;
+          if (layout.returnCol) {
+            const rawRet = getCellValue(row.getCell(layout.returnCol));
+            if (rawRet && !isNaN(parseInt(rawRet, 10))) {
+              returnQty = parseInt(rawRet, 10);
+            }
+          }
+
+          // Evaluate each product column
+          for (const pCol of layout.productCols) {
+            const rawQtyVal = getCellValue(row.getCell(pCol.colIndex));
+            if (!rawQtyVal || isNaN(parseInt(rawQtyVal, 10))) continue;
+
+            const quantity = parseInt(rawQtyVal, 10);
+            if (quantity <= 0) continue;
+
+            const currentStaff = staffMatch.staff;
+            const currentProduct = pCol.matchedProduct;
+
+            const rowItem = {
+              rowNumber: globalRowIndex++,
+              sheetName: sheet.name,
+              excelData: {
+                date: parsedDate,
+                staffId: staffInfo.rawStaffId || sheet.name,
+                staffName: staffInfo.rawStaffName || sheet.name,
+                productName: pCol.rawProductName,
+                quantity,
+                paymentMethod: pCol.paymentMethod,
+                returnQuantity: returnQty
+              },
+              currentOrder: null,
+              newValues: null,
+              status: 'pending',
+              error: null,
+              changes: []
+            };
+
+            // Check staff match
+            if (!staffMatch.isMatched || !currentStaff) {
+              rowItem.status = 'unmatched';
+              rowItem.error = `Unmatched staff member "${staffInfo.rawStaffId || sheet.name}" on sheet "${sheet.name}". Please map to an existing staff member.`;
+              parsedRows.push(rowItem);
+              continue;
+            }
+
+            // Check product match
+            if (!pCol.isMatched || !currentProduct) {
+              rowItem.status = 'unmatched';
+              rowItem.error = `Unmatched product "${pCol.rawProductName}". Please map to an existing product in Product Management.`;
+              parsedRows.push(rowItem);
+              continue;
+            }
+
+            // Calculate price, amount, incentive
+            const unitPrice = currentProduct.price || 0;
+            const totalAmount = Math.round(unitPrice * quantity * 100) / 100;
+            const incentive = calculateIncentive(currentProduct, pCol.paymentMethod, quantity, totalAmount);
+
+            rowItem.newValues = {
+              staffId: currentStaff.id,
+              staffCode: currentStaff.staff_id,
+              staffName: currentStaff.name,
+              productId: currentProduct.id,
+              productCode: currentProduct.code,
+              productName: currentProduct.name,
+              quantity,
+              unitPrice,
+              totalAmount,
+              paymentMethod: pCol.paymentMethod,
+              orderDate: parsedDate,
+              status: 'Confirmed',
+              incentiveType: incentive.type,
+              incentiveBasis: incentive.basis,
+              incentiveRate: incentive.rate,
+              incentiveAmount: incentive.amount
+            };
+
+            // Look up existing order by (staff_id, product_id, payment_method, order_date)
+            const matchKey = `${currentStaff.id}_${currentProduct.id}_${pCol.paymentMethod}_${parsedDate}`;
+            const existingOrder = orderByKey.get(matchKey);
+
+            if (existingOrder) {
+              rowItem.currentOrder = {
+                id: existingOrder.id,
+                orderNumber: existingOrder.order_number,
+                staffId: existingOrder.staff_id,
+                staffCode: existingOrder.staff_code,
+                staffName: existingOrder.staff_name,
+                productId: existingOrder.product_id,
+                productCode: existingOrder.product_code,
+                productName: existingOrder.product_name,
+                quantity: existingOrder.quantity,
+                unitPrice: existingOrder.unit_price,
+                totalAmount: existingOrder.total_amount,
+                paymentMethod: existingOrder.payment_method,
+                orderDate: existingOrder.order_date,
+                status: existingOrder.status,
+                incentiveAmount: existingOrder.incentive_amount,
+                returnedQuantity: existingOrder.returned_quantity
+              };
+
+              // Check if values changed
+              if (existingOrder.quantity === quantity && existingOrder.product_id === currentProduct.id) {
+                rowItem.status = 'no_change';
+              } else {
+                rowItem.status = 'valid_update';
+                rowItem.changes.push({
+                  field: 'Quantity',
+                  oldVal: `${existingOrder.quantity} units`,
+                  newVal: `${quantity} units`
+                });
+                validUpdateRowsToCache.push({
+                  orderId: existingOrder.id,
+                  orderNumber: existingOrder.order_number,
+                  staffId: currentStaff.id,
+                  newProductId: currentProduct.id,
+                  newQuantity: quantity,
+                  newPaymentMethod: pCol.paymentMethod,
+                  newOrderDate: parsedDate,
+                  newStatus: existingOrder.status || 'Confirmed',
+                  newRemarks: existingOrder.remarks || '',
+                  rowNumber: rowItem.rowNumber
+                });
+              }
+            } else {
+              // Valid new order to create
+              rowItem.status = 'valid_create';
+              validCreateRowsToCache.push({
+                staffId: currentStaff.id,
+                productId: currentProduct.id,
+                quantity,
+                paymentMethod: pCol.paymentMethod,
+                orderDate: parsedDate,
+                returnQuantity: returnQty,
+                rowNumber: rowItem.rowNumber
+              });
+            }
+
+            parsedRows.push(rowItem);
+          }
+        }
+      } else {
+        // LayoutType: List / Tabular layout
+        const rowCount = sheet.rowCount || 0;
+        const cols = layout.columns;
+
+        for (let r = layout.dataStartRow; r <= rowCount; r++) {
+          const row = sheet.getRow(r);
+          const rawProdVal = getCellValue(row.getCell(cols.product));
+          const rawQtyVal = getCellValue(row.getCell(cols.quantity));
+          if (!rawProdVal && !rawQtyVal) continue;
+
+          const rawDateVal = cols.date ? getCellValue(row.getCell(cols.date)) : null;
+          const parsedDate = parseExcelDate(rawDateVal, monthYear) || new Date().toISOString().slice(0, 10);
+          const rawOrderNum = cols.orderNumber ? getCellValue(row.getCell(cols.orderNumber)) : null;
+          const rawPayment = cols.paymentMethod ? getCellValue(row.getCell(cols.paymentMethod)) : 'Prepaid';
+          const paymentMethod = normalizeText(rawPayment).includes('cod') ? 'COD' : 'Prepaid';
+          const quantity = parseInt(rawQtyVal, 10) || 1;
+
+          // Product matching
+          const prodMatch = matchProductRecord(rawProdVal, allProducts, manualMappings);
+          if (!detectedProductsMap.has(rawProdVal)) {
+            detectedProductsMap.set(rawProdVal, {
+              rawName: rawProdVal,
+              columnHeader: 'Product Column',
+              matchedProduct: prodMatch.product,
+              isMatched: prodMatch.isMatched,
+              mappedManually: prodMatch.mappedManually || false
+            });
+          }
+
+          // Staff matching (per row or per sheet)
+          let rowStaff = staffMatch.staff;
+          if (cols.staffCode) {
+            const rawRowStaff = getCellValue(row.getCell(cols.staffCode));
+            if (rawRowStaff) {
+              const rStaffMatch = matchStaffRecord({ rawStaffId: rawRowStaff, rawStaffName: '', sheetName: sheet.name }, allStaff, manualMappings);
+              if (rStaffMatch.isMatched) rowStaff = rStaffMatch.staff;
+            }
+          }
+
+          const rowItem = {
+            rowNumber: globalRowIndex++,
+            sheetName: sheet.name,
+            excelData: {
+              orderNumber: rawOrderNum,
+              date: parsedDate,
+              staffId: staffInfo.rawStaffId || sheet.name,
+              staffName: staffInfo.rawStaffName || sheet.name,
+              productName: rawProdVal,
+              quantity,
+              paymentMethod
+            },
+            currentOrder: null,
+            newValues: null,
+            status: 'pending',
+            error: null,
+            changes: []
+          };
+
+          if (!rowStaff) {
+            rowItem.status = 'unmatched';
+            rowItem.error = `Unmatched staff for order. Please map to an existing sales staff.`;
+            parsedRows.push(rowItem);
+            continue;
+          }
+
+          if (!prodMatch.isMatched || !prodMatch.product) {
+            rowItem.status = 'unmatched';
+            rowItem.error = `Unmatched product "${rawProdVal}". Please map to an existing product in Product Management.`;
+            parsedRows.push(rowItem);
+            continue;
+          }
+
+          const currentProduct = prodMatch.product;
+          const unitPrice = currentProduct.price || 0;
+          const totalAmount = Math.round(unitPrice * quantity * 100) / 100;
+          const incentive = calculateIncentive(currentProduct, paymentMethod, quantity, totalAmount);
+
+          rowItem.newValues = {
+            staffId: rowStaff.id,
+            staffCode: rowStaff.staff_id,
+            staffName: rowStaff.name,
+            productId: currentProduct.id,
+            productCode: currentProduct.code,
+            productName: currentProduct.name,
+            quantity,
+            unitPrice,
+            totalAmount,
+            paymentMethod,
+            orderDate: parsedDate,
+            status: 'Confirmed',
+            incentiveAmount: incentive.amount
+          };
+
+          // Existing order lookup by order_number or (staff, product, payment, date)
+          let existingOrder = null;
+          if (rawOrderNum) {
+            existingOrder = orderByNum.get(rawOrderNum.trim().toLowerCase());
+          }
+          if (!existingOrder) {
+            const k = `${rowStaff.id}_${currentProduct.id}_${paymentMethod}_${parsedDate}`;
+            existingOrder = orderByKey.get(k);
+          }
+
+          if (existingOrder) {
+            rowItem.currentOrder = {
+              id: existingOrder.id,
+              orderNumber: existingOrder.order_number,
+              staffId: existingOrder.staff_id,
+              staffCode: existingOrder.staff_code,
+              staffName: existingOrder.staff_name,
+              productId: existingOrder.product_id,
+              productCode: existingOrder.product_code,
+              productName: existingOrder.product_name,
+              quantity: existingOrder.quantity,
+              unitPrice: existingOrder.unit_price,
+              totalAmount: existingOrder.total_amount,
+              paymentMethod: existingOrder.payment_method,
+              orderDate: existingOrder.order_date,
+              status: existingOrder.status,
+              incentiveAmount: existingOrder.incentive_amount,
+              returnedQuantity: existingOrder.returned_quantity
+            };
+
+            if (existingOrder.quantity === quantity && existingOrder.product_id === currentProduct.id) {
+              rowItem.status = 'no_change';
+            } else {
+              rowItem.status = 'valid_update';
+              rowItem.changes.push({
+                field: 'Quantity',
+                oldVal: `${existingOrder.quantity} units`,
+                newVal: `${quantity} units`
+              });
+              validUpdateRowsToCache.push({
+                orderId: existingOrder.id,
+                orderNumber: existingOrder.order_number,
+                staffId: rowStaff.id,
+                newProductId: currentProduct.id,
+                newQuantity: quantity,
+                newPaymentMethod: paymentMethod,
+                newOrderDate: parsedDate,
+                newStatus: existingOrder.status || 'Confirmed',
+                newRemarks: existingOrder.remarks || '',
+                rowNumber: rowItem.rowNumber
+              });
+            }
+          } else {
+            rowItem.status = 'valid_create';
+            validCreateRowsToCache.push({
+              staffId: rowStaff.id,
+              productId: currentProduct.id,
+              quantity,
+              paymentMethod,
+              orderDate: parsedDate,
+              rowNumber: rowItem.rowNumber
+            });
+          }
+
+          parsedRows.push(rowItem);
+        }
+      }
     }
 
-    // Generate cryptographic preview token (15-minute TTL)
+    const detectedStaff = Array.from(detectedStaffMap.values());
+    const detectedProducts = Array.from(detectedProductsMap.values());
+
+    const unmatchedStaff = detectedStaff.filter(s => !s.isMatched);
+    const unmatchedProducts = detectedProducts.filter(p => !p.isMatched);
+
+    const toUpdateCount = parsedRows.filter(r => r.status === 'valid_update').length;
+    const toCreateCount = parsedRows.filter(r => r.status === 'valid_create').length;
+    const unchangedCount = parsedRows.filter(r => r.status === 'no_change').length;
+    const unmatchedCount = parsedRows.filter(r => r.status === 'unmatched').length;
+    const invalidCount = parsedRows.filter(r => r.status === 'invalid').length;
+
+    const canConfirm = unmatchedStaff.length === 0 &&
+                       unmatchedProducts.length === 0 &&
+                       (toUpdateCount > 0 || toCreateCount > 0);
+
+    // Cache preview session
     const previewToken = crypto.randomBytes(24).toString('hex');
     previewCache.set(previewToken, {
       fileHash,
-      fileName: fileName || 'Uploaded_Orders.xlsx',
+      fileName,
       rowsToUpdate: validUpdateRowsToCache,
-      createdAt: Date.now(),
-      expiresAt: Date.now() + 15 * 60 * 1000,
-      createdBy: req.user.id
+      rowsToCreate: validCreateRowsToCache,
+      createdBy: req.user.id,
+      expiresAt: Date.now() + 15 * 60 * 1000
     });
 
     res.json({
       previewToken,
       fileHash,
-      fileName: fileName || 'Uploaded_Orders.xlsx',
+      fileName,
       isDuplicate,
       duplicateInfo,
-      totalRows: parsedRows.length,
-      matchedCount,
-      toUpdateCount,
-      unchangedCount,
-      unmatchedCount,
-      invalidCount,
+      monthYear,
+      summary: {
+        totalWorksheets: workbook.worksheets.length,
+        processedSheets: processedSheetsCount,
+        skippedSheets,
+        detectedStaff,
+        unmatchedStaff,
+        detectedProducts,
+        unmatchedProducts,
+        totalRows: parsedRows.length,
+        matchedOrders: toUpdateCount + toCreateCount + unchangedCount,
+        toUpdate: toUpdateCount,
+        toCreate: toCreateCount,
+        noChange: unchangedCount,
+        unmatched: unmatchedCount,
+        invalid: invalidCount
+      },
+      canConfirm,
+      mappingRequired: unmatchedStaff.length > 0 || unmatchedProducts.length > 0,
       rows: parsedRows
     });
   } catch (err) {
-    console.error('Error during bulk update preview:', err);
+    console.error('Failed to process bulk update preview:', err);
     res.status(500).json({ error: 'Failed to process Excel file: ' + (err.message || 'Unknown parsing error') });
   }
 });
 
-// 3. POST /api/orders/bulk-update-confirm - Safely execute confirmed updates in transaction
+// 3. POST /api/orders/bulk-update-confirm - Safely execute confirmed updates and creations in transaction
 router.post('/bulk-update-confirm', authenticate, (req, res) => {
   if (req.user.role !== 'brand_manager') {
     return res.status(403).json({ error: 'Only Brand Managers can confirm bulk order updates.' });
@@ -1093,11 +1551,13 @@ router.post('/bulk-update-confirm', authenticate, (req, res) => {
 
   const now = new Date().toISOString();
   let updatedOrdersCount = 0;
+  let createdOrdersCount = 0;
   const errors = [];
 
   try {
     transaction(() => {
-      for (const item of preview.rowsToUpdate) {
+      // 1. Process Updates
+      for (const item of (preview.rowsToUpdate || [])) {
         try {
           const currentOrder = get('SELECT * FROM orders WHERE id = ?', [item.orderId]);
           if (!currentOrder) {
@@ -1114,7 +1574,7 @@ router.post('/bulk-update-confirm', authenticate, (req, res) => {
             errors.push({
               rowNumber: item.rowNumber,
               orderNumber: item.orderNumber,
-              reason: 'Product record was not found.'
+              reason: 'Product record was not found in catalog.'
             });
             continue;
           }
@@ -1146,8 +1606,8 @@ router.post('/bulk-update-confirm', authenticate, (req, res) => {
             totalAmount,
             item.newPaymentMethod,
             item.newOrderDate,
-            item.newStatus,
-            item.newRemarks,
+            item.newStatus || 'Confirmed',
+            item.newRemarks || '',
             incentive.type,
             incentive.basis,
             incentive.rate,
@@ -1179,6 +1639,147 @@ router.post('/bulk-update-confirm', authenticate, (req, res) => {
         }
       }
 
+      // 2. Process Creations (New Orders)
+      let defaultCustomer = get('SELECT id FROM customers WHERE phone = ?', ['0000000000']);
+      if (!defaultCustomer) {
+        const custRes = run(
+          'INSERT INTO customers (name, phone, address, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+          ['Direct Customer', '0000000000', 'Direct In-Store / Monthly Report', now, now]
+        );
+        defaultCustomer = { id: custRes.lastInsertRowid };
+      }
+
+      for (const item of (preview.rowsToCreate || [])) {
+        try {
+          const product = get('SELECT * FROM products WHERE id = ?', [item.productId]);
+          if (!product) {
+            errors.push({
+              rowNumber: item.rowNumber,
+              reason: 'Product record was not found in catalog.'
+            });
+            continue;
+          }
+
+          const staff = get('SELECT id, staff_id FROM users WHERE id = ? AND role = "sales_staff"', [item.staffId]);
+          if (!staff) {
+            errors.push({
+              rowNumber: item.rowNumber,
+              reason: 'Assigned staff member not found in database.'
+            });
+            continue;
+          }
+
+          const unitPrice = product.price || 0;
+          const totalAmount = Math.round(unitPrice * item.quantity * 100) / 100;
+          const incentive = calculateIncentive(product, item.paymentMethod, item.quantity, totalAmount);
+
+          // Generate unique order number: ORD-YYYYMMDD-XXXX
+          const dateClean = (item.orderDate || now.slice(0, 10)).replace(/-/g, '');
+          let uniqueOrderNum = '';
+          let attempts = 0;
+          while (!uniqueOrderNum && attempts < 10) {
+            attempts++;
+            const randSuffix = String(Math.floor(1000 + Math.random() * 9000));
+            const candidate = `ORD-${dateClean}-${randSuffix}`;
+            const exists = get('SELECT id FROM orders WHERE order_number = ?', [candidate]);
+            if (!exists) uniqueOrderNum = candidate;
+          }
+          if (!uniqueOrderNum) {
+            uniqueOrderNum = `ORD-${dateClean}-${Date.now().toString().slice(-4)}`;
+          }
+
+          const orderRes = run(`
+            INSERT INTO orders (
+              order_number,
+              staff_id,
+              customer_id,
+              product_id,
+              quantity,
+              unit_price,
+              total_amount,
+              payment_method,
+              order_date,
+              status,
+              remarks,
+              incentive_type,
+              incentive_basis,
+              incentive_rate,
+              incentive_amount,
+              created_at,
+              updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `, [
+            uniqueOrderNum,
+            staff.id,
+            defaultCustomer.id,
+            product.id,
+            item.quantity,
+            unitPrice,
+            totalAmount,
+            item.paymentMethod,
+            item.orderDate,
+            'Confirmed',
+            'Imported via Excel monthly report',
+            incentive.type,
+            incentive.basis,
+            incentive.rate,
+            incentive.amount,
+            now,
+            now
+          ]);
+
+          const newOrderId = orderRes.lastInsertRowid;
+
+          // If row had a return recorded and quantity was valid
+          if (item.returnQuantity && item.returnQuantity > 0 && item.returnQuantity <= item.quantity) {
+            const retNum = `RET-${dateClean}-${String(Math.floor(1000 + Math.random() * 9000))}`;
+            const revIncentive = Math.round((item.returnQuantity / item.quantity) * incentive.amount * 100) / 100;
+            const refundAmount = Math.round(unitPrice * item.returnQuantity * 100) / 100;
+
+            run(`
+              INSERT INTO returns (
+                return_number,
+                order_id,
+                staff_id,
+                product_id,
+                returned_by_staff_id,
+                payment_method,
+                return_quantity,
+                return_amount,
+                return_date,
+                return_reason,
+                remarks,
+                reversed_incentive,
+                created_at,
+                updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, [
+              retNum,
+              newOrderId,
+              staff.id,
+              product.id,
+              staff.id,
+              item.paymentMethod,
+              item.returnQuantity,
+              refundAmount,
+              item.orderDate,
+              'Product Return (Excel Import)',
+              'Imported via monthly Excel report',
+              revIncentive,
+              now,
+              now
+            ]);
+          }
+
+          createdOrdersCount++;
+        } catch (createErr) {
+          errors.push({
+            rowNumber: item.rowNumber,
+            reason: createErr.message || 'Failed to create new order record'
+          });
+        }
+      }
+
       // Record in import_logs
       run(`
         INSERT INTO import_logs (file_hash, file_name, total_rows, updated_count, created_at, created_by)
@@ -1186,8 +1787,8 @@ router.post('/bulk-update-confirm', authenticate, (req, res) => {
       `, [
         preview.fileHash,
         preview.fileName,
-        preview.rowsToUpdate.length,
-        updatedOrdersCount,
+        (preview.rowsToUpdate?.length || 0) + (preview.rowsToCreate?.length || 0),
+        updatedOrdersCount + createdOrdersCount,
         now,
         req.user.id
       ]);
@@ -1199,8 +1800,10 @@ router.post('/bulk-update-confirm', authenticate, (req, res) => {
     res.json({
       success: true,
       updatedCount: updatedOrdersCount,
+      createdCount: createdOrdersCount,
+      totalProcessed: updatedOrdersCount + createdOrdersCount,
       errors,
-      message: `Successfully updated ${updatedOrdersCount} orders in the database.`
+      message: `Successfully processed ${updatedOrdersCount + createdOrdersCount} orders (${updatedOrdersCount} updated, ${createdOrdersCount} created).`
     });
   } catch (err) {
     console.error('Failed to commit bulk order updates:', err);
