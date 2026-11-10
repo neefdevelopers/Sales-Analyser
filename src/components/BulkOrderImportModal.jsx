@@ -22,6 +22,22 @@ import {
   ChevronDown
 } from 'lucide-react';
 
+function isStaffHeader(str) {
+  if (!str) return false;
+  const s = String(str).toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+  return (
+    s === 'employee id' || s === 'staff id' || s === 'emp id' ||
+    s === 'employee code' || s === 'staff code' || s === 'emp code' ||
+    s === 'empid' || s === 'staffid' || s === 'empcode' || s === 'staffcode' ||
+    s === 'employee name' || s === 'staff name' || s === 'emp name' ||
+    s === 'employee' || s === 'staff' || s === 'emp' ||
+    s === 'sales staff' || s === 'salesperson' || s === 'agent' ||
+    s === 'sales staff id' || s === 'sales staff name' ||
+    /(?:employee|staff|emp)\s*(?:id|code|no|name)/i.test(s) ||
+    /^(?:stf|emp)[-_ ]?\d+$/i.test(s)
+  );
+}
+
 export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess }) {
   const [step, setStep] = useState('upload'); // 'upload' | 'preview' | 'result'
   const [file, setFile] = useState(null);
@@ -283,6 +299,24 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
     if (previewFilter === 'invalid') return r.status === 'invalid';
     return true;
   });
+
+  // Combine all unmatched staff items (including any staff headers that backend might have passed in unmatchedProducts)
+  const unmatchedStaffItems = [
+    ...(previewData?.summary?.unmatchedStaff || []),
+    ...(previewData?.summary?.unmatchedProducts || [])
+      .filter(p => isStaffHeader(p.rawName) || isStaffHeader(p.columnHeader))
+      .map(p => ({
+        rawId: p.rawName || p.columnHeader,
+        rawName: p.columnHeader || p.rawName,
+        sheetName: 'Column Header',
+        isMatched: false
+      }))
+  ];
+
+  // Truly unmatched products (strictly excluding any staff headers)
+  const unmatchedProductItems = (previewData?.summary?.unmatchedProducts || []).filter(
+    p => !isStaffHeader(p.rawName) && !isStaffHeader(p.columnHeader)
+  );
 
   return (
     <div
@@ -651,7 +685,7 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
               )}
 
               {/* UNMATCHED STAFF PANEL */}
-              {previewData.summary?.unmatchedStaff?.length > 0 && (
+              {unmatchedStaffItems.length > 0 && (
                 <div
                   style={{
                     padding: '16px',
@@ -666,15 +700,15 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, color: '#c2410c' }}>
                       <AlertTriangle size={18} />
-                      Unmatched Sales Staff ({previewData.summary.unmatchedStaff.length})
+                      Unmatched Sales Staff / Employee IDs ({unmatchedStaffItems.length})
                     </div>
                     <span style={{ fontSize: '12px', color: '#9a3412' }}>
-                      Map each sheet's staff member to an existing system account
+                      Match with an existing staff member (Staff ID / Name)
                     </span>
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '10px' }}>
-                    {previewData.summary.unmatchedStaff.map((stf, idx) => {
+                    {unmatchedStaffItems.map((stf, idx) => {
                       const key = stf.rawId || stf.sheetName;
                       return (
                         <div
@@ -689,23 +723,26 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
                             gap: '6px'
                           }}
                         >
-                          <div style={{ fontSize: '12px', color: '#475569' }}>
-                            Sheet: <strong>{stf.sheetName}</strong> &bull; Raw ID: <strong>{stf.rawId || 'None'}</strong>
+                          <div style={{ fontSize: '12.5px', color: '#1e293b' }}>
+                            Employee ID: <strong style={{ color: '#c2410c', fontFamily: 'monospace' }}>{stf.rawId || stf.sheetName}</strong>
+                            {stf.sheetName && stf.rawId && (
+                              <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '6px' }}>({stf.sheetName})</span>
+                            )}
                           </div>
                           <select
                             value={staffMappings[key] || ''}
                             onChange={e => handleStaffMapChange(key, e.target.value)}
                             style={{
-                              padding: '6px 10px',
+                              padding: '7px 10px',
                               borderRadius: '6px',
                               border: '1px solid #cbd5e1',
                               fontSize: '12.5px',
-                              fontWeight: 500,
+                              fontWeight: 600,
                               backgroundColor: '#ffffff',
                               color: '#0f172a'
                             }}
                           >
-                            <option value="">-- Map to System Sales Staff --</option>
+                            <option value="">-- Match with Staff ID / Staff Member --</option>
                             {systemStaffList.map(s => (
                               <option key={s.id} value={s.id}>
                                 {s.name} ({s.staff_id})
@@ -720,7 +757,7 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
               )}
 
               {/* UNMATCHED PRODUCTS PANEL */}
-              {previewData.summary?.unmatchedProducts?.length > 0 && (
+              {unmatchedProductItems.length > 0 && (
                 <div
                   style={{
                     padding: '16px',
@@ -735,7 +772,7 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, color: '#c2410c' }}>
                       <AlertTriangle size={18} />
-                      Unmatched Product Headers ({previewData.summary.unmatchedProducts.length})
+                      Unmatched Product Headers ({unmatchedProductItems.length})
                     </div>
                     <span style={{ fontSize: '12px', color: '#9a3412' }}>
                       Map detected Excel product columns to existing Product records
@@ -743,7 +780,7 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '10px' }}>
-                    {previewData.summary.unmatchedProducts.map((p, idx) => (
+                    {unmatchedProductItems.map((p, idx) => (
                       <div
                         key={idx}
                         style={{
@@ -786,8 +823,7 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
               )}
 
               {/* Re-Inspect / Apply Mappings Button (when mappings exist) */}
-              {(previewData.summary?.unmatchedStaff?.length > 0 ||
-                previewData.summary?.unmatchedProducts?.length > 0) && (
+              {(unmatchedStaffItems.length > 0 || unmatchedProductItems.length > 0) && (
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                   <button
                     type="button"

@@ -646,9 +646,32 @@ function normalizeText(str) {
     .trim();
 }
 
+// Helper to check if a string is a staff/employee header label (e.g. "Employee ID")
+function isStaffHeaderLabel(str) {
+  if (!str) return false;
+  const s = normalizeText(str);
+  return (
+    s === 'employee id' || s === 'staff id' || s === 'emp id' ||
+    s === 'employee code' || s === 'staff code' || s === 'emp code' ||
+    s === 'empid' || s === 'staffid' || s === 'empcode' || s === 'staffcode' ||
+    s === 'employee name' || s === 'staff name' || s === 'emp name' ||
+    s === 'employee' || s === 'staff' || s === 'emp' ||
+    s === 'sales staff' || s === 'salesperson' || s === 'agent' ||
+    s === 'sales staff id' || s === 'sales staff name' ||
+    /(?:employee|staff|emp)\s*(?:id|code|no|name)/i.test(s)
+  );
+}
+
+// Helper to check if a header or value represents staff identification (label or code)
+function isStaffHeader(str) {
+  if (!str) return false;
+  return isStaffHeaderLabel(str) || /^(?:stf|emp)[-_ ]?\d+$/i.test(normalizeText(str));
+}
+
 // Cleans product column header to isolate product name
 function cleanProductName(headerStr) {
   if (!headerStr) return '';
+  if (isStaffHeader(headerStr)) return '';
   return headerStr
     .replace(/\b(prepaid|cod|cash\s*on\s*delivery|online|card|upi|returns?|ret|quantity|qty|units?|amount|total|order|orders|nos|rate|rs|inr)\b/gi, ' ')
     .replace(/[()[\]{}_:;#\-–—/]/g, ' ')
@@ -680,15 +703,42 @@ function isSummarySheet(sheet) {
 }
 
 // Dynamically extracts Employee ID & Staff Name from a worksheet's header data
-function extractStaffInfo(sheet) {
+function extractStaffInfo(sheet, allStaff = []) {
   let staffId = '';
   let staffName = '';
   let foundIn = '';
 
+  // 1. Direct match on sheet name against any existing staff ID or name
+  const sheetNorm = normalizeText(sheet.name);
+  const bySheet = allStaff.find(s =>
+    normalizeText(s.staff_id) === sheetNorm ||
+    normalizeText(s.name) === sheetNorm ||
+    normalizeText(s.username) === sheetNorm
+  );
+  if (bySheet) {
+    return {
+      rawStaffId: bySheet.staff_id,
+      rawStaffName: bySheet.name,
+      foundIn: `Sheet name (${sheet.name})`,
+      sheetName: sheet.name
+    };
+  }
+
+  // 2. Scan top rows for explicit staff ID, name, or metadata
   const maxRow = Math.min(sheet.rowCount || 10, 10);
   for (let r = 1; r <= maxRow; r++) {
     const row = sheet.getRow(r);
     const maxCol = Math.min(row.cellCount || 20, 20);
+
+    // Check if this row is a table header row (contains columns like date, product, qty, prepaid, cod)
+    let isTableHeaderRow = false;
+    row.eachCell(cCell => {
+      const cNorm = normalizeText(getCellValue(cCell));
+      if (cNorm.includes('date') || cNorm.includes('product') || cNorm.includes('prepaid') || cNorm.includes('cod') || cNorm.includes('qty')) {
+        isTableHeaderRow = true;
+      }
+    });
+
     for (let c = 1; c <= maxCol; c++) {
       const cell = row.getCell(c);
       const val = getCellValue(cell);
@@ -696,28 +746,41 @@ function extractStaffInfo(sheet) {
 
       const valNorm = normalizeText(val);
 
-      // Check for inline Employee ID match: e.g. "Employee ID: STF-001" or "Emp ID - 102"
+      // Check if cell value directly matches any known staff member (only outside table header rows)
+      if (!isTableHeaderRow) {
+        const directMatch = allStaff.find(s =>
+          normalizeText(s.staff_id) === valNorm ||
+          normalizeText(s.name) === valNorm ||
+          normalizeText(s.username) === valNorm
+        );
+        if (directMatch) {
+          staffId = directMatch.staff_id;
+          staffName = directMatch.name;
+          foundIn = `Cell ${cell.address} (known staff)`;
+          break;
+        }
+      }
+
+      // Check for inline Employee ID match: e.g. "Employee ID: AS111" or "Emp ID - 102"
       const inlineIdMatch = val.match(/(?:emp(?:loyee)?\s*(?:id|code|no)|staff\s*(?:id|code|no))\s*[:\-#]?\s*([a-zA-Z0-9_\-]+)/i);
       if (inlineIdMatch && inlineIdMatch[1] && normalizeText(inlineIdMatch[1]) !== 'id') {
         staffId = inlineIdMatch[1].trim();
         foundIn = `Cell ${cell.address} (inline)`;
       }
 
-      // Check for label cell: e.g. "Employee ID" or "Staff ID"
-      if (!staffId && (
+      // Check for label cell: e.g. "Employee ID" or "Staff ID" in metadata (ONLY when not a table header row)
+      if (!staffId && !isTableHeaderRow && (
         valNorm === 'employee id' || valNorm === 'staff id' ||
         valNorm === 'emp id' || valNorm === 'emp code' ||
         valNorm === 'staff code' || valNorm === 'empid' || valNorm === 'staffid'
       )) {
-        // Try cell immediately to the right
         const rightVal = getCellValue(row.getCell(c + 1));
-        if (rightVal && !normalizeText(rightVal).includes('name')) {
+        if (rightVal && !isStaffHeaderLabel(rightVal) && rightVal.length <= 30) {
           staffId = rightVal.trim();
           foundIn = `Cell ${row.getCell(c + 1).address} (right)`;
         } else {
-          // Try cell immediately below
           const belowVal = getCellValue(sheet.getRow(r + 1).getCell(c));
-          if (belowVal) {
+          if (belowVal && !isStaffHeaderLabel(belowVal) && belowVal.length <= 30) {
             staffId = belowVal.trim();
             foundIn = `Cell ${sheet.getRow(r + 1).getCell(c).address} (below)`;
           }
@@ -728,15 +791,15 @@ function extractStaffInfo(sheet) {
       const inlineNameMatch = val.match(/(?:emp(?:loyee)?\s*name|staff\s*name)\s*[:\-#]?\s*([a-zA-Z\s\.]+)/i);
       if (inlineNameMatch && inlineNameMatch[1] && normalizeText(inlineNameMatch[1]) !== 'name') {
         staffName = inlineNameMatch[1].trim();
-      } else if (!staffName && (valNorm === 'employee name' || valNorm === 'staff name' || valNorm === 'emp name')) {
+      } else if (!staffName && !isTableHeaderRow && (valNorm === 'employee name' || valNorm === 'staff name' || valNorm === 'emp name')) {
         const rightVal = getCellValue(row.getCell(c + 1));
-        if (rightVal) staffName = rightVal.trim();
+        if (rightVal && rightVal.length <= 50) staffName = rightVal.trim();
       }
 
-      // Pattern fallback: explicit ID code like "STF-001" in any header cell
-      if (!staffId) {
-        const codePattern = val.match(/\b([A-Z]{2,4}-\d{2,5})\b/i);
-        if (codePattern) {
+      // Pattern fallback: explicit ID code like "AS111", "STF-001", "EMP-01" in metadata
+      if (!staffId && !isTableHeaderRow) {
+        const codePattern = val.match(/\b([A-Z]{1,5}[-_ ]?\d{2,5})\b/i);
+        if (codePattern && !normalizeText(codePattern[1]).includes('prepaid') && !normalizeText(codePattern[1]).includes('cod')) {
           staffId = codePattern[1].trim();
           foundIn = `Cell ${cell.address} (pattern)`;
         }
@@ -745,19 +808,23 @@ function extractStaffInfo(sheet) {
     if (staffId && staffName) break;
   }
 
+  // If staffId or staffName was literally captured as "Employee ID" or "Staff ID", reset it
+  if (staffId && isStaffHeaderLabel(staffId)) staffId = '';
+  if (staffName && isStaffHeaderLabel(staffName)) staffName = '';
+
   // Fallback to sheet name if no explicit staff ID was found in cells
   if (!staffId && sheet.name) {
-    const sheetCodePattern = sheet.name.match(/\b([A-Z]{2,4}-\d{2,5})\b/i);
-    if (sheetCodePattern) {
+    const sheetCodePattern = sheet.name.match(/\b([A-Z]{1,5}[-_ ]?\d{2,5})\b/i);
+    if (sheetCodePattern && !isStaffHeaderLabel(sheetCodePattern[1])) {
       staffId = sheetCodePattern[1].trim();
       foundIn = `Sheet name (${sheet.name})`;
-    } else {
+    } else if (!isStaffHeaderLabel(sheet.name)) {
       staffId = sheet.name.trim();
       foundIn = `Sheet name (${sheet.name})`;
     }
   }
 
-  if (!staffName && sheet.name) {
+  if (!staffName && sheet.name && !isStaffHeaderLabel(sheet.name)) {
     staffName = sheet.name.trim();
   }
 
@@ -822,9 +889,14 @@ function matchStaffRecord(staffInfo, allStaff, manualMappings) {
 
 // Matches extracted product against database products with manual mapping support
 function matchProductRecord(rawProductName, allProducts, manualMappings) {
-  if (!rawProductName) return { product: null, isMatched: false, rawProductName: '' };
+  if (!rawProductName || isStaffHeader(rawProductName)) {
+    return { product: null, isMatched: false, rawProductName: rawProductName || '', isStaff: true };
+  }
 
   const rawClean = cleanProductName(rawProductName);
+  if (!rawClean || isStaffHeader(rawClean)) {
+    return { product: null, isMatched: false, rawProductName: rawProductName || '', isStaff: true };
+  }
   const rawNorm = normalizeText(rawClean);
 
   // 1. Check manual mapping by Brand Manager
@@ -874,7 +946,7 @@ function detectSheetColumns(sheet, allProducts, manualMappings) {
       const t = normalizeText(getCellValue(cell));
       if (t.includes('order') && (t.includes('id') || t.includes('number') || t.includes('no'))) textMap.orderNumber = colIdx;
       else if (t.includes('date') || t === 'dt') textMap.date = colIdx;
-      else if (t.includes('staff') && (t.includes('id') || t.includes('code'))) textMap.staffCode = colIdx;
+      else if (isStaffHeader(t)) textMap.staffCode = colIdx;
       else if (t.includes('product') || t === 'item' || t === 'sku') textMap.product = colIdx;
       else if (t.includes('qty') || t.includes('quantity') || t === 'units') textMap.quantity = colIdx;
       else if (t.includes('payment') || t.includes('paymode') || t === 'method') textMap.paymentMethod = colIdx;
@@ -897,6 +969,8 @@ function detectSheetColumns(sheet, allProducts, manualMappings) {
   let dateCol = null;
   let returnCol = null;
   let remarksCol = null;
+  let staffCol = null;
+  let staffNameCol = null;
   let headerRowIdx = 1;
   const productCols = [];
 
@@ -926,6 +1000,16 @@ function detectSheetColumns(sheet, allProducts, manualMappings) {
     const combinedNorm = normalizeText(combinedHeader);
 
     if (!combinedNorm) continue;
+
+    // Detect Staff / Employee column - MUST NEVER be treated as a product
+    if (isStaffHeader(combinedNorm) || isStaffHeader(valA) || isStaffHeader(valB)) {
+      if (combinedNorm.includes('name')) {
+        if (!staffNameCol) staffNameCol = c;
+      } else {
+        if (!staffCol) staffCol = c;
+      }
+      continue;
+    }
 
     // Detect returns column
     if (combinedNorm.includes('return') || combinedNorm.includes('refund') || combinedNorm.includes('ret qty')) {
@@ -980,6 +1064,8 @@ function detectSheetColumns(sheet, allProducts, manualMappings) {
     dateCol,
     returnCol,
     remarksCol,
+    staffCol,
+    staffNameCol,
     productCols
   };
 }
@@ -1113,24 +1199,27 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
 
       processedSheetsCount++;
 
-      // 2. Extract and match staff for this worksheet
-      const staffInfo = extractStaffInfo(sheet);
+      // 2. Detect column layout (Matrix vs List) and product headers
+      const layout = detectSheetColumns(sheet, allProducts, manualMappings);
+
+      // 3. Extract and match staff for this worksheet
+      const staffInfo = extractStaffInfo(sheet, allStaff);
       const staffMatch = matchStaffRecord(staffInfo, allStaff, manualMappings);
 
-      const staffKey = staffInfo.rawStaffId || sheet.name;
-      if (!detectedStaffMap.has(staffKey)) {
-        detectedStaffMap.set(staffKey, {
-          rawId: staffInfo.rawStaffId,
-          rawName: staffInfo.rawStaffName,
-          sheetName: sheet.name,
-          matchedStaff: staffMatch.staff,
-          isMatched: staffMatch.isMatched,
-          mappedManually: staffMatch.mappedManually || false
-        });
+      // Only register sheet-level staff in detectedStaffMap if sheet does NOT have a staff column in table rows
+      if (!layout.staffCol && !layout.columns?.staffCode) {
+        const staffKey = staffInfo.rawStaffId || sheet.name;
+        if (staffKey && !isStaffHeaderLabel(staffKey) && !detectedStaffMap.has(staffKey)) {
+          detectedStaffMap.set(staffKey, {
+            rawId: staffInfo.rawStaffId,
+            rawName: staffInfo.rawStaffName,
+            sheetName: sheet.name,
+            matchedStaff: staffMatch.staff,
+            isMatched: staffMatch.isMatched,
+            mappedManually: staffMatch.mappedManually || false
+          });
+        }
       }
-
-      // 3. Detect column layout (Matrix vs List) and product headers
-      const layout = detectSheetColumns(sheet, allProducts, manualMappings);
 
       if (layout.layoutType === 'matrix') {
         // Register detected products from matrix columns
@@ -1180,7 +1269,39 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
             const quantity = parseInt(rawQtyVal, 10);
             if (quantity <= 0) continue;
 
-            const currentStaff = staffMatch.staff;
+            let currentStaff = staffMatch.staff;
+            let currentStaffId = staffInfo.rawStaffId || sheet.name;
+            let currentStaffName = staffInfo.rawStaffName || sheet.name;
+            let isCurrentStaffMatched = staffMatch.isMatched;
+
+            if (layout.staffCol) {
+              const rawCellStaff = getCellValue(row.getCell(layout.staffCol));
+              const rawCellStaffName = layout.staffNameCol ? getCellValue(row.getCell(layout.staffNameCol)) : '';
+              if (rawCellStaff && !isStaffHeaderLabel(rawCellStaff)) {
+                currentStaffId = String(rawCellStaff).trim();
+                currentStaffName = rawCellStaffName || currentStaffId;
+                const rStaffMatch = matchStaffRecord(
+                  { rawStaffId: currentStaffId, rawStaffName: currentStaffName, sheetName: sheet.name },
+                  allStaff,
+                  manualMappings
+                );
+                currentStaff = rStaffMatch.staff;
+                isCurrentStaffMatched = rStaffMatch.isMatched;
+
+                const staffKey = currentStaffId;
+                if (!detectedStaffMap.has(staffKey)) {
+                  detectedStaffMap.set(staffKey, {
+                    rawId: currentStaffId,
+                    rawName: currentStaff ? currentStaff.name : currentStaffName,
+                    sheetName: sheet.name,
+                    matchedStaff: currentStaff,
+                    isMatched: rStaffMatch.isMatched,
+                    mappedManually: rStaffMatch.mappedManually || false
+                  });
+                }
+              }
+            }
+
             const currentProduct = pCol.matchedProduct;
 
             const rowItem = {
@@ -1188,8 +1309,8 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
               sheetName: sheet.name,
               excelData: {
                 date: parsedDate,
-                staffId: staffInfo.rawStaffId || sheet.name,
-                staffName: staffInfo.rawStaffName || sheet.name,
+                staffId: currentStaffId,
+                staffName: currentStaff ? currentStaff.name : currentStaffName,
                 productName: pCol.rawProductName,
                 quantity,
                 paymentMethod: pCol.paymentMethod,
@@ -1203,9 +1324,9 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
             };
 
             // Check staff match
-            if (!staffMatch.isMatched || !currentStaff) {
+            if (!isCurrentStaffMatched || !currentStaff) {
               rowItem.status = 'unmatched';
-              rowItem.error = `Unmatched staff member "${staffInfo.rawStaffId || sheet.name}" on sheet "${sheet.name}". Please map to an existing staff member.`;
+              rowItem.error = `Unmatched staff Employee ID "${currentStaffId}" on sheet "${sheet.name}". Please map to an existing sales staff member.`;
               parsedRows.push(rowItem);
               continue;
             }
@@ -1324,11 +1445,16 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
           const paymentMethod = normalizeText(rawPayment).includes('cod') ? 'COD' : 'Prepaid';
           const quantity = parseInt(rawQtyVal, 10) || 1;
 
-          // Product matching
-          const prodMatch = matchProductRecord(rawProdVal, allProducts, manualMappings);
-          if (!detectedProductsMap.has(rawProdVal)) {
-            detectedProductsMap.set(rawProdVal, {
-              rawName: rawProdVal,
+          // Product matching (ensure staff headers/codes are never registered as products)
+          let rawProdValClean = rawProdVal;
+          if (isStaffHeader(rawProdVal)) {
+            rawProdValClean = '';
+          }
+
+          const prodMatch = matchProductRecord(rawProdValClean, allProducts, manualMappings);
+          if (rawProdValClean && !isStaffHeader(rawProdValClean) && !detectedProductsMap.has(rawProdValClean)) {
+            detectedProductsMap.set(rawProdValClean, {
+              rawName: rawProdValClean,
               columnHeader: 'Product Column',
               matchedProduct: prodMatch.product,
               isMatched: prodMatch.isMatched,
@@ -1338,11 +1464,33 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
 
           // Staff matching (per row or per sheet)
           let rowStaff = staffMatch.staff;
+          let rowStaffId = staffInfo.rawStaffId || sheet.name;
+          let rowStaffName = staffInfo.rawStaffName || '';
+          let isRowStaffMatched = staffMatch.isMatched;
+
           if (cols.staffCode) {
             const rawRowStaff = getCellValue(row.getCell(cols.staffCode));
-            if (rawRowStaff) {
-              const rStaffMatch = matchStaffRecord({ rawStaffId: rawRowStaff, rawStaffName: '', sheetName: sheet.name }, allStaff, manualMappings);
-              if (rStaffMatch.isMatched) rowStaff = rStaffMatch.staff;
+            if (rawRowStaff && !isStaffHeaderLabel(rawRowStaff)) {
+              rowStaffId = String(rawRowStaff).trim();
+              const rStaffMatch = matchStaffRecord(
+                { rawStaffId: rowStaffId, rawStaffName: '', sheetName: sheet.name },
+                allStaff,
+                manualMappings
+              );
+              rowStaff = rStaffMatch.staff;
+              isRowStaffMatched = rStaffMatch.isMatched;
+
+              const staffKey = rowStaffId;
+              if (!detectedStaffMap.has(staffKey)) {
+                detectedStaffMap.set(staffKey, {
+                  rawId: rowStaffId,
+                  rawName: rowStaff ? rowStaff.name : rowStaffId,
+                  sheetName: sheet.name,
+                  matchedStaff: rowStaff,
+                  isMatched: rStaffMatch.isMatched,
+                  mappedManually: rStaffMatch.mappedManually || false
+                });
+              }
             }
           }
 
@@ -1352,9 +1500,9 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
             excelData: {
               orderNumber: rawOrderNum,
               date: parsedDate,
-              staffId: staffInfo.rawStaffId || sheet.name,
-              staffName: staffInfo.rawStaffName || sheet.name,
-              productName: rawProdVal,
+              staffId: rowStaffId,
+              staffName: rowStaff ? rowStaff.name : (rowStaffName || rowStaffId),
+              productName: rawProdValClean || rawProdVal,
               quantity,
               paymentMethod
             },
@@ -1365,9 +1513,9 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
             changes: []
           };
 
-          if (!rowStaff) {
+          if (!isRowStaffMatched || !rowStaff) {
             rowItem.status = 'unmatched';
-            rowItem.error = `Unmatched staff for order. Please map to an existing sales staff.`;
+            rowItem.error = `Unmatched staff Employee ID "${rowStaffId}". Please map to an existing sales staff member.`;
             parsedRows.push(rowItem);
             continue;
           }
@@ -1469,8 +1617,12 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
       }
     }
 
-    const detectedStaff = Array.from(detectedStaffMap.values());
-    const detectedProducts = Array.from(detectedProductsMap.values());
+    const detectedStaff = Array.from(detectedStaffMap.values()).filter(
+      s => (s.rawId || s.sheetName) && !isStaffHeaderLabel(s.rawId) && !isStaffHeaderLabel(s.sheetName)
+    );
+    const detectedProducts = Array.from(detectedProductsMap.values()).filter(
+      p => !isStaffHeader(p.rawName) && !isStaffHeader(p.columnHeader)
+    );
 
     const unmatchedStaff = detectedStaff.filter(s => !s.isMatched);
     const unmatchedProducts = detectedProducts.filter(p => !p.isMatched);
