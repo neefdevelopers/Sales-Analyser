@@ -55,21 +55,28 @@ router.post('/', authenticate, requireRole('brand_manager'), (req, res) => {
 
   // Generate unique staff_id if not provided
   if (!staff_id || !staff_id.trim()) {
-    const lastStaff = get("SELECT staff_id FROM users WHERE role = 'sales_staff' ORDER BY id DESC LIMIT 1");
-    let nextNum = 1;
-    if (lastStaff && lastStaff.staff_id.startsWith('STF-')) {
-      const match = lastStaff.staff_id.match(/STF-(\d+)/);
-      if (match) nextNum = parseInt(match[1], 10) + 1;
+    const allStaffRows = query("SELECT staff_id FROM users WHERE staff_id LIKE 'STF-%'");
+    let maxNum = 0;
+    for (const row of allStaffRows) {
+      const match = (row.staff_id || '').match(/STF-(\d+)/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    }
+    let nextNum = maxNum + 1;
+    while (get('SELECT id FROM users WHERE UPPER(staff_id) = ?', [`STF-${String(nextNum).padStart(3, '0')}`])) {
+      nextNum++;
     }
     staff_id = `STF-${String(nextNum).padStart(3, '0')}`;
   } else {
     staff_id = staff_id.trim().toUpperCase();
   }
 
-  // Validate duplicate staff_id
-  const existingStaffId = get('SELECT id FROM users WHERE staff_id = ?', [staff_id]);
+  // Validate duplicate staff_id (case-insensitive)
+  const existingStaffId = get('SELECT id FROM users WHERE UPPER(staff_id) = ?', [staff_id]);
   if (existingStaffId) {
-    return res.status(400).json({ error: `Staff ID "${staff_id}" is already assigned to another user.` });
+    return res.status(400).json({ error: `Employee ID "${staff_id}" is already assigned to another user.` });
   }
 
   // Validate duplicate username
@@ -115,10 +122,14 @@ router.put('/:id', authenticate, requireRole('brand_manager'), (req, res) => {
     return res.status(400).json({ error: 'Staff name cannot be empty.' });
   }
 
-  if (staff_id !== undefined && staff_id.trim()) {
-    const idCheck = get('SELECT id FROM users WHERE staff_id = ? AND id != ?', [staff_id.trim().toUpperCase(), targetId]);
+  if (staff_id !== undefined) {
+    const cleanStaffId = staff_id.trim().toUpperCase();
+    if (!cleanStaffId) {
+      return res.status(400).json({ error: 'Employee ID cannot be empty.' });
+    }
+    const idCheck = get('SELECT id FROM users WHERE UPPER(staff_id) = ? AND id != ?', [cleanStaffId, targetId]);
     if (idCheck) {
-      return res.status(400).json({ error: `Staff ID "${staff_id}" is already used.` });
+      return res.status(400).json({ error: `Employee ID "${cleanStaffId}" is already assigned to another user.` });
     }
   }
 

@@ -308,7 +308,7 @@ export default function StaffManagement() {
                   <input
                     type="text"
                     className="search-input"
-                    placeholder="Search staff by name, ID or username..."
+                    placeholder="Search staff by name, Employee ID or username..."
                     value={search}
                     onChange={e => setSearch(e.target.value)}
                   />
@@ -356,7 +356,7 @@ export default function StaffManagement() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Staff ID</th>
+                  <th>Employee ID</th>
                   <th>Staff Name</th>
                   <th>Login Username</th>
                   <th>Account Status</th>
@@ -530,17 +530,34 @@ export default function StaffManagement() {
                   </div>
                 )}
 
-                <div className="form-group">
-                  <label className="form-label">Full Name <span className="required">*</span></label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    placeholder="e.g. Rahul Sharma"
-                    value={name}
-                    onChange={e => setName(e.target.value)}
-                    required
-                    autoFocus
-                  />
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label">
+                      Employee ID {editingStaff ? <span className="required">*</span> : <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 400 }}>(Optional - Auto if blank)</span>}
+                    </label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder={editingStaff ? "e.g. STF-001 or EMP-101" : "e.g. STF-001 (or auto-generate)"}
+                      value={staffId}
+                      onChange={e => setStaffId(e.target.value.toUpperCase())}
+                      required={!!editingStaff}
+                      style={{ fontFamily: 'monospace', fontWeight: 600, letterSpacing: '0.5px' }}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Full Name <span className="required">*</span></label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="e.g. Rahul Sharma"
+                      value={name}
+                      onChange={e => setName(e.target.value)}
+                      required
+                      autoFocus={!editingStaff}
+                    />
+                  </div>
                 </div>
 
                 <div className="form-row">
