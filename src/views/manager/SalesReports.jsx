@@ -615,7 +615,9 @@ export default function SalesReports() {
     return s.staff_name.toLowerCase().includes(q) || (s.staff_code && s.staff_code.toLowerCase().includes(q));
   }).sort((a, b) => {
     const getVal = (item, field) => {
-      if (field === 'total_returns' || field === 'returns') return item.total_returns ?? item.returns ?? 0;
+      if (field === 'total_returns' || field === 'returns' || field === 'returned_quantity') {
+        return item.returned_quantity ?? item.total_returns ?? item.returns ?? 0;
+      }
       return item[field] ?? 0;
     };
     const valA = getVal(a, staffSortField);
@@ -2133,8 +2135,21 @@ export default function SalesReports() {
                         <td style={{ textAlign: 'right', color: s.gross_sales > 0 ? '#b45309' : 'var(--text-muted)' }}>
                           ₹{s.gross_sales?.toLocaleString()}
                         </td>
-                        <td style={{ textAlign: 'right', color: s.returns > 0 ? '#dc2626' : 'var(--text-muted)' }}>
-                          {s.returns > 0 ? `-₹${s.returns?.toLocaleString()}` : '₹0'}
+                        <td style={{ textAlign: 'right', color: (s.returned_quantity > 0 || s.returns > 0) ? '#dc2626' : 'var(--text-muted)' }}>
+                          {s.returned_quantity > 0 ? (
+                            <span>
+                              <strong style={{ color: '#dc2626' }}>-{s.returned_quantity} units</strong>
+                              {s.return_adjustments > 0 && (
+                                <span style={{ display: 'block', fontSize: '11px', color: '#b91c1c' }}>
+                                  (-₹{Number(s.return_adjustments).toLocaleString()})
+                                </span>
+                              )}
+                            </span>
+                          ) : s.returns > 0 ? (
+                            <strong style={{ color: '#dc2626' }}>-₹{Number(s.returns).toLocaleString()}</strong>
+                          ) : (
+                            '0 units'
+                          )}
                         </td>
                         <td style={{ textAlign: 'right', color: '#15803d', fontWeight: 700 }}>
                           ₹{s.net_sales?.toLocaleString()}
@@ -2152,8 +2167,21 @@ export default function SalesReports() {
                       <td>Total ({sortedStaff.length} staff members)</td>
                       <td style={{ textAlign: 'right' }}>{summary.total_orders}</td>
                       <td style={{ textAlign: 'right', color: '#b45309' }}>₹{summary.gross_sales?.toLocaleString()}</td>
-                      <td style={{ textAlign: 'right', color: summary.total_returns > 0 ? '#dc2626' : 'var(--text-main)' }}>
-                        {summary.total_returns > 0 ? `-₹${summary.total_returns?.toLocaleString()}` : '₹0'}
+                      <td style={{ textAlign: 'right', color: (summary.returned_quantity > 0 || summary.total_returns > 0) ? '#dc2626' : 'var(--text-main)' }}>
+                        {summary.returned_quantity > 0 ? (
+                          <span>
+                            <strong style={{ color: '#dc2626' }}>-{summary.returned_quantity} units</strong>
+                            {(summary.returnAdjustments || summary.reversed_incentive) > 0 && (
+                              <span style={{ display: 'block', fontSize: '11px', color: '#b91c1c' }}>
+                                (-₹{Number(summary.returnAdjustments || summary.reversed_incentive).toLocaleString()})
+                              </span>
+                            )}
+                          </span>
+                        ) : summary.total_returns > 0 ? (
+                          <strong style={{ color: '#dc2626' }}>-₹{Number(summary.total_returns).toLocaleString()}</strong>
+                        ) : (
+                          '0 units'
+                        )}
                       </td>
                       <td style={{ textAlign: 'right', color: '#15803d' }}>₹{summary.net_sales?.toLocaleString()}</td>
                       <td style={{ textAlign: 'right' }}>{summary.ordered_quantity} units</td>
@@ -2213,8 +2241,8 @@ export default function SalesReports() {
                     </div>
                     <div className="mobile-card-item">
                       <span className="mobile-card-label">Total Returns</span>
-                      <span className="mobile-card-val" style={{ color: s.returns > 0 ? '#dc2626' : 'inherit', fontWeight: s.returns > 0 ? 600 : 400 }}>
-                        {s.returns > 0 ? `-₹${s.returns?.toLocaleString()}` : '₹0'}
+                      <span className="mobile-card-val" style={{ color: (s.returned_quantity > 0 || s.returns > 0) ? '#dc2626' : 'inherit', fontWeight: (s.returned_quantity > 0 || s.returns > 0) ? 600 : 400 }}>
+                        {s.returned_quantity > 0 ? `-${s.returned_quantity} units` : (s.returns > 0 ? `-₹${s.returns?.toLocaleString()}` : '0 units')}
                       </span>
                     </div>
                     <div className="mobile-card-item" style={{ gridColumn: 'span 2' }}>
