@@ -6,13 +6,9 @@ import { fileURLToPath } from 'url';
 import { getDb } from './db.js';
 
 import authRoutes from './routes/auth.js';
-import productRoutes from './routes/products.js';
-import staffRoutes from './routes/staff.js';
-import orderRoutes from './routes/orders.js';
-import returnRoutes from './routes/returns.js';
-import incentiveRoutes from './routes/incentives.js';
+import managerRoutes from './routes/manager.js';
+import staffReportRoutes from './routes/staffReports.js';
 import systemRoutes from './routes/system.js';
-import reportRoutes from './routes/reports.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,17 +17,13 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 app.use(cors());
-app.use(express.json({ limit: '25mb' }));
+app.use(express.json({ limit: '50mb' }));
 
 // API Routes
 app.use('/api/auth', authRoutes);
-app.use('/api/products', productRoutes);
-app.use('/api/staff', staffRoutes);
-app.use('/api/orders', orderRoutes);
-app.use('/api/returns', returnRoutes);
-app.use('/api/incentives', incentiveRoutes);
+app.use('/api/manager', managerRoutes);
+app.use('/api/staff', staffReportRoutes);
 app.use('/api/system', systemRoutes);
-app.use('/api/reports', reportRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

@@ -2,12 +2,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
-  ShoppingCart,
-  RotateCcw,
+  LayoutDashboard,
+  UploadCloud,
+  FileSpreadsheet,
+  History,
   Award,
-  Package,
-  Users,
-  BarChart3,
   LogOut,
   ChevronDown,
   UserCheck,
@@ -36,17 +35,18 @@ export default function Sidebar({ currentView, setCurrentView, isOpen, onClose }
     };
   }, [showDemoMenu]);
 
-  // Role 1: Sales Staff Navigation (Unified Sales Report & Sheet)
+  // Role 1: Sales Staff Navigation
   const staffNavItems = [
-    { id: 'my-records', label: 'My Sales Report & Sheet', icon: BarChart3 }
+    { id: 'my-dashboard', label: 'My Dashboard', icon: LayoutDashboard },
+    { id: 'my-sales-report', label: 'My Sales Report', icon: FileSpreadsheet }
   ];
 
-  // Role 2: Brand Manager Navigation (1. Sales Reports & Sheet, 2. Incentive Records, 3. Product Management, 4. Staff Management)
+  // Role 2: Brand Manager Navigation
   const managerNavItems = [
-    { id: 'reports', label: 'Sales Reports & Sheet', icon: BarChart3 },
-    { id: 'incentives', label: 'Incentive Records', icon: Award },
-    { id: 'products', label: 'Product Management', icon: Package },
-    { id: 'staff', label: 'Staff Management', icon: Users }
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'import-excel', label: 'Import Excel', icon: UploadCloud },
+    { id: 'employee-reports', label: 'Employee Reports', icon: FileSpreadsheet },
+    { id: 'import-history', label: 'Import History', icon: History }
   ];
 
   const navItems = isManager ? managerNavItems : staffNavItems;

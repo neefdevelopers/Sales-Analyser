@@ -219,6 +219,60 @@ function initSchema(db) {
       created_at TEXT NOT NULL,
       created_by INTEGER REFERENCES users(id)
     );
+
+    /* ========================================================
+       EMPLOYEE SALES REPORT MANAGEMENT SYSTEM SCHEMA
+       ======================================================== */
+    CREATE TABLE IF NOT EXISTS monthly_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      report_month TEXT UNIQUE NOT NULL,
+      month_name TEXT NOT NULL,
+      filename TEXT NOT NULL,
+      file_hash TEXT,
+      sheet_names TEXT,
+      columns_json TEXT,
+      total_records INTEGER DEFAULT 0,
+      total_employees INTEGER DEFAULT 0,
+      total_sales_amount REAL DEFAULT 0,
+      imported_by INTEGER REFERENCES users(id),
+      import_status TEXT DEFAULT 'completed',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS employee_sales_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      monthly_report_id INTEGER NOT NULL REFERENCES monthly_reports(id) ON DELETE CASCADE,
+      report_month TEXT NOT NULL,
+      employee_id TEXT NOT NULL,
+      employee_name TEXT NOT NULL,
+      record_count INTEGER DEFAULT 0,
+      summary_json TEXT,
+      columns_json TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(monthly_report_id, employee_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS sales_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      monthly_report_id INTEGER NOT NULL REFERENCES monthly_reports(id) ON DELETE CASCADE,
+      employee_sales_report_id INTEGER NOT NULL REFERENCES employee_sales_reports(id) ON DELETE CASCADE,
+      report_month TEXT NOT NULL,
+      employee_id TEXT NOT NULL,
+      employee_name TEXT NOT NULL,
+      record_date TEXT,
+      row_index INTEGER,
+      data_json TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_monthly_reports_month ON monthly_reports(report_month);
+    CREATE INDEX IF NOT EXISTS idx_emp_sales_rep_emp ON employee_sales_reports(employee_id);
+    CREATE INDEX IF NOT EXISTS idx_emp_sales_rep_month ON employee_sales_reports(report_month);
+    CREATE INDEX IF NOT EXISTS idx_sales_records_emp ON sales_records(employee_id);
+    CREATE INDEX IF NOT EXISTS idx_sales_records_month ON sales_records(report_month);
+    CREATE INDEX IF NOT EXISTS idx_sales_records_date ON sales_records(record_date);
   `);
 
   // Ensure returns table allows nullable order_id

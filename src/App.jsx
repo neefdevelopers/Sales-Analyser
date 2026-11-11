@@ -5,38 +5,45 @@ import Navbar from './components/Navbar';
 import ErrorBoundary from './components/ErrorBoundary';
 import Login from './views/Login';
 
-// Staff Views
-import StaffOrders from './views/staff/StaffOrders';
-import StaffReturns from './views/staff/StaffReturns';
-import StaffMyRecords from './views/staff/StaffMyRecords';
+// Brand Manager Views
+import ManagerDashboard from './views/manager/ManagerDashboard';
+import ImportExcel from './views/manager/ImportExcel';
+import EmployeeReports from './views/manager/EmployeeReports';
+import ImportHistory from './views/manager/ImportHistory';
 
-// Manager Views
-import ProductManagement from './views/manager/ProductManagement';
-import StaffManagement from './views/manager/StaffManagement';
-import ManagerOrders from './views/manager/ManagerOrders';
-import IncentiveRecords from './views/manager/IncentiveRecords';
-import SalesReports from './views/manager/SalesReports';
+// Sales Staff Views
+import StaffDashboard from './views/staff/StaffDashboard';
+import StaffSalesReport from './views/staff/StaffSalesReport';
 
 function MainApp() {
   const { user, loading } = useAuth();
   const isManager = user?.role === 'brand_manager';
-  const [currentView, setCurrentView] = useState(isManager ? 'reports' : 'my-records');
+  const [currentView, setCurrentView] = useState(isManager ? 'dashboard' : 'my-dashboard');
+  const [navParams, setNavParams] = useState({});
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Keep view synchronized with active role
   useEffect(() => {
     if (user) {
       if (user.role === 'brand_manager') {
-        if (!['reports', 'incentives', 'products', 'staff'].includes(currentView)) {
-          setCurrentView('reports');
+        if (!['dashboard', 'import-excel', 'employee-reports', 'import-history'].includes(currentView)) {
+          setCurrentView('dashboard');
+          setNavParams({});
         }
       } else {
-        if (!['my-records'].includes(currentView)) {
-          setCurrentView('my-records');
+        if (!['my-dashboard', 'my-sales-report'].includes(currentView)) {
+          setCurrentView('my-dashboard');
+          setNavParams({});
         }
       }
     }
   }, [user?.role]);
+
+  function handleNavigate(viewId, params = {}) {
+    setNavParams(params || {});
+    setCurrentView(viewId);
+    setSidebarOpen(false);
+  }
 
   if (loading) {
     return (
@@ -54,34 +61,37 @@ function MainApp() {
   }
 
   const viewTitles = {
-    'reports': 'Sales Reports & Dynamic Sheet',
-    'incentives': 'Incentive Records & Audit',
-    'products': 'Product Management & Incentives',
-    'staff': 'Sales Staff Management',
-    'my-records': 'My Sales Report & Sheet'
+    'dashboard': 'Dashboard & Sales Summary',
+    'import-excel': 'Import Monthly Excel Report',
+    'employee-reports': 'Employee Sales Reports',
+    'import-history': 'Excel Import History',
+    'my-dashboard': 'My Dashboard',
+    'my-sales-report': 'My Sales Report'
   };
 
   function renderView() {
     if (isManager) {
       switch (currentView) {
-        case 'reports':
-          return <SalesReports />;
-        case 'incentives':
-          return <IncentiveRecords />;
-        case 'products':
-          return <ProductManagement />;
-        case 'staff':
-          return <StaffManagement />;
+        case 'dashboard':
+          return <ManagerDashboard onNavigate={handleNavigate} />;
+        case 'import-excel':
+          return <ImportExcel onNavigate={handleNavigate} />;
+        case 'employee-reports':
+          return <EmployeeReports initialMonth={navParams?.month} onNavigate={handleNavigate} />;
+        case 'import-history':
+          return <ImportHistory onNavigate={handleNavigate} />;
         default:
-          return <SalesReports />;
+          return <ManagerDashboard onNavigate={handleNavigate} />;
       }
     } else {
       // Sales Staff
       switch (currentView) {
-        case 'my-records':
-          return <StaffMyRecords />;
+        case 'my-dashboard':
+          return <StaffDashboard onNavigate={handleNavigate} />;
+        case 'my-sales-report':
+          return <StaffSalesReport initialMonth={navParams?.month} />;
         default:
-          return <StaffMyRecords />;
+          return <StaffDashboard onNavigate={handleNavigate} />;
       }
     }
   }
@@ -91,6 +101,7 @@ function MainApp() {
       <Sidebar
         currentView={currentView}
         setCurrentView={(view) => {
+          setNavParams({});
           setCurrentView(view);
           setSidebarOpen(false);
         }}
