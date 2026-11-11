@@ -30,6 +30,27 @@ export function resolveReportDateRange({ preset = 'this_month', startDate, endDa
     validEnd = tmp;
   }
 
+  if (preset === 'all' || preset === 'all_time') {
+    const rangeRes = query(`
+      SELECT
+        MIN(min_d) AS s_date,
+        MAX(max_d) AS e_date
+      FROM (
+        SELECT MIN(order_date) AS min_d, MAX(order_date) AS max_d FROM orders
+        UNION ALL
+        SELECT MIN(return_date) AS min_d, MAX(return_date) AS max_d FROM returns
+      )
+    `);
+    const sDate = rangeRes[0]?.s_date || `${year}-${String(month).padStart(2, '0')}-01`;
+    const eDate = rangeRes[0]?.e_date || todayStr;
+    return {
+      startDate: sDate,
+      endDate: eDate,
+      preset: 'all',
+      label: 'All Records'
+    };
+  }
+
   if (preset === 'today') {
     return { startDate: todayStr, endDate: todayStr, preset: 'today', label: 'Today' };
   }
@@ -278,6 +299,11 @@ export function getSalesReportData(filters = {}) {
       product_quantity: stfOrderedQty,
       returned_quantity: stfReturnedQty,
       net_quantity: stfNetQty,
+      earned_incentive: stfEarnedIncentive,
+      total_incentive: stfEarnedIncentive,
+      gross_incentive: stfEarnedIncentive,
+      reversed_incentive: stfReversedIncentive,
+      return_adjustments: stfReversedIncentive,
       net_incentive: stfNetIncentive
     };
   });
@@ -316,12 +342,87 @@ export function getSalesReportData(filters = {}) {
 
   productReport.sort((a, b) => b.net_sales - a.net_sales || b.net_quantity - a.net_quantity);
 
+  // 7. Dynamic Sheet Matrix matching imported Excel workbook layout
+  const sheetColumns = [
+    { key: 'date', label: 'Date', width: '95px' },
+    { key: 'employee_id', label: 'Employee ID', width: '110px' },
+    { key: 'staff_name', label: 'Staff Name', width: '130px' },
+    ...allProducts.flatMap(p => [
+      { key: `${p.code}_COD`, label: `${p.name} (COD)`, type: 'product', productId: p.id, productName: p.name, paymentMethod: 'COD' },
+      { key: `${p.code}_Prepaid`, label: `${p.name} (Prepaid)`, type: 'product', productId: p.id, productName: p.name, paymentMethod: 'Prepaid' }
+    ]),
+    { key: 'incentive', label: 'Incentive', type: 'currency' },
+    ...allProducts.map(p => (
+      { key: `RET_${p.code}`, label: `Return ${p.name}`, type: 'return', productId: p.id, productName: p.name }
+    )),
+    { key: 'return_deductions', label: 'Return Deductions', type: 'currency' },
+    { key: 'total_net', label: 'Total Net', type: 'currency' }
+  ];
+
+  const sheetRowMap = new Map();
+
+  for (const o of orders) {
+    const k = `${o.order_date}_${o.staff_id}`;
+    if (!sheetRowMap.has(k)) {
+      sheetRowMap.set(k, {
+        date: o.order_date,
+        staff_id: o.staff_id,
+        employee_id: o.staff_code,
+        staff_name: o.staff_name,
+        quantities: {},
+        incentive: 0,
+        returns: {},
+        return_deductions: 0,
+        total_net: 0
+      });
+    }
+    const r = sheetRowMap.get(k);
+    const pKey = `${o.product_code}_${o.payment_method}`;
+    r.quantities[pKey] = (r.quantities[pKey] || 0) + (o.quantity || 0);
+    r.incentive += (o.incentive_amount || 0);
+  }
+
+  for (const ret of returns) {
+    const date = ret.return_date;
+    const staffIdVal = ret.staff_id || ret.returned_by_staff_id;
+    const k = `${date}_${staffIdVal}`;
+    if (!sheetRowMap.has(k)) {
+      sheetRowMap.set(k, {
+        date,
+        staff_id: staffIdVal,
+        employee_id: ret.staff_code || ret.returned_by_code || '',
+        staff_name: ret.staff_name || ret.returned_by_name || '',
+        quantities: {},
+        incentive: 0,
+        returns: {},
+        return_deductions: 0,
+        total_net: 0
+      });
+    }
+    const r = sheetRowMap.get(k);
+    const rKey = `RET_${ret.product_code}`;
+    r.returns[rKey] = (r.returns[rKey] || 0) + (ret.return_quantity || 0);
+    r.return_deductions += (ret.reversed_incentive || 0);
+  }
+
+  const sheetRows = Array.from(sheetRowMap.values()).map(r => {
+    r.incentive = Math.round(r.incentive * 100) / 100;
+    r.return_deductions = Math.round(r.return_deductions * 100) / 100;
+    r.total_net = Math.max(0, Math.round((r.incentive - r.return_deductions) * 100) / 100);
+    return r;
+  });
+
+  sheetRows.sort((a, b) => a.date.localeCompare(b.date) || (a.employee_id || '').localeCompare(b.employee_id || ''));
+
   return {
     summary,
     staffReport,
     productReport,
     orders,
-    returns
+    returns,
+    products: allProducts,
+    sheetColumns,
+    sheetRows
   };
 }
 
@@ -354,11 +455,27 @@ router.get('/sales', (req, res) => {
         productId: productId || 'all',
         paymentMethod: paymentMethod || 'all'
       },
-      summary: reportData.summary,
       staffReport: reportData.staffReport,
       productReport: reportData.productReport,
+      summary: {
+        ...reportData.summary,
+        totalOrders: reportData.orders.length,
+        totalReturns: reportData.returns.length,
+        grossSales: reportData.summary.gross_sales,
+        grossIncentive: reportData.summary.earned_incentive,
+        earnedIncentive: reportData.summary.earned_incentive,
+        returnAdjustments: reportData.summary.reversed_incentive,
+        reversedIncentive: reportData.summary.reversed_incentive,
+        netIncentive: reportData.summary.total_incentives,
+        totalQuantity: reportData.summary.ordered_quantity,
+        returnedQuantity: reportData.summary.returned_quantity,
+        netQuantity: reportData.summary.net_quantity
+      },
       orders: reportData.orders,
-      returns: reportData.returns
+      returns: reportData.returns,
+      products: reportData.products,
+      sheetColumns: reportData.sheetColumns,
+      sheetRows: reportData.sheetRows
     });
   } catch (err) {
     console.error('Failed to generate sales report:', err);
@@ -399,7 +516,11 @@ router.get('/sales/staff/:staffId', (req, res) => {
     const now = getNowInBusinessTimezone();
 
     res.json({
-      staff,
+      staff: {
+        ...staff,
+        staff_code: staff.staff_id,
+        employee_id: staff.staff_id
+      },
       period: {
         ...dateRange,
         generatedAt: now.isoLike
@@ -418,8 +539,30 @@ router.get('/sales/staff/:staffId', (req, res) => {
         total_refunded_amount: reportData.summary.total_returns,
         returned_quantity: reportData.summary.returned_quantity
       },
+      summary: {
+        totalOrders: reportData.orders.length,
+        total_orders: reportData.orders.length,
+        grossSales: reportData.summary.gross_sales,
+        gross_sales: reportData.summary.gross_sales,
+        grossIncentive: reportData.summary.earned_incentive,
+        gross_incentive: reportData.summary.earned_incentive,
+        earnedIncentive: reportData.summary.earned_incentive,
+        earned_incentive: reportData.summary.earned_incentive,
+        returnAdjustments: reportData.summary.reversed_incentive,
+        return_adjustments: reportData.summary.reversed_incentive,
+        reversedIncentive: reportData.summary.reversed_incentive,
+        reversed_incentive: reportData.summary.reversed_incentive,
+        netIncentive: reportData.summary.total_incentives,
+        net_incentive: reportData.summary.total_incentives,
+        totalQuantity: reportData.summary.ordered_quantity,
+        returnedQuantity: reportData.summary.returned_quantity,
+        netQuantity: reportData.summary.net_quantity
+      },
       orders: reportData.orders,
-      returns: reportData.returns
+      returns: reportData.returns,
+      products: reportData.products,
+      sheetColumns: reportData.sheetColumns,
+      sheetRows: reportData.sheetRows
     });
   } catch (err) {
     console.error('Failed to generate individual staff sales report:', err);
@@ -552,7 +695,7 @@ export async function handleExportSalesReportExcel(req, res) {
       metaStaffName.getCell(1).font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF475569' } };
       metaStaffName.getCell(2).font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF2563EB' } };
 
-      const metaStaffCode = sheet.addRow(['Staff ID:', selectedStaff.staff_id]);
+      const metaStaffCode = sheet.addRow(['Employee ID:', selectedStaff.staff_id]);
       metaStaffCode.getCell(1).font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF475569' } };
       metaStaffCode.getCell(2).font = { name: 'Calibri', size: 10, color: { argb: 'FF1E293B' } };
     } else {

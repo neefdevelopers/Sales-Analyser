@@ -1,6 +1,7 @@
 // src/views/staff/StaffMyRecords.jsx
 import React, { useState, useEffect } from 'react';
 import { api } from '../../api';
+import { useAuth } from '../../context/AuthContext';
 import { useSessionState } from '../../hooks/useSessionState';
 import {
   ShoppingCart,
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react';
 
 export default function StaffMyRecords() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useSessionState('filter_myrecords_tab', 'orders'); // 'orders' | 'returns'
   const [summary, setSummary] = useState(null);
   const [orders, setOrders] = useState([]);
@@ -32,10 +34,13 @@ export default function StaffMyRecords() {
 
   useEffect(() => {
     fetchData();
-  }, [startDate, endDate]);
+  }, [startDate, endDate, user?.id]);
 
   async function fetchData() {
     setLoading(true);
+    setOrders([]);
+    setReturns([]);
+    setSummary(null);
     try {
       let queryParams = [];
       if (startDate) queryParams.push(`startDate=${startDate}`);

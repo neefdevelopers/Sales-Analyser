@@ -47,7 +47,7 @@ export default function Login() {
 
         <form onSubmit={handleLogin}>
           <div className="form-group">
-            <label className="form-label">Username or Staff ID</label>
+            <label className="form-label">Username or Employee ID</label>
             <input
               type="text"
               className="form-control"

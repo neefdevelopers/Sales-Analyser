@@ -57,5 +57,6 @@ export const api = {
   get: (endpoint, options) => apiRequest(endpoint, { ...options, method: 'GET' }),
   post: (endpoint, body, options) => apiRequest(endpoint, { ...options, method: 'POST', body }),
   put: (endpoint, body, options) => apiRequest(endpoint, { ...options, method: 'PUT', body }),
-  delete: (endpoint, options) => apiRequest(endpoint, { ...options, method: 'DELETE' })
+  delete: (endpoint, options) => apiRequest(endpoint, { ...options, method: 'DELETE' }),
+  del: (endpoint, options) => apiRequest(endpoint, { ...options, method: 'DELETE' })
 };

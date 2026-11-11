@@ -20,19 +20,19 @@ import SalesReports from './views/manager/SalesReports';
 function MainApp() {
   const { user, loading } = useAuth();
   const isManager = user?.role === 'brand_manager';
-  const [currentView, setCurrentView] = useState(isManager ? 'products' : 'orders');
+  const [currentView, setCurrentView] = useState(isManager ? 'reports' : 'my-records');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Keep view synchronized with active role
   useEffect(() => {
     if (user) {
       if (user.role === 'brand_manager') {
-        if (!['products', 'staff', 'orders', 'returns', 'incentives', 'reports'].includes(currentView)) {
-          setCurrentView('products');
+        if (!['reports', 'incentives', 'products', 'staff'].includes(currentView)) {
+          setCurrentView('reports');
         }
       } else {
-        if (!['orders', 'returns', 'my-records'].includes(currentView)) {
-          setCurrentView('orders');
+        if (!['my-records'].includes(currentView)) {
+          setCurrentView('my-records');
         }
       }
     }
@@ -54,44 +54,34 @@ function MainApp() {
   }
 
   const viewTitles = {
+    'reports': 'Sales Reports & Dynamic Sheet',
+    'incentives': 'Incentive Records & Audit',
     'products': 'Product Management & Incentives',
     'staff': 'Sales Staff Management',
-    'orders': isManager ? 'All Staff Orders' : 'My Orders',
-    'returns': isManager ? 'All Returns Audit' : 'Order Returns',
-    'incentives': 'Incentive Records & Audit',
-    'reports': 'Sales Reports & Analytics',
-    'my-records': 'My Records'
+    'my-records': 'My Sales Report & Sheet'
   };
 
   function renderView() {
     if (isManager) {
       switch (currentView) {
+        case 'reports':
+          return <SalesReports />;
+        case 'incentives':
+          return <IncentiveRecords />;
         case 'products':
           return <ProductManagement />;
         case 'staff':
           return <StaffManagement />;
-        case 'orders':
-          return <ManagerOrders />;
-        case 'returns':
-          return <StaffReturns />;
-        case 'incentives':
-          return <IncentiveRecords />;
-        case 'reports':
-          return <SalesReports />;
         default:
-          return <ProductManagement />;
+          return <SalesReports />;
       }
     } else {
       // Sales Staff
       switch (currentView) {
-        case 'orders':
-          return <StaffOrders />;
-        case 'returns':
-          return <StaffReturns />;
         case 'my-records':
           return <StaffMyRecords />;
         default:
-          return <StaffOrders />;
+          return <StaffMyRecords />;
       }
     }
   }
@@ -113,7 +103,7 @@ function MainApp() {
           sidebarOpen={sidebarOpen}
           onToggleSidebar={() => setSidebarOpen(prev => !prev)}
         />
-        <ErrorBoundary key={currentView}>
+        <ErrorBoundary key={`${currentView}_${user?.id || 'anon'}`}>
           {renderView()}
         </ErrorBoundary>
       </main>

@@ -52,7 +52,7 @@ Focused on administrative setup, governance, and auditing.
      - Calculation Basis: Per product unit or Per order
      - Incentive Value: Rate / amount
 2. **Staff Management** (`/staff`):
-   - Add new sales staff accounts with sequential Staff IDs (`STF-001`, `STF-002`, ...).
+   - Add new sales staff accounts with sequential Employee IDs (`STF-001`, `STF-002`, ...).
    - Edit staff details, toggle active/inactive account status.
    - Securely reset login passwords (hashed with `bcrypt`).
 3. **Orders** (`/orders`):
@@ -65,7 +65,7 @@ Focused on administrative setup, governance, and auditing.
    - Audit return reasons, refund amounts, and reversed staff incentives.
 5. **Incentive Records** (`/incentives`):
    - Comprehensive incentive audit table showing:
-     - Staff Name & Staff ID
+     - Staff Name & Employee ID
      - Order Number & Order Date
      - Product Name & SKU
      - Payment Method

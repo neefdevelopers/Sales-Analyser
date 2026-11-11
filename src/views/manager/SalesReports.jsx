@@ -27,25 +27,296 @@ import {
 import BulkOrderImportModal from '../../components/BulkOrderImportModal';
 
 const PRESETS = [
-  { id: 'today', label: 'Today' },
-  { id: 'yesterday', label: 'Yesterday' },
-  { id: 'this_week', label: 'This Week' },
+  { id: 'all', label: 'All Records' },
   { id: 'this_month', label: 'This Month' },
   { id: 'previous_month', label: 'Previous Month' },
+  { id: 'this_week', label: 'This Week' },
+  { id: 'today', label: 'Today' },
+  { id: 'yesterday', label: 'Yesterday' },
   { id: 'custom', label: 'Custom Date Range' }
 ];
+
+function ClearConfirmModal({ isOpen, onClose, onConfirm, clearing }) {
+  if (!isOpen) return null;
+  return (
+    <div className="modal-backdrop" onClick={() => !clearing && onClose()}>
+      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px' }}>
+        <div className="modal-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#dc2626' }}>
+            <AlertCircle size={20} />
+            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700 }}>Clear All Orders & Returns?</h3>
+          </div>
+          <button
+            type="button"
+            className="btn-icon"
+            onClick={() => !clearing && onClose()}
+            disabled={clearing}
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="modal-body" style={{ padding: '16px 20px', fontSize: '13.5px', color: '#475569', lineHeight: 1.6 }}>
+          <p style={{ margin: '0 0 12px 0' }}>
+            This will permanently delete <strong>all orders</strong>, <strong>all returns</strong>, and <strong>import logs</strong> from the database.
+          </p>
+          <p style={{ margin: '0 0 12px 0', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: '6px', color: '#b91c1c' }}>
+            <strong>Note:</strong> All 10 staff members and catalog products will remain completely intact. You can immediately import your updated Excel sheet.
+          </p>
+          <p style={{ margin: 0, fontWeight: 600 }}>
+            Are you sure you want to proceed?
+          </p>
+        </div>
+        <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '12px 20px' }}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={onClose}
+            disabled={clearing}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn btn-danger"
+            onClick={onConfirm}
+            disabled={clearing}
+            style={{ background: '#dc2626', borderColor: '#b91c1c', color: '#ffffff', fontWeight: 600 }}
+          >
+            {clearing ? 'Clearing...' : 'Yes, Clear All Orders & Returns'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DynamicSheetTable({ columns = [], rows = [], totals = {}, onSelectStaff, onExportCsv, loading, title = 'Dynamic Sheet View (All Columns by Employee ID)' }) {
+  return (
+    <div className="table-card" style={{ marginBottom: '24px' }}>
+      <div className="table-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#ecfdf5', color: '#047857', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <FileSpreadsheet size={16} />
+          </div>
+          <strong style={{ fontSize: '14.5px' }}>{title}</strong>
+          <span className="badge badge-success" style={{ fontSize: '11px' }}>
+            {rows.length} rows
+          </span>
+        </div>
+        {onExportCsv && (
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={onExportCsv}
+            disabled={!rows.length}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}
+          >
+            <FileSpreadsheet size={14} />
+            <span>Export Sheet (.csv)</span>
+          </button>
+        )}
+      </div>
+
+      <div className="responsive-table-view">
+        <div className="table-responsive" style={{ maxHeight: '650px', overflowY: 'auto' }}>
+          <table className="data-table" style={{ fontSize: '12.5px' }}>
+            <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+              <tr>
+                {columns.map(col => {
+                  const isNumeric = col.type === 'product' || col.type === 'return' || col.type === 'currency';
+                  return (
+                    <th
+                      key={col.key}
+                      style={{
+                        textAlign: isNumeric ? 'right' : 'left',
+                        whiteSpace: 'nowrap',
+                        background: '#1e293b',
+                        color: '#ffffff',
+                        minWidth: col.width || (isNumeric ? '85px' : '100px')
+                      }}
+                    >
+                      {col.label}
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={columns.length || 10} style={{ textAlign: 'center', padding: '32px' }}>
+                    Loading sheet data...
+                  </td>
+                </tr>
+              ) : rows.length === 0 ? (
+                <tr>
+                  <td colSpan={columns.length || 10}>
+                    <div className="empty-state">
+                      <div className="empty-state-icon"><FileSpreadsheet size={24} /></div>
+                      <div className="empty-state-title">No sheet records found</div>
+                      <div className="empty-state-desc">
+                        Import an Excel sheet using "Import Orders (Excel)" or adjust your filters.
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                rows.map((r, idx) => (
+                  <tr key={`${r.date}_${r.staff_id || r.employee_id}_${idx}`}>
+                    {columns.map(col => {
+                      if (col.key === 'date') {
+                        return <td key={col.key} style={{ fontWeight: 600 }}>{r.date}</td>;
+                      }
+                      if (col.key === 'employee_id') {
+                        return (
+                          <td key={col.key}>
+                            <span className="badge badge-neutral" style={{ fontWeight: 700, letterSpacing: '0.5px' }}>
+                              {r.employee_id || '—'}
+                            </span>
+                          </td>
+                        );
+                      }
+                      if (col.key === 'staff_name') {
+                        return (
+                          <td key={col.key}>
+                            {onSelectStaff && r.staff_id ? (
+                              <button
+                                type="button"
+                                onClick={() => onSelectStaff(r.staff_id)}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  color: 'var(--primary-600)',
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                  textDecoration: 'underline',
+                                  textAlign: 'left'
+                                }}
+                                title={`View ${r.staff_name}'s sales report`}
+                              >
+                                {r.staff_name}
+                              </button>
+                            ) : (
+                              <strong>{r.staff_name || '—'}</strong>
+                            )}
+                          </td>
+                        );
+                      }
+                      if (col.type === 'product') {
+                        const qty = r.quantities?.[col.key] || 0;
+                        return (
+                          <td key={col.key} style={{ textAlign: 'right', fontWeight: qty > 0 ? 600 : 400, color: qty > 0 ? '#1e293b' : '#94a3b8' }}>
+                            {qty > 0 ? qty : '—'}
+                          </td>
+                        );
+                      }
+                      if (col.key === 'incentive') {
+                        return (
+                          <td key={col.key} style={{ textAlign: 'right', fontWeight: 600, color: r.incentive > 0 ? '#059669' : '#94a3b8' }}>
+                            {r.incentive > 0 ? `₹${r.incentive.toLocaleString()}` : '₹0'}
+                          </td>
+                        );
+                      }
+                      if (col.type === 'return') {
+                        const retQty = r.returns?.[col.key] || 0;
+                        return (
+                          <td key={col.key} style={{ textAlign: 'right', fontWeight: retQty > 0 ? 700 : 400, color: retQty > 0 ? '#dc2626' : '#94a3b8' }}>
+                            {retQty > 0 ? retQty : '—'}
+                          </td>
+                        );
+                      }
+                      if (col.key === 'return_deductions') {
+                        return (
+                          <td key={col.key} style={{ textAlign: 'right', fontWeight: 600, color: r.return_deductions > 0 ? '#dc2626' : '#94a3b8' }}>
+                            {r.return_deductions > 0 ? `-₹${r.return_deductions.toLocaleString()}` : '₹0'}
+                          </td>
+                        );
+                      }
+                      if (col.key === 'total_net') {
+                        return (
+                          <td key={col.key} style={{ textAlign: 'right', fontWeight: 700, color: '#15803d' }}>
+                            ₹{(r.total_net || 0).toLocaleString()}
+                          </td>
+                        );
+                      }
+                      return <td key={col.key}>—</td>;
+                    })}
+                  </tr>
+                ))
+              )}
+            </tbody>
+            {rows.length > 0 && totals && (
+              <tfoot>
+                <tr style={{ background: '#f1f5f9', fontWeight: 700, position: 'sticky', bottom: 0, zIndex: 5, borderTop: '2px solid #cbd5e1' }}>
+                  {columns.map((col, idx) => {
+                    if (idx === 0) {
+                      return <td key={col.key}>Total ({rows.length} rows)</td>;
+                    }
+                    if (col.key === 'employee_id' || col.key === 'staff_name') {
+                      return <td key={col.key}></td>;
+                    }
+                    if (col.type === 'product') {
+                      const totalVal = totals[col.key] || 0;
+                      return (
+                        <td key={col.key} style={{ textAlign: 'right', color: '#1e293b' }}>
+                          {totalVal}
+                        </td>
+                      );
+                    }
+                    if (col.key === 'incentive') {
+                      return (
+                        <td key={col.key} style={{ textAlign: 'right', color: '#059669' }}>
+                          ₹{(totals.incentive || 0).toLocaleString()}
+                        </td>
+                      );
+                    }
+                    if (col.type === 'return') {
+                      const totalRet = totals[col.key] || 0;
+                      return (
+                        <td key={col.key} style={{ textAlign: 'right', color: totalRet > 0 ? '#dc2626' : '#64748b' }}>
+                          {totalRet}
+                        </td>
+                      );
+                    }
+                    if (col.key === 'return_deductions') {
+                      return (
+                        <td key={col.key} style={{ textAlign: 'right', color: '#dc2626' }}>
+                          {totals.return_deductions > 0 ? `-₹${totals.return_deductions.toLocaleString()}` : '₹0'}
+                        </td>
+                      );
+                    }
+                    if (col.key === 'total_net') {
+                      return (
+                        <td key={col.key} style={{ textAlign: 'right', color: '#15803d', fontSize: '13px' }}>
+                          ₹{(totals.total_net || 0).toLocaleString()}
+                        </td>
+                      );
+                    }
+                    return <td key={col.key}></td>;
+                  })}
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function SalesReports() {
   // Navigation state: null = Overall Sales Reports; string/number = Individual Staff Sales Report
   const [selectedStaffId, setSelectedStaffId] = useSessionState('filter_reports_selected_staff_id', null);
 
   // Common filters persisted across views
-  const [preset, setPreset] = useSessionState('filter_reports_preset', 'this_month');
+  const [preset, setPreset] = useSessionState('filter_reports_preset', 'all');
   const [startDate, setStartDate] = useSessionState('filter_reports_start_date', '');
   const [endDate, setEndDate] = useSessionState('filter_reports_end_date', '');
   const [productId, setProductId] = useSessionState('filter_reports_product', 'all');
   const [paymentMethod, setPaymentMethod] = useSessionState('filter_reports_payment', 'all');
-  const [reportTab, setReportTab] = useSessionState('filter_reports_tab', 'staff'); // 'staff' | 'product' | 'both'
+  const [reportTab, setReportTab] = useSessionState('filter_reports_tab', 'sheet'); // 'sheet' | 'staff' | 'product' | 'both'
+  const [staffViewMode, setStaffViewMode] = useState('sheet'); // 'sheet' | 'line_items'
 
   // Master lists
   const [staffList, setStaffList] = useState([]);
@@ -66,14 +337,72 @@ export default function SalesReports() {
   // Bulk Excel Import Modal State
   const [showImportModal, setShowImportModal] = useState(false);
 
+  // Clear Orders & Returns Confirmation State
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [clearing, setClearing] = useState(false);
+
+  async function handleClearAll() {
+    setClearing(true);
+    try {
+      const res = await api.delete('/orders/clear-all');
+      setToastMessage(res.message || 'All orders, returns, and import history cleared successfully.');
+      setShowClearConfirm(false);
+      if (selectedStaffId === null) {
+        fetchMainReport();
+      } else {
+        fetchStaffReport(selectedStaffId);
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to clear orders and returns');
+    } finally {
+      setClearing(false);
+    }
+  }
+
   function handleImportSuccess() {
+    setPreset('all');
     if (selectedStaffId === null) {
-      fetchMainReport();
+      fetchMainReport({ preset: 'all', startDate: '', endDate: '' });
     } else {
-      fetchStaffReport(selectedStaffId);
+      fetchStaffReport(selectedStaffId, { preset: 'all', startDate: '', endDate: '' });
     }
     setToastMessage('Orders successfully imported from Excel! Sales reports updated.');
     setTimeout(() => setToastMessage(''), 5000);
+  }
+
+  // Export Sheet Matrix as CSV
+  function handleExportSheetCsv(customRows = null, filenamePrefix = 'Dynamic_Sales_Sheet') {
+    const cols = (selectedStaffId === null ? data?.sheetColumns : staffDetailData?.sheetColumns) || [];
+    const rows = customRows || (selectedStaffId === null ? filteredSheetRows : (staffDetailData?.sheetRows || []));
+    if (!cols.length || !rows.length) return;
+
+    const headerTitles = cols.map(c => `"${(c.label || '').replace(/"/g, '""')}"`).join(',');
+    const rowLines = rows.map(r => {
+      return cols.map(c => {
+        let val = '';
+        if (c.key === 'date') val = r.date || '';
+        else if (c.key === 'employee_id') val = r.employee_id || '';
+        else if (c.key === 'staff_name') val = r.staff_name || '';
+        else if (c.type === 'product') val = r.quantities?.[c.key] || 0;
+        else if (c.type === 'return') val = r.returns?.[c.key] || 0;
+        else if (c.key === 'incentive') val = r.incentive || 0;
+        else if (c.key === 'return_deductions') val = r.return_deductions || 0;
+        else if (c.key === 'total_net') val = r.total_net || 0;
+        return `"${String(val).replace(/"/g, '""')}"`;
+      }).join(',');
+    });
+
+    const csvContent = [headerTitles, ...rowLines].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const periodStr = (data?.period?.startDate || startDate || 'all') + '_to_' + (data?.period?.endDate || endDate || '');
+    a.download = `${filenamePrefix}_${periodStr}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   // Sorting state for main tables
@@ -95,6 +424,7 @@ export default function SalesReports() {
     if (selectedStaffId === null) {
       fetchMainReport();
     } else {
+      setStaffDetailData(null);
       fetchStaffReport(selectedStaffId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -343,6 +673,33 @@ export default function SalesReports() {
   const activeFilterCount = (preset !== 'this_month' ? 1 : 0) + (productId !== 'all' ? 1 : 0) + (paymentMethod !== 'all' ? 1 : 0);
   const activePeriodLabel = PRESETS.find(p => p.id === preset)?.label || (startDate && endDate ? `${startDate} to ${endDate}` : 'Custom Period');
 
+  const filteredSheetRows = (data?.sheetRows || []).filter(r => {
+    if (!tableSearch.trim()) return true;
+    const term = tableSearch.toLowerCase();
+    return (
+      (r.employee_id && r.employee_id.toLowerCase().includes(term)) ||
+      (r.staff_name && r.staff_name.toLowerCase().includes(term)) ||
+      (r.date && r.date.includes(term))
+    );
+  });
+
+  const sheetTotals = filteredSheetRows.reduce((acc, r) => {
+    for (const col of (data?.sheetColumns || [])) {
+      if (col.type === 'product') {
+        acc[col.key] = (acc[col.key] || 0) + (r.quantities?.[col.key] || 0);
+      } else if (col.type === 'return') {
+        acc[col.key] = (acc[col.key] || 0) + (r.returns?.[col.key] || 0);
+      } else if (col.key === 'incentive') {
+        acc.incentive = (acc.incentive || 0) + (r.incentive || 0);
+      } else if (col.key === 'return_deductions') {
+        acc.return_deductions = (acc.return_deductions || 0) + (r.return_deductions || 0);
+      } else if (col.key === 'total_net') {
+        acc.total_net = (acc.total_net || 0) + (r.total_net || 0);
+      }
+    }
+    return acc;
+  }, {});
+
   // =========================================================================
   // VIEW 1: INDIVIDUAL STAFF SALES REPORT (Following IncentiveRecords Pattern)
   // =========================================================================
@@ -357,6 +714,25 @@ export default function SalesReports() {
     const returnsSummary = staffDetailData?.returnsSummary || { total_returns: 0, total_refunded_amount: 0, returned_quantity: 0 };
     const ordersList = staffDetailData?.orders || [];
     const returnsList = staffDetailData?.returns || [];
+
+    const staffSheetRows = staffDetailData?.sheetRows || [];
+    const staffSheetColumns = staffDetailData?.sheetColumns || data?.sheetColumns || [];
+    const staffSheetTotals = staffSheetRows.reduce((acc, r) => {
+      for (const col of staffSheetColumns) {
+        if (col.type === 'product') {
+          acc[col.key] = (acc[col.key] || 0) + (r.quantities?.[col.key] || 0);
+        } else if (col.type === 'return') {
+          acc[col.key] = (acc[col.key] || 0) + (r.returns?.[col.key] || 0);
+        } else if (col.key === 'incentive') {
+          acc.incentive = (acc.incentive || 0) + (r.incentive || 0);
+        } else if (col.key === 'return_deductions') {
+          acc.return_deductions = (acc.return_deductions || 0) + (r.return_deductions || 0);
+        } else if (col.key === 'total_net') {
+          acc.total_net = (acc.total_net || 0) + (r.total_net || 0);
+        }
+      }
+      return acc;
+    }, {});
 
     return (
       <div className="page-body">
@@ -487,6 +863,27 @@ export default function SalesReports() {
             >
               <FileSpreadsheet size={16} />
               <span>Import Orders (Excel)</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setShowClearConfirm(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                borderColor: '#fca5a5',
+                color: '#b91c1c',
+                background: '#fef2f2',
+                padding: '9px 15px',
+                fontWeight: 600,
+                fontSize: '13px'
+              }}
+              title="Clear all orders and returns from database to start fresh"
+            >
+              <RotateCcw size={15} />
+              <span>Clear Orders & Returns</span>
             </button>
 
             <button
@@ -755,8 +1152,67 @@ export default function SalesReports() {
           </div>
         </div>
 
-        {/* Section 1: Orders Table */}
-        <div className="table-card" style={{ marginBottom: '24px' }}>
+        {/* Detail View Mode Selector */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+          <div style={{ display: 'inline-flex', background: '#f1f5f9', padding: '4px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+            <button
+              type="button"
+              onClick={() => setStaffViewMode('sheet')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                borderRadius: 'var(--radius-sm)',
+                border: 'none',
+                background: staffViewMode === 'sheet' ? '#ffffff' : 'transparent',
+                color: staffViewMode === 'sheet' ? '#047857' : 'var(--text-muted)',
+                fontWeight: staffViewMode === 'sheet' ? 700 : 500,
+                boxShadow: staffViewMode === 'sheet' ? 'var(--shadow-xs)' : 'none',
+                cursor: 'pointer',
+                fontSize: '13px'
+              }}
+            >
+              <FileSpreadsheet size={14} />
+              <span>Dynamic Sheet View ({staffSheetRows.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setStaffViewMode('line_items')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                borderRadius: 'var(--radius-sm)',
+                border: 'none',
+                background: staffViewMode === 'line_items' ? '#ffffff' : 'transparent',
+                color: staffViewMode === 'line_items' ? 'var(--primary-700)' : 'var(--text-muted)',
+                fontWeight: staffViewMode === 'line_items' ? 700 : 500,
+                boxShadow: staffViewMode === 'line_items' ? 'var(--shadow-xs)' : 'none',
+                cursor: 'pointer',
+                fontSize: '13px'
+              }}
+            >
+              <ShoppingCart size={14} />
+              <span>Line Items ({ordersList.length} Orders, {returnsList.length} Returns)</span>
+            </button>
+          </div>
+        </div>
+
+        {staffViewMode === 'sheet' ? (
+          <DynamicSheetTable
+            columns={staffSheetColumns}
+            rows={staffSheetRows}
+            totals={staffSheetTotals}
+            onExportCsv={() => handleExportSheetCsv(staffSheetRows, `Sales_Sheet_${staff?.name?.replace(/\s+/g, '_') || 'Staff'}`)}
+            loading={loading}
+            title={`Dynamic Sheet View - ${staff?.name || 'Staff Member'}`}
+          />
+        ) : (
+          <>
+            {/* Section 1: Orders Table */}
+            <div className="table-card" style={{ marginBottom: '24px' }}>
           <div className="table-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <div style={{ width: '26px', height: '26px', borderRadius: '6px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1007,11 +1463,21 @@ export default function SalesReports() {
             )}
           </div>
         </div>
+          </>
+        )}
         {/* Bulk Order Import Modal */}
         <BulkOrderImportModal
           isOpen={showImportModal}
           onClose={() => setShowImportModal(false)}
           onImportSuccess={handleImportSuccess}
+        />
+
+        {/* Clear Orders & Returns Confirmation Modal */}
+        <ClearConfirmModal
+          isOpen={showClearConfirm}
+          onClose={() => setShowClearConfirm(false)}
+          onConfirm={handleClearAll}
+          clearing={clearing}
         />
       </div>
     );
@@ -1140,6 +1606,27 @@ export default function SalesReports() {
           >
             <FileSpreadsheet size={16} />
             <span>Import Orders (Excel)</span>
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => setShowClearConfirm(true)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              borderColor: '#fca5a5',
+              color: '#b91c1c',
+              background: '#fef2f2',
+              padding: '9px 15px',
+              fontWeight: 600,
+              fontSize: '13px'
+            }}
+            title="Clear all orders and returns from database to start fresh"
+          >
+            <RotateCcw size={15} />
+            <span>Clear Orders & Returns</span>
           </button>
 
           <button
@@ -1348,77 +1835,15 @@ export default function SalesReports() {
         </div>
       )}
 
-      {/* 3. Sales Summary (8 Required KPI Cards) */}
+      {/* 3. Executive Summary Figures */}
       <div style={{ marginBottom: '22px' }}>
         <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-main)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
           <TrendingUp size={16} color="var(--primary-600)" />
-          <span>Executive Sales Summary Figures</span>
+          <span>Product Quantity &amp; Incentive Summary</span>
         </div>
 
         <div className="kpi-grid sales-kpi-grid">
-          {/* 1. Total Orders */}
-          <div className="kpi-card-premium" style={{ '--card-accent': '#3b82f6' }}>
-            <div className="kpi-header">
-              <span className="kpi-title">Total Orders</span>
-              <div className="kpi-icon-wrap" style={{ background: '#eff6ff', color: '#2563eb' }}>
-                <ShoppingCart size={18} />
-              </div>
-            </div>
-            <div>
-              <div className="kpi-value">{loading ? '...' : summary.total_orders}</div>
-              <div className="kpi-subtext">Completed orders in period</div>
-            </div>
-          </div>
-
-          {/* 2. Total Gross Sales */}
-          <div className="kpi-card-premium" style={{ '--card-accent': '#f59e0b' }}>
-            <div className="kpi-header">
-              <span className="kpi-title">Total Gross Sales</span>
-              <div className="kpi-icon-wrap" style={{ background: '#fef3c7', color: '#d97706' }}>
-                <TrendingUp size={18} />
-              </div>
-            </div>
-            <div>
-              <div className="kpi-value" style={{ color: '#b45309' }}>
-                {loading ? '...' : `₹${summary.gross_sales?.toLocaleString()}`}
-              </div>
-              <div className="kpi-subtext">Eligible order revenue</div>
-            </div>
-          </div>
-
-          {/* 3. Total Returns */}
-          <div className="kpi-card-premium" style={{ '--card-accent': '#ef4444' }}>
-            <div className="kpi-header">
-              <span className="kpi-title">Total Returns</span>
-              <div className="kpi-icon-wrap" style={{ background: '#fef2f2', color: '#dc2626' }}>
-                <RotateCcw size={18} />
-              </div>
-            </div>
-            <div>
-              <div className="kpi-value" style={{ color: summary.total_returns > 0 ? '#dc2626' : 'var(--text-main)' }}>
-                {loading ? '...' : summary.total_returns > 0 ? `-₹${summary.total_returns?.toLocaleString()}` : '₹0'}
-              </div>
-              <div className="kpi-subtext">Refunds processed in period</div>
-            </div>
-          </div>
-
-          {/* 4. Total Net Sales */}
-          <div className="kpi-card-premium" style={{ '--card-accent': '#10b981' }}>
-            <div className="kpi-header">
-              <span className="kpi-title">Total Net Sales</span>
-              <div className="kpi-icon-wrap" style={{ background: '#ecfdf5', color: '#059669' }}>
-                <TrendingUp size={18} />
-              </div>
-            </div>
-            <div>
-              <div className="kpi-value" style={{ color: '#15803d' }}>
-                {loading ? '...' : `₹${summary.net_sales?.toLocaleString()}`}
-              </div>
-              <div className="kpi-subtext">Gross Sales − Returns</div>
-            </div>
-          </div>
-
-          {/* 5. Total Products Ordered (Quantity) */}
+          {/* 1. Total Products Ordered (Quantity) */}
           <div className="kpi-card-premium" style={{ '--card-accent': '#8b5cf6' }}>
             <div className="kpi-header">
               <span className="kpi-title">Products Ordered (Qty)</span>
@@ -1432,7 +1857,7 @@ export default function SalesReports() {
             </div>
           </div>
 
-          {/* 6. Total Returned Quantity */}
+          {/* 2. Total Returned Quantity */}
           <div className="kpi-card-premium" style={{ '--card-accent': '#ec4899' }}>
             <div className="kpi-header">
               <span className="kpi-title">Returned Quantity</span>
@@ -1448,7 +1873,7 @@ export default function SalesReports() {
             </div>
           </div>
 
-          {/* 7. Net Product Quantity */}
+          {/* 3. Net Product Quantity */}
           <div className="kpi-card-premium" style={{ '--card-accent': '#06b6d4' }}>
             <div className="kpi-header">
               <span className="kpi-title">Net Product Quantity</span>
@@ -1462,7 +1887,7 @@ export default function SalesReports() {
             </div>
           </div>
 
-          {/* 8. Total Incentives */}
+          {/* 4. Total Incentives */}
           <div className="kpi-card-premium" style={{ '--card-accent': '#10b981' }}>
             <div className="kpi-header">
               <span className="kpi-title">Total Net Incentives</span>
@@ -1484,7 +1909,30 @@ export default function SalesReports() {
 
       {/* Table Mode Selector & Table Search Toolbar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '12px' }}>
-        <div style={{ display: 'inline-flex', background: '#f1f5f9', padding: '4px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+        <div style={{ display: 'inline-flex', background: '#f1f5f9', padding: '4px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', flexWrap: 'wrap', gap: '4px' }}>
+          <button
+            type="button"
+            onClick={() => setReportTab('sheet')}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 14px',
+              borderRadius: 'var(--radius-sm)',
+              border: 'none',
+              background: reportTab === 'sheet' ? '#ffffff' : 'transparent',
+              color: reportTab === 'sheet' ? '#047857' : 'var(--text-muted)',
+              fontWeight: reportTab === 'sheet' ? 700 : 500,
+              boxShadow: reportTab === 'sheet' ? 'var(--shadow-xs)' : 'none',
+              cursor: 'pointer',
+              fontSize: '13px',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <FileSpreadsheet size={14} />
+            <span>Dynamic Sheet View ({data?.sheetRows?.length || 0})</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setReportTab('staff')}
@@ -1550,7 +1998,7 @@ export default function SalesReports() {
               transition: 'all 0.15s ease'
             }}
           >
-            <span>Both Reports</span>
+            <span>Combined</span>
           </button>
         </div>
 
@@ -1560,13 +2008,26 @@ export default function SalesReports() {
           <input
             type="text"
             className="search-input"
-            placeholder="Search staff or products in table..."
+            placeholder="Search Employee ID, staff, or date..."
             value={tableSearch}
             onChange={e => setTableSearch(e.target.value)}
             style={{ padding: '6px 10px 6px 32px', fontSize: '12.5px' }}
           />
         </div>
       </div>
+
+      {/* Dynamic Sheet View (All Columns by Employee ID) */}
+      {reportTab === 'sheet' && (
+        <DynamicSheetTable
+          columns={data?.sheetColumns || []}
+          rows={filteredSheetRows}
+          totals={sheetTotals}
+          onSelectStaff={(id) => setSelectedStaffId(id)}
+          onExportCsv={() => handleExportSheetCsv(filteredSheetRows, 'Dynamic_Sales_Sheet')}
+          loading={loading}
+          title="Dynamic Sheet View (All Columns by Employee ID)"
+        />
+      )}
 
       {/* ========================================================= */}
       {/* 4. Staff-Wise Sales Report Table */}
@@ -1989,6 +2450,14 @@ export default function SalesReports() {
         isOpen={showImportModal}
         onClose={() => setShowImportModal(false)}
         onImportSuccess={handleImportSuccess}
+      />
+
+      {/* Clear Orders & Returns Confirmation Modal */}
+      <ClearConfirmModal
+        isOpen={showClearConfirm}
+        onClose={() => setShowClearConfirm(false)}
+        onConfirm={handleClearAll}
+        clearing={clearing}
       />
     </div>
   );

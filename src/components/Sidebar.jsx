@@ -36,21 +36,17 @@ export default function Sidebar({ currentView, setCurrentView, isOpen, onClose }
     };
   }, [showDemoMenu]);
 
-  // Role 1: Sales Staff Navigation (1. Orders, 2. Returns, 3. My Records)
+  // Role 1: Sales Staff Navigation (Unified Sales Report & Sheet)
   const staffNavItems = [
-    { id: 'orders', label: 'Orders', icon: ShoppingCart },
-    { id: 'returns', label: 'Returns', icon: RotateCcw },
-    { id: 'my-records', label: 'My Records', icon: Award }
+    { id: 'my-records', label: 'My Sales Report & Sheet', icon: BarChart3 }
   ];
 
-  // Role 2: Brand Manager Navigation (1. Products, 2. Staff, 3. Orders, 4. Returns, 5. Incentive Records, 6. Sales Reports)
+  // Role 2: Brand Manager Navigation (1. Sales Reports & Sheet, 2. Incentive Records, 3. Product Management, 4. Staff Management)
   const managerNavItems = [
-    { id: 'products', label: 'Product Management', icon: Package },
-    { id: 'staff', label: 'Staff Management', icon: Users },
-    { id: 'orders', label: 'Orders', icon: ShoppingCart },
-    { id: 'returns', label: 'Returns', icon: RotateCcw },
+    { id: 'reports', label: 'Sales Reports & Sheet', icon: BarChart3 },
     { id: 'incentives', label: 'Incentive Records', icon: Award },
-    { id: 'reports', label: 'Sales Reports', icon: BarChart3 }
+    { id: 'products', label: 'Product Management', icon: Package },
+    { id: 'staff', label: 'Staff Management', icon: Users }
   ];
 
   const navItems = isManager ? managerNavItems : staffNavItems;

@@ -1,7 +1,5 @@
-
-
 // src/views/manager/IncentiveRecords.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../../api';
 import { useSessionState } from '../../hooks/useSessionState';
 import {
@@ -24,236 +22,465 @@ import {
   Download,
   Filter,
   X,
-  ChevronDown
+  ChevronDown,
+  Layers,
+  FileText,
+  Trash2,
+  RefreshCw,
+  FileSpreadsheet,
+  ArrowUpDown,
+  AlertCircle
 } from 'lucide-react';
+import BulkOrderImportModal from '../../components/BulkOrderImportModal';
 
-const MONTHS = [
-  { value: 1, label: 'January' },
-  { value: 2, label: 'February' },
-  { value: 3, label: 'March' },
-  { value: 4, label: 'April' },
-  { value: 5, label: 'May' },
-  { value: 6, label: 'June' },
-  { value: 7, label: 'July' },
-  { value: 8, label: 'August' },
-  { value: 9, label: 'September' },
-  { value: 10, label: 'October' },
-  { value: 11, label: 'November' },
-  { value: 12, label: 'December' }
+const PRESETS = [
+  { id: 'all', label: 'All Records' },
+  { id: 'this_month', label: 'This Month' },
+  { id: 'previous_month', label: 'Previous Month' },
+  { id: 'this_week', label: 'This Week' },
+  { id: 'today', label: 'Today' },
+  { id: 'yesterday', label: 'Yesterday' },
+  { id: 'custom', label: 'Custom Date Range' }
 ];
 
-const YEARS = [2024, 2025, 2026, 2027, 2028];
+function ClearConfirmModal({ isOpen, onClose, onConfirm, clearing }) {
+  if (!isOpen) return null;
+  return (
+    <div className="modal-backdrop" onClick={() => !clearing && onClose()}>
+      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px' }}>
+        <div className="modal-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#dc2626' }}>
+            <AlertCircle size={20} />
+            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700 }}>Clear All Orders & Returns?</h3>
+          </div>
+          <button
+            type="button"
+            className="btn-icon"
+            onClick={() => !clearing && onClose()}
+            disabled={clearing}
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="modal-body" style={{ padding: '16px 20px', fontSize: '13.5px', color: '#475569', lineHeight: 1.6 }}>
+          <p style={{ margin: '0 0 12px 0' }}>
+            This will permanently delete <strong>all orders</strong>, <strong>all returns</strong>, and <strong>import logs</strong> from the database.
+          </p>
+          <p style={{ margin: '0 0 12px 0', padding: '10px 14px', background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: '6px', color: '#b91c1c' }}>
+            <strong>Note:</strong> All staff members and products will remain intact. You can immediately import an updated Excel sheet.
+          </p>
+          <p style={{ margin: 0, fontWeight: 600 }}>
+            Are you sure you want to proceed?
+          </p>
+        </div>
+        <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '12px 20px' }}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={onClose}
+            disabled={clearing}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn btn-danger"
+            onClick={onConfirm}
+            disabled={clearing}
+            style={{ background: '#dc2626', borderColor: '#b91c1c', color: '#ffffff', fontWeight: 600 }}
+          >
+            {clearing ? 'Clearing...' : 'Yes, Clear All Orders & Returns'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function IncentiveRecords() {
-  const [currentYear, setCurrentYear] = useSessionState('filter_incentives_year', 2026);
-  const [currentMonth, setCurrentMonth] = useSessionState('filter_incentives_month', 10);
+  // Navigation state: null = Overall Team View; staffId = Individual Staff Detail Drill-Down
+  const [selectedStaffId, setSelectedStaffId] = useSessionState('filter_incentives_selected_staff_id', null);
 
-  // Navigation state: null for monthly staff summary list; number for staff detail view
-  const [selectedStaffId, setSelectedStaffId] = useState(null);
-
-  // Data states
-  const [summaryData, setSummaryData] = useState(null);
-  const [staffDetailData, setStaffDetailData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // Filter states synchronized with Sales Reports
+  const [preset, setPreset] = useSessionState('filter_incentives_preset', 'all');
+  const [startDate, setStartDate] = useSessionState('filter_incentives_start_date', '');
+  const [endDate, setEndDate] = useSessionState('filter_incentives_end_date', '');
   const [search, setSearch] = useSessionState('filter_incentives_search', '');
 
-  // Modals for audit inspection
+  // Tab views
+  const [activeTab, setActiveTab] = useSessionState('filter_incentives_main_tab', 'sheet'); // 'sheet' | 'staff'
+  const [staffDetailTab, setStaffDetailTab] = useSessionState('filter_incentives_detail_tab', 'sheet'); // 'sheet' | 'orders' | 'returns'
+
+  // Data states
+  const [data, setData] = useState(null);
+  const [staffDetailData, setStaffDetailData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [toastMessage, setToastMessage] = useState('');
+
+  // Modals
   const [selectedOrderModal, setSelectedOrderModal] = useState(null);
-
-  // Tab state in staff detail view: 'orders' | 'returns' | 'both'
-  const [detailTab, setDetailTab] = useSessionState('filter_incentives_detail_tab', 'orders');
-
-  // Toggle filtration panel
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
-  // Fetch current business time on mount to initialize default month/year if not set in session
-  useEffect(() => {
-    async function initTime() {
-      try {
-        const timeRes = await api.get('/system/time');
-        if (timeRes?.currentDate) {
-          const parts = timeRes.currentDate.split('-');
-          const y = parseInt(parts[0], 10);
-          const m = parseInt(parts[1], 10);
-          if (!sessionStorage.getItem('filter_incentives_year') && y) setCurrentYear(y);
-          if (!sessionStorage.getItem('filter_incentives_month') && m) setCurrentMonth(m);
-        }
-      } catch (err) {
-        // Fallback to default
-      }
-    }
-    initTime();
-  }, []);
+  // Sorting for staff audit table
+  const [sortField, setSortField] = useState('net_incentive');
+  const [sortAsc, setSortAsc] = useState(false);
 
-  async function fetchMonthlySummary() {
-    setLoading(true);
-    try {
-      const res = await api.get(`/incentives/monthly-summary?year=${currentYear}&month=${currentMonth}`);
-      setSummaryData(res);
-    } catch (err) {
-      console.error('Failed to load monthly summary:', err);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function fetchStaffDetails(staffId) {
-    setLoading(true);
-    try {
-      const res = await api.get(`/incentives/staff/${staffId}/monthly?year=${currentYear}&month=${currentMonth}`);
-      setStaffDetailData(res);
-    } catch (err) {
-      console.error('Failed to load staff details:', err);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // Fetch data whenever year, month, or selectedStaffId changes
+  // Fetch report whenever active view or filters change
   useEffect(() => {
     if (selectedStaffId === null) {
-      fetchMonthlySummary();
+      fetchMainReport();
     } else {
-      fetchStaffDetails(selectedStaffId);
+      setStaffDetailData(null);
+      fetchStaffReport(selectedStaffId);
     }
-  }, [currentYear, currentMonth, selectedStaffId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStaffId, preset]);
 
-  function handlePrevMonth() {
-    if (currentMonth === 1) {
-      setCurrentMonth(12);
-      setCurrentYear(prev => prev - 1);
-    } else {
-      setCurrentMonth(prev => prev - 1);
-    }
-  }
-
-  function handleNextMonth() {
-    if (currentMonth === 12) {
-      setCurrentMonth(1);
-      setCurrentYear(prev => prev + 1);
-    } else {
-      setCurrentMonth(prev => prev + 1);
-    }
-  }
-
-  async function handleCurrentMonth() {
+  async function fetchMainReport(overrideDates = null) {
+    setLoading(true);
+    setError(null);
     try {
-      const timeRes = await api.get('/system/time');
-      if (timeRes?.currentDate) {
-        const parts = timeRes.currentDate.split('-');
-        const y = parseInt(parts[0], 10);
-        const m = parseInt(parts[1], 10);
-        if (y) setCurrentYear(y);
-        if (m) setCurrentMonth(m);
-        return;
+      const curPreset = overrideDates?.preset || preset;
+      const params = [`preset=${curPreset}`];
+
+      const sDate = overrideDates ? overrideDates.startDate : startDate;
+      const eDate = overrideDates ? overrideDates.endDate : endDate;
+      if (sDate) params.push(`startDate=${sDate}`);
+      if (eDate) params.push(`endDate=${eDate}`);
+
+      const qs = params.length > 0 ? '?' + params.join('&') : '';
+      const res = await api.get(`/reports/sales${qs}`);
+      setData(res);
+
+      if (res?.period && curPreset !== 'custom') {
+        setStartDate(res.period.startDate);
+        setEndDate(res.period.endDate);
       }
-    } catch (e) {
-      // fallback
+    } catch (err) {
+      console.error('Failed to load incentive data:', err);
+      setError(err.message || 'Failed to load incentive records.');
+    } finally {
+      setLoading(false);
     }
-    const now = new Date();
-    setCurrentYear(now.getFullYear());
-    setCurrentMonth(now.getMonth() + 1);
   }
 
-  // Filter staff list in summary view
-  const staffList = summaryData?.staffSummaries || [];
-  const filteredStaff = staffList.filter(s => {
-    if (!search.trim()) return true;
-    const term = search.trim().toLowerCase();
-    return (
-      s.name.toLowerCase().includes(term) ||
-      s.staff_code.toLowerCase().includes(term) ||
-      s.username.toLowerCase().includes(term)
-    );
-  });
+  async function fetchStaffReport(targetStaffId, overrideDates = null) {
+    setLoading(true);
+    setError(null);
+    try {
+      const curPreset = overrideDates?.preset || preset;
+      const params = [`preset=${curPreset}`];
 
-  const totals = summaryData?.totals || {
-    total_staff: 0,
-    total_orders: 0,
-    total_incentive: 0,
-    return_adjustments: 0,
-    net_incentive: 0
-  };
+      const sDate = overrideDates ? overrideDates.startDate : startDate;
+      const eDate = overrideDates ? overrideDates.endDate : endDate;
+      if (sDate) params.push(`startDate=${sDate}`);
+      if (eDate) params.push(`endDate=${eDate}`);
 
-  const currentMonthName = MONTHS.find(m => m.value === currentMonth)?.label || 'Month';
+      const qs = params.length > 0 ? '?' + params.join('&') : '';
+      const res = await api.get(`/reports/sales/staff/${targetStaffId}${qs}`);
+      setStaffDetailData(res);
 
-  // Export CSV for current monthly staff list
-  function handleExportMonthlyCsv() {
-    if (filteredStaff.length === 0) return;
+      if (res?.period && curPreset !== 'custom') {
+        setStartDate(res.period.startDate);
+        setEndDate(res.period.endDate);
+      }
+    } catch (err) {
+      console.error('Failed to load staff incentive report:', err);
+      setError(err.message || 'Failed to load staff incentive records.');
+    } finally {
+      setLoading(false);
+    }
+  }
 
+  function handlePresetSelect(pId) {
+    setPreset(pId);
+    if (pId !== 'custom') {
+      const override = { preset: pId, startDate: '', endDate: '' };
+      if (selectedStaffId === null) {
+        fetchMainReport(override);
+      } else {
+        fetchStaffReport(selectedStaffId, override);
+      }
+    }
+  }
+
+  function handleCustomDateApply(e) {
+    e.preventDefault();
+    if (!startDate || !endDate) return;
+    const override = { preset: 'custom', startDate, endDate };
+    if (selectedStaffId === null) {
+      fetchMainReport(override);
+    } else {
+      fetchStaffReport(selectedStaffId, override);
+    }
+  }
+
+  function handleImportSuccess() {
+    setPreset('all');
+    if (selectedStaffId === null) {
+      fetchMainReport({ preset: 'all', startDate: '', endDate: '' });
+    } else {
+      fetchStaffReport(selectedStaffId, { preset: 'all', startDate: '', endDate: '' });
+    }
+    setToastMessage('Orders successfully imported from Excel! Incentive records updated.');
+    setTimeout(() => setToastMessage(''), 5000);
+  }
+
+  async function handleClearAll() {
+    setClearing(true);
+    try {
+      const res = await api.delete('/orders/clear-all');
+      setToastMessage(res.message || 'All orders, returns, and import history cleared successfully.');
+      setShowClearConfirm(false);
+      if (selectedStaffId === null) {
+        fetchMainReport();
+      } else {
+        fetchStaffReport(selectedStaffId);
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to clear orders and returns');
+    } finally {
+      setClearing(false);
+    }
+  }
+
+  // Export Sheet Matrix as CSV
+  function handleExportSheetCsv(customRows = null, filenamePrefix = 'Incentive_Sheet') {
+    const cols = (selectedStaffId === null ? data?.sheetColumns : staffDetailData?.sheetColumns) || [];
+    const rows = customRows || (selectedStaffId === null ? filteredSheetRows : (staffDetailData?.sheetRows || []));
+    if (!cols.length || !rows.length) return;
+
+    const headerTitles = cols.map(c => `"${(c.label || '').replace(/"/g, '""')}"`).join(',');
+    const rowLines = rows.map(r => {
+      return cols.map(c => {
+        let val = '';
+        if (c.key === 'date') val = r.date || '';
+        else if (c.key === 'employee_id') val = r.employee_id || '';
+        else if (c.key === 'staff_name') val = r.staff_name || '';
+        else if (c.type === 'product') val = r.quantities?.[c.key] || 0;
+        else if (c.type === 'return') val = r.returns?.[c.key] || 0;
+        else if (c.key === 'incentive') val = r.incentive || 0;
+        else if (c.key === 'return_deductions') val = r.return_deductions || 0;
+        else if (c.key === 'total_net') val = r.total_net || 0;
+        return `"${String(val).replace(/"/g, '""')}"`;
+      }).join(',');
+    });
+
+    const csvContent = [headerTitles, ...rowLines].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const periodStr = (data?.period?.startDate || startDate || 'all') + '_to_' + (data?.period?.endDate || endDate || '');
+    a.download = `${filenamePrefix}_${periodStr}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // Export Staff Ranking CSV
+  function handleExportStaffCsv() {
+    if (!filteredStaffList.length) return;
     const headers = [
+      'Rank',
       'Staff Name',
-      'Staff ID',
-      'Reporting Period',
+      'Employee ID',
+      'Username',
       'Total Orders',
-      'Total Incentive (INR)',
+      'Gross Sales (INR)',
+      'Earned Incentive (INR)',
       'Return Adjustments (INR)',
-      'Net Incentive (INR)'
+      'Net Payable Incentive (INR)'
     ];
 
-    const rows = filteredStaff.map(s => [
-      `"${s.name}"`,
-      `"${s.staff_code}"`,
-      `"${currentMonthName} ${currentYear}"`,
-      s.total_orders,
-      s.total_incentive,
-      s.return_adjustments,
-      s.net_incentive
+    const rows = sortedStaffList.map((s, idx) => [
+      idx + 1,
+      `"${s.staff_name || s.name || ''}"`,
+      `"${s.staff_code || ''}"`,
+      `"${s.username || ''}"`,
+      s.total_orders || 0,
+      s.gross_sales || 0,
+      s.earned_incentive || s.gross_incentive || 0,
+      s.return_adjustments || s.reversed_incentive || 0,
+      s.net_incentive || 0
     ]);
 
     const csvContent = [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `monthly-staff-incentives-${currentYear}-${String(currentMonth).padStart(2, '0')}.csv`);
+    link.href = url;
+    const periodStr = (data?.period?.startDate || startDate || 'all') + '_to_' + (data?.period?.endDate || endDate || '');
+    link.download = `Staff_Incentives_Ranking_${periodStr}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   }
 
+  // Filtered rows for main sheet
+  const rawSheetRows = data?.sheetRows || [];
+  const filteredSheetRows = useMemo(() => {
+    if (!search.trim()) return rawSheetRows;
+    const term = search.trim().toLowerCase();
+    return rawSheetRows.filter(r =>
+      (r.staff_name && r.staff_name.toLowerCase().includes(term)) ||
+      (r.employee_id && r.employee_id.toLowerCase().includes(term)) ||
+      (r.date && r.date.toLowerCase().includes(term))
+    );
+  }, [rawSheetRows, search]);
+
+  // Dynamic sheet totals
+  const sheetTotals = useMemo(() => {
+    const t = {
+      incentive: 0,
+      return_deductions: 0,
+      total_net: 0
+    };
+    (data?.sheetColumns || []).forEach(col => {
+      if (col.type === 'product' || col.type === 'return') {
+        t[col.key] = 0;
+      }
+    });
+
+    filteredSheetRows.forEach(r => {
+      t.incentive += (r.incentive || 0);
+      t.return_deductions += (r.return_deductions || 0);
+      t.total_net += (r.total_net || 0);
+      (data?.sheetColumns || []).forEach(col => {
+        if (col.type === 'product') {
+          t[col.key] = (t[col.key] || 0) + (r.quantities?.[col.key] || 0);
+        } else if (col.type === 'return') {
+          t[col.key] = (t[col.key] || 0) + (r.returns?.[col.key] || 0);
+        }
+      });
+    });
+
+    t.incentive = Math.round(t.incentive * 100) / 100;
+    t.return_deductions = Math.round(t.return_deductions * 100) / 100;
+    t.total_net = Math.round(t.total_net * 100) / 100;
+    return t;
+  }, [filteredSheetRows, data?.sheetColumns]);
+
+  // Staff report list
+  const staffList = data?.staffReport || [];
+  const filteredStaffList = useMemo(() => {
+    if (!search.trim()) return staffList;
+    const term = search.trim().toLowerCase();
+    return staffList.filter(s =>
+      (s.staff_name && s.staff_name.toLowerCase().includes(term)) ||
+      (s.staff_code && s.staff_code.toLowerCase().includes(term)) ||
+      (s.username && s.username.toLowerCase().includes(term))
+    );
+  }, [staffList, search]);
+
+  const sortedStaffList = useMemo(() => {
+    return [...filteredStaffList].sort((a, b) => {
+      let valA = a[sortField];
+      let valB = b[sortField];
+      if (typeof valA === 'string') {
+        return sortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      }
+      valA = valA || 0;
+      valB = valB || 0;
+      return sortAsc ? valA - valB : valB - valA;
+    });
+  }, [filteredStaffList, sortField, sortAsc]);
+
+  function handleSort(field) {
+    if (sortField === field) {
+      setSortAsc(!sortAsc);
+    } else {
+      setSortField(field);
+      setSortAsc(false);
+    }
+  }
+
+  // Summary object from API
+  const summary = data?.summary || {
+    totalOrders: 0,
+    grossSales: 0,
+    earnedIncentive: 0,
+    grossIncentive: 0,
+    returnAdjustments: 0,
+    reversedIncentive: 0,
+    netIncentive: 0
+  };
+
+  const periodLabel = useMemo(() => {
+    if (!data?.period) return 'Loading...';
+    if (preset === 'all') return 'All Imported Records';
+    if (preset === 'this_month') return 'This Month';
+    if (preset === 'previous_month') return 'Previous Month';
+    return `${data.period.startDate} to ${data.period.endDate}`;
+  }, [data?.period, preset]);
+
   // ==========================================
-  // RENDER 1: STAFF-WISE INCENTIVE DETAILS
+  // RENDER 1: INDIVIDUAL STAFF DETAIL VIEW
   // ==========================================
   if (selectedStaffId !== null) {
     const staff = staffDetailData?.staff;
-    const summary = staffDetailData?.summary || {
+    const staffSummary = staffDetailData?.summary || {
       totalOrders: 0,
-      grossIncentive: 0,
+      grossSales: 0,
+      earnedIncentive: 0,
       returnAdjustments: 0,
       netIncentive: 0
     };
     const orders = staffDetailData?.orders || [];
     const returns = staffDetailData?.returns || [];
+    const staffSheetRows = staffDetailData?.sheetRows || [];
+    const staffSheetColumns = staffDetailData?.sheetColumns || [];
 
-    // Filter orders by search
+    // Filter staff orders & returns by search
     const filteredOrders = orders.filter(o => {
       if (!search.trim()) return true;
       const term = search.trim().toLowerCase();
       return (
-        o.order_number.toLowerCase().includes(term) ||
-        o.product_name.toLowerCase().includes(term) ||
-        o.customer_name.toLowerCase().includes(term) ||
+        (o.order_number && o.order_number.toLowerCase().includes(term)) ||
+        (o.product_name && o.product_name.toLowerCase().includes(term)) ||
         (o.payment_method && o.payment_method.toLowerCase().includes(term))
       );
     });
 
-    // Filter returns by search
     const filteredReturns = returns.filter(r => {
       if (!search.trim()) return true;
       const term = search.trim().toLowerCase();
       return (
-        r.return_number.toLowerCase().includes(term) ||
-        r.order_number.toLowerCase().includes(term) ||
-        r.product_name.toLowerCase().includes(term) ||
-        (r.payment_method && r.payment_method.toLowerCase().includes(term)) ||
-        (r.customer_name && r.customer_name.toLowerCase().includes(term))
+        (r.return_number && r.return_number.toLowerCase().includes(term)) ||
+        (r.order_number && r.order_number.toLowerCase().includes(term)) ||
+        (r.product_name && r.product_name.toLowerCase().includes(term)) ||
+        (r.payment_method && r.payment_method.toLowerCase().includes(term))
       );
+    });
+
+    // Staff sheet totals
+    const staffSheetTotals = {
+      incentive: 0,
+      return_deductions: 0,
+      total_net: 0
+    };
+    staffSheetColumns.forEach(c => {
+      if (c.type === 'product' || c.type === 'return') staffSheetTotals[c.key] = 0;
+    });
+    staffSheetRows.forEach(r => {
+      staffSheetTotals.incentive += (r.incentive || 0);
+      staffSheetTotals.return_deductions += (r.return_deductions || 0);
+      staffSheetTotals.total_net += (r.total_net || 0);
+      staffSheetColumns.forEach(c => {
+        if (c.type === 'product') staffSheetTotals[c.key] = (staffSheetTotals[c.key] || 0) + (r.quantities?.[c.key] || 0);
+        else if (c.type === 'return') staffSheetTotals[c.key] = (staffSheetTotals[c.key] || 0) + (r.returns?.[c.key] || 0);
+      });
     });
 
     return (
       <div className="page-body">
-        {/* Navigation & Period Header */}
+        {/* Navigation & Header */}
         <div className="page-header" style={{ marginBottom: '16px', alignItems: 'flex-start' }}>
           <div>
             <button
@@ -265,7 +492,7 @@ export default function IncentiveRecords() {
               style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginBottom: '8px', padding: '6px 12px' }}
             >
               <ArrowLeft size={14} />
-              <span>Back to Monthly Staff List</span>
+              <span>Back to All Staff Incentives</span>
             </button>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
@@ -276,54 +503,59 @@ export default function IncentiveRecords() {
                 {staff?.staff_code}
               </span>
               <span className="badge badge-info" style={{ fontSize: '11.5px' }}>
-                {currentMonthName} {currentYear}
+                {periodLabel}
               </span>
             </div>
           </div>
 
-          <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <button
               type="button"
               className={`btn ${showFilters ? 'btn-primary' : 'btn-secondary'} btn-sm`}
               onClick={() => setShowFilters(!showFilters)}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '7px',
-                padding: '8px 14px',
-                fontWeight: 600,
-                fontSize: '12.5px'
-              }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '8px 14px', fontWeight: 600, fontSize: '12.5px' }}
             >
               <Filter size={14} />
-              <span>Filtration</span>
-              {(search.trim() || detailTab !== 'orders') && (
-                <span
-                  style={{
-                    background: showFilters ? '#ffffff' : 'var(--primary-600)',
-                    color: showFilters ? 'var(--primary-600)' : '#ffffff',
-                    borderRadius: '10px',
-                    fontSize: '11px',
-                    fontWeight: 700,
-                    padding: '1px 6px',
-                    marginLeft: '2px'
-                  }}
-                >
-                  {(search.trim() ? 1 : 0) + (detailTab !== 'orders' ? 1 : 0)}
-                </span>
-              )}
-              <ChevronDown
-                size={14}
-                style={{
-                  transform: showFilters ? 'rotate(180deg)' : 'none',
-                  transition: 'transform 0.2s ease'
-                }}
-              />
+              <span>Period &amp; Filters</span>
+              <ChevronDown size={14} style={{ transform: showFilters ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }} />
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => handleExportSheetCsv(staffSheetRows, `${staff?.staff_code || 'Staff'}_Incentives`)}
+              disabled={staffSheetRows.length === 0}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 12px' }}
+            >
+              <Download size={14} />
+              <span>Export Sheet (.csv)</span>
             </button>
           </div>
         </div>
 
-        {/* Staff Summary Cards (4) */}
+        {/* Real-time Calculation Flow Strip */}
+        <div className="calc-breakdown-bar">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)', fontWeight: 600 }}>
+            <Sparkles size={15} color="var(--primary-600)" />
+            <span>Staff Net Incentive Payout:</span>
+          </div>
+          <div className="calc-step">
+            <span style={{ color: 'var(--text-muted)' }}>Gross Incentive:</span>
+            <strong style={{ color: '#d97706' }}>₹{Number(staffSummary.earnedIncentive || staffSummary.grossIncentive || 0).toLocaleString()}</strong>
+          </div>
+          <span className="calc-operator">&minus;</span>
+          <div className="calc-step">
+            <span style={{ color: 'var(--text-muted)' }}>Return Deductions:</span>
+            <strong style={{ color: '#dc2626' }}>₹{Number(staffSummary.returnAdjustments || staffSummary.reversedIncentive || 0).toLocaleString()}</strong>
+          </div>
+          <span className="calc-operator">=</span>
+          <div className="calc-step" style={{ background: '#ecfdf5', padding: '3px 10px', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
+            <span style={{ color: '#166534', fontWeight: 600 }}>Net Payable:</span>
+            <strong style={{ color: '#16a34a', fontSize: '14px' }}>₹{Number(staffSummary.netIncentive || 0).toLocaleString()}</strong>
+          </div>
+        </div>
+
+        {/* 4 KPI Cards for Staff */}
         <div className="kpi-grid sales-kpi-grid" style={{ marginBottom: '22px' }}>
           <div className="kpi-card-premium" style={{ '--card-accent': '#3b82f6' }}>
             <div className="kpi-header">
@@ -333,38 +565,40 @@ export default function IncentiveRecords() {
               </div>
             </div>
             <div>
-              <div className="kpi-value">{summary.totalOrders}</div>
-              <div className="kpi-subtext">Orders placed in {currentMonthName}</div>
+              <div className="kpi-value">{staffSummary.totalOrders || 0}</div>
+              <div className="kpi-subtext">Gross Sales: ₹{Number(staffSummary.grossSales || 0).toLocaleString()}</div>
             </div>
           </div>
 
           <div className="kpi-card-premium" style={{ '--card-accent': '#f59e0b' }}>
             <div className="kpi-header">
-              <span className="kpi-title">Gross Incentive</span>
+              <span className="kpi-title">Earned Incentive</span>
               <div className="kpi-icon-wrap" style={{ background: '#fef3c7', color: '#d97706' }}>
                 <TrendingUp size={19} />
               </div>
             </div>
             <div>
               <div className="kpi-value" style={{ color: '#b45309' }}>
-                ₹{summary.grossIncentive?.toLocaleString() ?? 0}
+                ₹{Number(staffSummary.earnedIncentive || staffSummary.grossIncentive || 0).toLocaleString()}
               </div>
-              <div className="kpi-subtext">Calculated order earnings</div>
+              <div className="kpi-subtext">Gross incentive before returns</div>
             </div>
           </div>
 
           <div className="kpi-card-premium" style={{ '--card-accent': '#ef4444' }}>
             <div className="kpi-header">
-              <span className="kpi-title">Return Adjustments</span>
+              <span className="kpi-title">Return Deductions</span>
               <div className="kpi-icon-wrap" style={{ background: '#fef2f2', color: '#dc2626' }}>
                 <RotateCcw size={19} />
               </div>
             </div>
             <div>
               <div className="kpi-value" style={{ color: '#dc2626' }}>
-                {summary.returnAdjustments > 0 ? `-₹${summary.returnAdjustments.toLocaleString()}` : '₹0'}
+                {(staffSummary.returnAdjustments || staffSummary.reversedIncentive) > 0
+                  ? `-₹${Number(staffSummary.returnAdjustments || staffSummary.reversedIncentive).toLocaleString()}`
+                  : '₹0'}
               </div>
-              <div className="kpi-subtext">Reversals on returned items</div>
+              <div className="kpi-subtext">{returns.length} returned order{returns.length === 1 ? '' : 's'}</div>
             </div>
           </div>
 
@@ -377,310 +611,327 @@ export default function IncentiveRecords() {
             </div>
             <div>
               <div className="kpi-value" style={{ color: '#15803d', fontSize: '28px' }}>
-                ₹{summary.netIncentive?.toLocaleString() ?? 0}
+                ₹{Number(staffSummary.netIncentive || 0).toLocaleString()}
               </div>
-              <div className="kpi-subtext" style={{ color: '#166534' }}>Reconciled net payout</div>
+              <div className="kpi-subtext" style={{ color: '#166534' }}>Total net payable to staff</div>
             </div>
           </div>
         </div>
 
-        {/* Compact Applied Filtration Pill Bar (when collapsed) */}
-        {!showFilters && (
-          <div className="filter-pill-bar">
-            <div className="filter-pill-items">
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                <Filter size={13} color="var(--primary-600)" /> Active Filters:
-              </span>
-              <span className="badge badge-info" style={{ fontSize: '11.5px' }}>
-                Period: {currentMonthName} {currentYear}
-              </span>
-              <span className="badge badge-neutral" style={{ fontSize: '11.5px' }}>
-                Mode: {detailTab === 'orders' ? 'Orders' : detailTab === 'returns' ? 'Returns' : 'Both'}
-              </span>
-              {search.trim() && (
-                <span className="badge badge-neutral" style={{ fontSize: '11.5px' }}>
-                  Search: "{search.trim()}"
-                </span>
-              )}
-            </div>
-            <div className="filter-pill-actions">
-              <button
-                type="button"
-                className="btn btn-sm btn-outline"
-                onClick={() => setShowFilters(true)}
-                style={{ fontSize: '11.5px', padding: '5px 12px', height: 'auto' }}
-              >
-                Change Filters ▾
-              </button>
-              {search.trim() && (
-                <button
-                  type="button"
-                  className="btn btn-sm btn-ghost"
-                  onClick={() => setSearch('')}
-                  style={{ fontSize: '11.5px', padding: '5px 10px', color: '#dc2626', height: 'auto' }}
-                >
-                  <X size={12} style={{ marginRight: '4px' }} /> Clear Search
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Table Selector & Search Toolbar (Filtration Card) */}
+        {/* Filtration Card */}
         {showFilters && (
-          <div className="filter-card">
+          <div className="filter-card" style={{ marginBottom: '20px' }}>
             <div className="filter-card-header">
               <div className="filter-title-wrap">
-                <div className="filter-icon-box">
-                  <Filter size={15} />
-                </div>
-                <strong className="filter-title">Filtration</strong>
-                <span className="filter-desc">
-                  (Filter by period, table mode, or search keywords)
-                </span>
+                <div className="filter-icon-box"><Filter size={15} /></div>
+                <strong className="filter-title">Date Period Filtration</strong>
               </div>
-              <button
-                type="button"
-                className="filter-hide-btn"
-                onClick={() => setShowFilters(false)}
-              >
+              <button type="button" className="filter-hide-btn" onClick={() => setShowFilters(false)}>
                 <X size={14} /> Hide
               </button>
             </div>
-
             <div className="filter-body">
-              <div className="filter-row">
-                {/* 1. Period Filter (Month & Year) */}
-                <div className="filter-field">
-                  <span className="filter-field-label">Period</span>
-                  <div className="filter-month-nav">
-                    <button className="btn btn-secondary btn-sm" onClick={handlePrevMonth} title="Previous Month">
-                      <ChevronLeft size={15} />
-                    </button>
-                    <select
-                      className="form-control"
-                      value={currentMonth}
-                      onChange={e => setCurrentMonth(parseInt(e.target.value, 10))}
-                    >
-                      {MONTHS.map(m => (
-                        <option key={m.value} value={m.value}>{m.label}</option>
-                      ))}
-                    </select>
-                    <select
-                      className="form-control"
-                      value={currentYear}
-                      onChange={e => setCurrentYear(parseInt(e.target.value, 10))}
-                    >
-                      {YEARS.map(y => (
-                        <option key={y} value={y}>{y}</option>
-                      ))}
-                    </select>
-                    <button className="btn btn-secondary btn-sm" onClick={handleNextMonth} title="Next Month">
-                      <ChevronRight size={15} />
-                    </button>
-                    <button className="btn btn-secondary btn-sm" onClick={handleCurrentMonth} style={{ fontSize: '12px', padding: '5px 10px' }}>
-                      Current
-                    </button>
-                  </div>
-                </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
+                {PRESETS.map(p => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={`btn btn-sm ${preset === p.id ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => handlePresetSelect(p.id)}
+                    style={{ fontSize: '12px', padding: '6px 12px' }}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
 
-                {/* 2. Table Mode Filter Tabs */}
-                <div className="filter-field">
-                  <span className="filter-field-label">View Mode</span>
-                  <div className="filter-tabs-toggle">
-                    <button
-                      type="button"
-                      onClick={() => setDetailTab('orders')}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '6px 14px',
-                        borderRadius: 'var(--radius-sm)',
-                        border: 'none',
-                        background: detailTab === 'orders' ? '#ffffff' : 'transparent',
-                        color: detailTab === 'orders' ? 'var(--primary-700)' : 'var(--text-muted)',
-                        fontWeight: detailTab === 'orders' ? 700 : 500,
-                        boxShadow: detailTab === 'orders' ? 'var(--shadow-xs)' : 'none',
-                        cursor: 'pointer',
-                        fontSize: '13px',
-                        transition: 'all 0.15s ease'
-                      }}
-                    >
-                      <ShoppingCart size={14} />
-                      <span>Orders ({orders.length})</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setDetailTab('returns')}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '6px 14px',
-                        borderRadius: 'var(--radius-sm)',
-                        border: 'none',
-                        background: detailTab === 'returns' ? '#ffffff' : 'transparent',
-                        color: detailTab === 'returns' ? '#dc2626' : 'var(--text-muted)',
-                        fontWeight: detailTab === 'returns' ? 700 : 500,
-                        boxShadow: detailTab === 'returns' ? 'var(--shadow-xs)' : 'none',
-                        cursor: 'pointer',
-                        fontSize: '13px',
-                        transition: 'all 0.15s ease'
-                      }}
-                    >
-                      <RotateCcw size={14} />
-                      <span>Returns ({returns.length})</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setDetailTab('both')}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '6px 12px',
-                        borderRadius: 'var(--radius-sm)',
-                        border: 'none',
-                        background: detailTab === 'both' ? '#ffffff' : 'transparent',
-                        color: detailTab === 'both' ? 'var(--primary-700)' : 'var(--text-muted)',
-                        fontWeight: detailTab === 'both' ? 700 : 500,
-                        boxShadow: detailTab === 'both' ? 'var(--shadow-xs)' : 'none',
-                        cursor: 'pointer',
-                        fontSize: '12.5px',
-                        transition: 'all 0.15s ease'
-                      }}
-                    >
-                      <span>Both</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* 3. Search Filter */}
-                <div className="filter-search-row">
-                  <div className="search-input-wrap">
-                    <Search size={15} />
+              {preset === 'custom' && (
+                <form onSubmit={handleCustomDateApply} style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <label style={{ fontSize: '12px', fontWeight: 600 }}>From:</label>
                     <input
-                      type="text"
-                      className="search-input"
-                      placeholder={detailTab === 'returns' ? 'Search returns...' : 'Search orders...'}
-                      value={search}
-                      onChange={e => setSearch(e.target.value)}
+                      type="date"
+                      className="form-control"
+                      value={startDate}
+                      onChange={e => setStartDate(e.target.value)}
+                      required
                     />
                   </div>
-                  {search && (
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => setSearch('')}
-                      title="Clear search"
-                      style={{ minHeight: '36px', padding: '0 12px', fontSize: '12px' }}
-                    >
-                      <X size={13} style={{ marginRight: '4px' }} /> Clear
-                    </button>
-                  )}
-                </div>
-              </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <label style={{ fontSize: '12px', fontWeight: 600 }}>To:</label>
+                    <input
+                      type="date"
+                      className="form-control"
+                      value={endDate}
+                      onChange={e => setEndDate(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <button type="submit" className="btn btn-primary btn-sm">Apply Dates</button>
+                </form>
+              )}
             </div>
           </div>
         )}
 
-        {/* TABLE 1: ORDERS & EARNED INCENTIVES */}
-        {(detailTab === 'orders' || detailTab === 'both') && (
-          <div className="table-card" style={{ marginBottom: detailTab === 'both' ? '24px' : '0' }}>
+        {/* Tab Selector inside Staff View */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '16px' }}>
+          <div style={{ display: 'inline-flex', background: '#f1f5f9', padding: '3px', borderRadius: '8px' }}>
+            <button
+              type="button"
+              className={`btn btn-sm ${staffDetailTab === 'sheet' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setStaffDetailTab('sheet')}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', borderRadius: '6px' }}
+            >
+              <FileSpreadsheet size={14} />
+              <span>Dynamic Sheet View ({staffSheetRows.length} rows)</span>
+            </button>
+            <button
+              type="button"
+              className={`btn btn-sm ${staffDetailTab === 'orders' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setStaffDetailTab('orders')}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', borderRadius: '6px' }}
+            >
+              <ShoppingCart size={14} />
+              <span>Orders ({orders.length})</span>
+            </button>
+            <button
+              type="button"
+              className={`btn btn-sm ${staffDetailTab === 'returns' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setStaffDetailTab('returns')}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', borderRadius: '6px' }}
+            >
+              <RotateCcw size={14} />
+              <span>Returns ({returns.length})</span>
+            </button>
+          </div>
+
+          <div className="search-input-wrap" style={{ maxWidth: '280px' }}>
+            <Search size={14} />
+            <input
+              type="text"
+              className="search-input"
+              placeholder="Search in records..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{ fontSize: '12.5px', height: '34px' }}
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '0 4px' }}
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* TAB 1: DYNAMIC SHEET TABLE FOR STAFF */}
+        {staffDetailTab === 'sheet' && (
+          <div className="table-card">
             <div className="table-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <ShoppingCart size={15} />
+                <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#e0f2fe', color: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Layers size={15} />
                 </div>
-                <strong style={{ fontSize: '14.5px' }}>Orders &amp; Earned Incentives</strong>
-                <span className="badge badge-info" style={{ fontSize: '11px' }}>
-                  {filteredOrders.length} {filteredOrders.length === 1 ? 'Order' : 'Orders'}
-                </span>
+                <strong style={{ fontSize: '14.5px' }}>Dynamic Sheet View &bull; {staff?.name} ({staff?.staff_code})</strong>
               </div>
-              <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                Total Order Incentive: <strong style={{ color: '#d97706' }}>₹{summary.grossIncentive?.toLocaleString()}</strong>
-              </div>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => handleExportSheetCsv(staffSheetRows, `${staff?.staff_code || 'Staff'}_Incentives`)}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', fontSize: '12px' }}
+              >
+                <Download size={13} />
+                <span>Export CSV</span>
+              </button>
             </div>
 
-            {/* Desktop Table View */}
             <div className="responsive-table-view">
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
+              <div className="table-responsive" style={{ maxHeight: '600px', overflowY: 'auto' }}>
+                <table className="data-table" style={{ fontSize: '12.5px', width: '100%' }}>
+                  <thead style={{ position: 'sticky', top: 0, zIndex: 5, background: '#1e293b', color: '#ffffff' }}>
                     <tr>
-                      <th>Order ID</th>
-                      <th>Date</th>
-                      <th>Product</th>
-                      <th>Payment Method</th>
-                      <th>Quantity</th>
-                      <th>Order Amount</th>
-                      <th>Earned Incentive</th>
-                      <th>Action</th>
+                      {staffSheetColumns.map(col => {
+                        const isNumeric = col.type === 'product' || col.type === 'return' || col.type === 'currency';
+                        return (
+                          <th
+                            key={col.key}
+                            style={{
+                              textAlign: isNumeric ? 'right' : 'left',
+                              whiteSpace: 'nowrap',
+                              background: '#1e293b',
+                              color: '#ffffff',
+                              padding: '10px 12px'
+                            }}
+                          >
+                            {col.label}
+                          </th>
+                        );
+                      })}
                     </tr>
                   </thead>
                   <tbody>
                     {loading ? (
                       <tr>
-                        <td colSpan="8" style={{ textAlign: 'center', padding: '32px' }}>Loading orders...</td>
+                        <td colSpan={staffSheetColumns.length || 8} style={{ textAlign: 'center', padding: '32px' }}>
+                          Loading staff sheet records...
+                        </td>
                       </tr>
-                    ) : filteredOrders.length === 0 ? (
+                    ) : staffSheetRows.length === 0 ? (
                       <tr>
-                        <td colSpan="8">
-                          <div className="empty-state">
-                            <div className="empty-state-icon"><ShoppingCart size={24} /></div>
-                            <div className="empty-state-title">No orders found</div>
-                            <div className="empty-state-desc">This staff member has no eligible orders in {currentMonthName} {currentYear}.</div>
-                          </div>
+                        <td colSpan={staffSheetColumns.length || 8} style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
+                          No sheet rows found for {staff?.name} in {periodLabel}.
+                        </td>
+                      </tr>
+                    ) : (
+                      staffSheetRows.map((r, idx) => (
+                        <tr key={`${r.date}_${idx}`}>
+                          {staffSheetColumns.map(col => {
+                            if (col.key === 'date') return <td key={col.key} style={{ fontWeight: 600 }}>{r.date}</td>;
+                            if (col.key === 'employee_id') return <td key={col.key}><span className="badge badge-neutral">{r.employee_id}</span></td>;
+                            if (col.key === 'staff_name') return <td key={col.key}><strong>{r.staff_name}</strong></td>;
+                            if (col.type === 'product') {
+                              const qty = r.quantities?.[col.key] || 0;
+                              return (
+                                <td key={col.key} style={{ textAlign: 'right', fontWeight: qty > 0 ? 600 : 400, color: qty > 0 ? '#1e293b' : '#94a3b8' }}>
+                                  {qty > 0 ? qty : '—'}
+                                </td>
+                              );
+                            }
+                            if (col.key === 'incentive') {
+                              return (
+                                <td key={col.key} style={{ textAlign: 'right', fontWeight: 600, color: r.incentive > 0 ? '#059669' : '#94a3b8' }}>
+                                  {r.incentive > 0 ? `₹${Number(r.incentive).toLocaleString()}` : '₹0'}
+                                </td>
+                              );
+                            }
+                            if (col.type === 'return') {
+                              const retQty = r.returns?.[col.key] || 0;
+                              return (
+                                <td key={col.key} style={{ textAlign: 'right', fontWeight: retQty > 0 ? 700 : 400, color: retQty > 0 ? '#dc2626' : '#94a3b8' }}>
+                                  {retQty > 0 ? retQty : '—'}
+                                </td>
+                              );
+                            }
+                            if (col.key === 'return_deductions') {
+                              return (
+                                <td key={col.key} style={{ textAlign: 'right', fontWeight: 600, color: r.return_deductions > 0 ? '#dc2626' : '#94a3b8' }}>
+                                  {r.return_deductions > 0 ? `-₹${Number(r.return_deductions).toLocaleString()}` : '₹0'}
+                                </td>
+                              );
+                            }
+                            if (col.key === 'total_net') {
+                              return (
+                                <td key={col.key} style={{ textAlign: 'right', fontWeight: 700, color: '#15803d' }}>
+                                  ₹{Number(r.total_net || 0).toLocaleString()}
+                                </td>
+                              );
+                            }
+                            return <td key={col.key}>—</td>;
+                          })}
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                  {staffSheetRows.length > 0 && (
+                    <tfoot>
+                      <tr style={{ background: '#f8fafc', fontWeight: 700, position: 'sticky', bottom: 0, zIndex: 4, borderTop: '2px solid #cbd5e1' }}>
+                        {staffSheetColumns.map((col, idx) => {
+                          if (idx === 0) return <td key={col.key}>Total ({staffSheetRows.length} rows)</td>;
+                          if (col.key === 'employee_id' || col.key === 'staff_name') return <td key={col.key}></td>;
+                          if (col.type === 'product' || col.type === 'return') {
+                            const val = staffSheetTotals[col.key] || 0;
+                            return (
+                              <td key={col.key} style={{ textAlign: 'right', color: col.type === 'return' && val > 0 ? '#dc2626' : 'inherit' }}>
+                                {val > 0 ? val : '—'}
+                              </td>
+                            );
+                          }
+                          if (col.key === 'incentive') {
+                            return (
+                              <td key={col.key} style={{ textAlign: 'right', color: '#059669' }}>
+                                ₹{staffSheetTotals.incentive?.toLocaleString()}
+                              </td>
+                            );
+                          }
+                          if (col.key === 'return_deductions') {
+                            return (
+                              <td key={col.key} style={{ textAlign: 'right', color: '#dc2626' }}>
+                                {staffSheetTotals.return_deductions > 0 ? `-₹${staffSheetTotals.return_deductions?.toLocaleString()}` : '₹0'}
+                              </td>
+                            );
+                          }
+                          if (col.key === 'total_net') {
+                            return (
+                              <td key={col.key} style={{ textAlign: 'right', color: '#15803d', fontSize: '13.5px' }}>
+                                ₹{staffSheetTotals.total_net?.toLocaleString()}
+                              </td>
+                            );
+                          }
+                          return <td key={col.key}></td>;
+                        })}
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 2: ORDERS LIST FOR AUDIT */}
+        {staffDetailTab === 'orders' && (
+          <div className="table-card">
+            <div className="table-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <strong>Orders Placed ({filteredOrders.length})</strong>
+            </div>
+            <div className="responsive-table-view">
+              <div className="table-responsive">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Order #</th>
+                      <th>Date</th>
+                      <th>Product</th>
+                      <th>Payment</th>
+                      <th style={{ textAlign: 'right' }}>Qty</th>
+                      <th style={{ textAlign: 'right' }}>Order Total</th>
+                      <th style={{ textAlign: 'right' }}>Incentive</th>
+                      <th style={{ textAlign: 'center', width: '80px' }}>Audit</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredOrders.length === 0 ? (
+                      <tr>
+                        <td colSpan="8" style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
+                          No orders found matching criteria.
                         </td>
                       </tr>
                     ) : (
                       filteredOrders.map(o => (
-                        <tr
-                          key={o.id}
-                          className="table-row-clickable"
-                          onClick={() => setSelectedOrderModal(o)}
-                        >
-                          <td>
-                            <strong style={{ color: 'var(--primary-700)' }}>{o.order_number}</strong>
-                          </td>
+                        <tr key={o.id}>
+                          <td><strong style={{ fontFamily: 'monospace' }}>{o.order_number}</strong></td>
                           <td>{o.order_date}</td>
-                          <td>
-                            <div><strong>{o.product_name}</strong></div>
-                            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                              {o.product_code} (₹{o.unit_price}/unit)
-                            </div>
-                          </td>
+                          <td>{o.product_name}</td>
                           <td>
                             <span className={`badge ${o.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`}>
                               {o.payment_method}
                             </span>
                           </td>
-                          <td>
-                            <strong>{o.quantity}</strong>
-                            {o.returned_quantity > 0 && (
-                              <span style={{ fontSize: '11px', color: 'var(--danger-text)', marginLeft: '4px' }}>
-                                (-{o.returned_quantity} ret.)
-                              </span>
-                            )}
+                          <td style={{ textAlign: 'right' }}>{o.quantity}</td>
+                          <td style={{ textAlign: 'right' }}>₹{Number(o.total_amount).toLocaleString()}</td>
+                          <td style={{ textAlign: 'right', color: '#059669', fontWeight: 700 }}>
+                            ₹{Number(o.order_incentive || o.incentive_amount || 0).toLocaleString()}
                           </td>
-                          <td>
-                            ₹{Number(o.total_amount).toLocaleString()}
-                          </td>
-                          <td style={{ color: '#d97706', fontWeight: 700 }}>
-                            ₹{o.order_incentive}
-                          </td>
-                          <td>
+                          <td style={{ textAlign: 'center' }}>
                             <button
                               type="button"
                               className="btn btn-secondary btn-sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedOrderModal(o);
-                              }}
-                              title="View Complete Order Details"
+                              onClick={() => setSelectedOrderModal(o)}
+                              title="Audit Order Details"
                             >
                               <Eye size={13} />
                             </button>
@@ -692,149 +943,49 @@ export default function IncentiveRecords() {
                 </table>
               </div>
             </div>
-
-            {/* Mobile Cards View */}
-            <div className="responsive-card-view">
-              {loading ? (
-                <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>Loading orders...</div>
-              ) : filteredOrders.length === 0 ? (
-                <div className="empty-state" style={{ padding: '24px' }}>
-                  <div className="empty-state-icon"><ShoppingCart size={22} /></div>
-                  <div className="empty-state-title">No orders found</div>
-                  <div className="empty-state-desc">No orders found for this period.</div>
-                </div>
-              ) : (
-                filteredOrders.map(o => (
-                  <div
-                    key={o.id}
-                    className="mobile-data-card clickable"
-                    onClick={() => setSelectedOrderModal(o)}
-                  >
-                    <div className="mobile-card-header">
-                      <div className="mobile-card-title-group">
-                        <span className="mobile-card-title">{o.order_number}</span>
-                        <span className="mobile-card-subtitle">{o.order_date}</span>
-                      </div>
-                      <span className={`badge ${o.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`}>
-                        {o.payment_method}
-                      </span>
-                    </div>
-
-                    <div className="mobile-card-grid">
-                      <div className="mobile-card-item">
-                        <span className="mobile-card-label">Product</span>
-                        <span className="mobile-card-val">{o.product_name}</span>
-                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>₹{o.unit_price}/unit</span>
-                      </div>
-
-                      <div className="mobile-card-item">
-                        <span className="mobile-card-label">Quantity</span>
-                        <span className="mobile-card-val">
-                          {o.quantity} units {o.returned_quantity > 0 && <span style={{ color: '#dc2626' }}>(-{o.returned_quantity})</span>}
-                        </span>
-                      </div>
-
-                      <div className="mobile-card-item">
-                        <span className="mobile-card-label">Order Total</span>
-                        <span className="mobile-card-val">₹{Number(o.total_amount).toLocaleString()}</span>
-                      </div>
-
-                      <div className="mobile-card-item">
-                        <span className="mobile-card-label">Earned Incentive</span>
-                        <span className="mobile-card-val accent" style={{ fontSize: '14px' }}>₹{o.order_incentive}</span>
-                      </div>
-                    </div>
-
-                    <div className="mobile-card-footer" onClick={e => e.stopPropagation()}>
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => setSelectedOrderModal(o)}
-                        style={{ width: '100%', justifyContent: 'center' }}
-                      >
-                        <Eye size={14} />
-                        <span>View Order Details</span>
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
           </div>
         )}
 
-        {/* TABLE 2: PRODUCT RETURNS & INCENTIVE ADJUSTMENTS */}
-        {(detailTab === 'returns' || detailTab === 'both') && (
+        {/* TAB 3: RETURNS LIST FOR AUDIT */}
+        {staffDetailTab === 'returns' && (
           <div className="table-card">
-            <div className="table-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#fef2f2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <RotateCcw size={15} />
-                </div>
-                <strong style={{ fontSize: '14.5px' }}>Product Returns &amp; Incentive Adjustments</strong>
-                <span className="badge badge-danger" style={{ fontSize: '11px' }}>
-                  {filteredReturns.length} {filteredReturns.length === 1 ? 'Return' : 'Returns'}
-                </span>
-              </div>
-              <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                Total Return Adjustments: <strong style={{ color: '#dc2626' }}>{summary.returnAdjustments > 0 ? `-₹${summary.returnAdjustments?.toLocaleString()}` : '₹0'}</strong>
-              </div>
+            <div className="table-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <strong>Returns &amp; Reversed Incentives ({filteredReturns.length})</strong>
             </div>
-
-            {/* Desktop Table View */}
             <div className="responsive-table-view">
               <div className="table-responsive">
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th>Return ID</th>
+                      <th>Return #</th>
                       <th>Return Date</th>
                       <th>Product</th>
                       <th>Payment Method</th>
-                      <th style={{ textAlign: 'right' }}>Returned Quantity</th>
-                      <th style={{ textAlign: 'right' }}>Incentive Reversed</th>
+                      <th style={{ textAlign: 'right' }}>Returned Qty</th>
+                      <th style={{ textAlign: 'right' }}>Reversed Incentive</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {loading ? (
+                    {filteredReturns.length === 0 ? (
                       <tr>
-                        <td colSpan="6" style={{ textAlign: 'center', padding: '32px' }}>Loading return records...</td>
-                      </tr>
-                    ) : filteredReturns.length === 0 ? (
-                      <tr>
-                        <td colSpan="6">
-                          <div className="empty-state">
-                            <div className="empty-state-icon" style={{ background: '#fef2f2', color: '#dc2626' }}>
-                              <RotateCcw size={24} />
-                            </div>
-                            <div className="empty-state-title">No product returns</div>
-                            <div className="empty-state-desc">No returns recorded against this staff member in {currentMonthName} {currentYear}.</div>
-                          </div>
+                        <td colSpan="6" style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
+                          No returns recorded in this period.
                         </td>
                       </tr>
                     ) : (
                       filteredReturns.map(r => (
                         <tr key={r.id}>
-                          <td>
-                            <strong style={{ color: '#dc2626', fontFamily: 'monospace', fontSize: '13px' }}>
-                              {r.return_number}
-                            </strong>
-                          </td>
+                          <td><strong style={{ color: '#dc2626', fontFamily: 'monospace' }}>{r.return_number}</strong></td>
                           <td>{r.return_date}</td>
-                          <td>
-                            <div><strong>{r.product_name}</strong></div>
-                            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{r.product_code}</div>
-                          </td>
+                          <td>{r.product_name}</td>
                           <td>
                             <span className={`badge ${r.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`}>
                               {r.payment_method || 'Prepaid'}
                             </span>
                           </td>
-                          <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                            {r.return_quantity} units
-                          </td>
-                          <td style={{ textAlign: 'right', color: '#dc2626', fontWeight: 700, fontSize: '14px' }}>
-                            -₹{Number(r.reversed_incentive).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          <td style={{ textAlign: 'right', fontWeight: 600 }}>{r.return_quantity}</td>
+                          <td style={{ textAlign: 'right', color: '#dc2626', fontWeight: 700 }}>
+                            -₹{Number(r.reversed_incentive).toLocaleString()}
                           </td>
                         </tr>
                       ))
@@ -843,177 +994,46 @@ export default function IncentiveRecords() {
                 </table>
               </div>
             </div>
-
-            {/* Mobile Cards View */}
-            <div className="responsive-card-view">
-              {loading ? (
-                <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>Loading return records...</div>
-              ) : filteredReturns.length === 0 ? (
-                <div className="empty-state" style={{ padding: '24px' }}>
-                  <div className="empty-state-icon" style={{ background: '#fef2f2', color: '#dc2626' }}><RotateCcw size={22} /></div>
-                  <div className="empty-state-title">No product returns</div>
-                  <div className="empty-state-desc">No returns recorded in this period.</div>
-                </div>
-              ) : (
-                filteredReturns.map(r => (
-                  <div key={r.id} className="mobile-data-card">
-                    <div className="mobile-card-header">
-                      <div className="mobile-card-title-group">
-                        <span className="mobile-card-title" style={{ color: '#dc2626' }}>{r.return_number}</span>
-                        <span className="mobile-card-subtitle">{r.return_date}</span>
-                      </div>
-                      <span className={`badge ${r.payment_method === 'Prepaid' ? 'badge-success' : 'badge-neutral'}`}>
-                        {r.payment_method || 'Prepaid'}
-                      </span>
-                    </div>
-
-                    <div className="mobile-card-grid">
-                      <div className="mobile-card-item">
-                        <span className="mobile-card-label">Product</span>
-                        <span className="mobile-card-val">{r.product_name}</span>
-                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{r.product_code}</span>
-                      </div>
-
-                      <div className="mobile-card-item">
-                        <span className="mobile-card-label">Returned Qty</span>
-                        <span className="mobile-card-val danger">{r.return_quantity} units</span>
-                      </div>
-
-                      <div className="mobile-card-item full-width">
-                        <span className="mobile-card-label">Reversed Incentive</span>
-                        <span className="mobile-card-val danger" style={{ fontSize: '14px' }}>
-                          -₹{Number(r.reversed_incentive).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
           </div>
         )}
 
-        {/* Reconciliation Summary Bar */}
-        {(orders.length > 0 || returns.length > 0) && (
-          <div style={{ marginTop: '16px', padding: '14px 20px', background: '#f8fafc', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: 'var(--text-muted)' }}>
-              <CheckCircle2 size={16} color="#16a34a" />
-              <span>Reconciliation: <strong>{orders.length} orders</strong> earned gross incentives, balanced against <strong>{returns.length} return adjustments</strong>.</span>
-            </div>
-            <div style={{ fontSize: '13px' }}>
-              Gross Earned: <strong>₹{summary.grossIncentive?.toLocaleString()}</strong> &minus; Return Deductions: <strong style={{ color: '#dc2626' }}>₹{summary.returnAdjustments?.toLocaleString()}</strong> = Net Incentive: <strong style={{ color: '#16a34a', fontSize: '15px' }}>₹{summary.netIncentive?.toLocaleString()}</strong>
-            </div>
-          </div>
-        )}
-
-        {/* Complete Order Details Modal */}
+        {/* Order Audit Modal */}
         {selectedOrderModal && (
           <div className="modal-overlay">
-            <div
-              className="modal-dialog"
-              style={{
-                width: 'min(820px, 96vw)',
-                maxWidth: '820px',
-                maxHeight: '92vh',
-                display: 'flex',
-                flexDirection: 'column'
-              }}
-            >
+            <div className="modal-dialog" style={{ width: 'min(760px, 95vw)', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
               <div className="modal-header">
                 <h3 className="modal-title">Order Audit: {selectedOrderModal.order_number}</h3>
                 <button className="modal-close" onClick={() => setSelectedOrderModal(null)}>✕</button>
               </div>
-              <div className="modal-body" style={{ padding: '20px 24px', overflowY: 'auto', flex: 1 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+              <div className="modal-body" style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '16px' }}>
                   <div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Order Details</div>
-                    <div style={{ fontWeight: 700, fontSize: '15px' }}>{selectedOrderModal.order_number}</div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Date: {selectedOrderModal.order_date}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Order Date</div>
+                    <div style={{ fontWeight: 600 }}>{selectedOrderModal.order_date}</div>
                   </div>
-
                   <div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Product Details</div>
-                    <div style={{ fontWeight: 700, fontSize: '15px' }}>{selectedOrderModal.product_name}</div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>SKU: {selectedOrderModal.product_code}</div>
-                    <div style={{ fontSize: '12px' }}>
-                      Ordered: <strong>{selectedOrderModal.quantity} units</strong> @ ₹{selectedOrderModal.unit_price}
-                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Product</div>
+                    <div style={{ fontWeight: 600 }}>{selectedOrderModal.product_name} ({selectedOrderModal.product_code})</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Quantity &amp; Amount</div>
+                    <div style={{ fontWeight: 600 }}>{selectedOrderModal.quantity} units &bull; ₹{Number(selectedOrderModal.total_amount).toLocaleString()}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Payment Method</div>
+                    <div style={{ fontWeight: 600 }}>{selectedOrderModal.payment_method}</div>
                   </div>
                 </div>
 
-                <div className="preview-box" style={{ marginBottom: '16px' }}>
-                  <div className="preview-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
-                    <div>
-                      <div className="preview-item-label">Order Total</div>
-                      <div className="preview-item-val" style={{ color: 'var(--primary-700)' }}>
-                        ₹{Number(selectedOrderModal.total_amount).toLocaleString()}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="preview-item-label">Payment</div>
-                      <div style={{ fontWeight: 700 }}>{selectedOrderModal.payment_method}</div>
-                    </div>
-                    <div>
-                      <div className="preview-item-label">Gross Incentive</div>
-                      <div className="preview-item-val" style={{ color: '#d97706' }}>
-                        ₹{selectedOrderModal.order_incentive}
-                      </div>
-                      <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                        {selectedOrderModal.incentive_type === 'fixed'
-                          ? `Fixed ₹${selectedOrderModal.incentive_rate}`
-                          : `${selectedOrderModal.incentive_rate}%`} ({selectedOrderModal.incentive_basis})
-                      </div>
-                    </div>
-                    <div>
-                      <div className="preview-item-label">Net Incentive</div>
-                      <div className="preview-item-val" style={{ color: '#16a34a' }}>
-                        ₹{selectedOrderModal.net_incentive}
-                      </div>
+                <div style={{ background: '#ecfdf5', padding: '14px 18px', borderRadius: '8px', border: '1px solid #bbf7d0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <span style={{ fontSize: '12px', color: '#166534', fontWeight: 600 }}>Earned Incentive:</span>
+                    <div style={{ fontSize: '20px', fontWeight: 800, color: '#15803d' }}>
+                      ₹{Number(selectedOrderModal.order_incentive || selectedOrderModal.incentive_amount || 0).toLocaleString()}
                     </div>
                   </div>
+                  <span className="badge badge-success">Verified</span>
                 </div>
-
-                {/* Return Details breakdown if returns exist */}
-                {selectedOrderModal.returns && selectedOrderModal.returns.length > 0 ? (
-                  <div style={{ marginTop: '16px', background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: 'var(--radius-md)', padding: '12px 16px' }}>
-                    <div style={{ fontSize: '12.5px', fontWeight: 700, color: '#b91c1c', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <RotateCcw size={14} color="#dc2626" />
-                      <span>Associated Return Adjustments ({selectedOrderModal.returns.length}):</span>
-                    </div>
-                    <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-                      <thead>
-                        <tr style={{ borderBottom: '1px solid #fecaca', textAlign: 'left', color: '#991b1b' }}>
-                          <th style={{ padding: '4px 6px' }}>Return #</th>
-                          <th style={{ padding: '4px 6px' }}>Return Date</th>
-                          <th style={{ padding: '4px 6px' }}>Returned Qty</th>
-                          <th style={{ padding: '4px 6px' }}>Reversed Incentive</th>
-                          <th style={{ padding: '4px 6px' }}>Reason</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedOrderModal.returns.map(ret => (
-                          <tr key={ret.id} style={{ borderBottom: '1px solid #fee2e2' }}>
-                            <td style={{ padding: '6px 6px', fontWeight: 600 }}>{ret.return_number}</td>
-                            <td style={{ padding: '6px 6px' }}>{ret.return_date}</td>
-                            <td style={{ padding: '6px 6px', fontWeight: 600 }}>{ret.return_quantity} units</td>
-                            <td style={{ padding: '6px 6px', color: '#dc2626', fontWeight: 700 }}>-₹{ret.reversed_incentive}</td>
-                            <td style={{ padding: '6px 6px' }}>{ret.return_reason}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', background: '#f8fafc', padding: '10px 14px', borderRadius: 'var(--radius-sm)' }}>
-                    No returns have been recorded against this order.
-                  </div>
-                )}
-
-                {selectedOrderModal.remarks && (
-                  <div style={{ marginTop: '14px', fontSize: '12px', background: '#f8fafc', padding: '8px 12px', borderRadius: 'var(--radius-sm)' }}>
-                    <strong>Remarks:</strong> {selectedOrderModal.remarks}
-                  </div>
-                )}
               </div>
               <div className="modal-footer">
                 <button className="btn btn-secondary" onClick={() => setSelectedOrderModal(null)}>Close</button>
@@ -1021,18 +1041,16 @@ export default function IncentiveRecords() {
             </div>
           </div>
         )}
-
-
       </div>
     );
   }
 
   // ==========================================
-  // RENDER 2: MONTHLY STAFF INCENTIVE LIST
+  // RENDER 2: OVERALL TEAM INCENTIVE VIEW
   // ==========================================
   return (
     <div className="page-body">
-      {/* Header with Month/Year Period Picker */}
+      {/* Header */}
       <div className="page-header" style={{ marginBottom: '16px', alignItems: 'flex-start' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           <div
@@ -1040,12 +1058,12 @@ export default function IncentiveRecords() {
               width: '46px',
               height: '46px',
               borderRadius: '12px',
-              background: 'linear-gradient(135deg, var(--primary-600), #4f46e5)',
+              background: 'linear-gradient(135deg, #059669, #10b981)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               color: 'white',
-              boxShadow: '0 4px 12px rgba(79, 70, 229, 0.22)',
+              boxShadow: '0 4px 12px rgba(16, 185, 129, 0.25)',
               flexShrink: 0
             }}
           >
@@ -1055,83 +1073,98 @@ export default function IncentiveRecords() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <h2 className="page-title" style={{ margin: 0, fontSize: '22px' }}>Incentive Records</h2>
               <span className="badge badge-info" style={{ fontSize: '11px', padding: '3px 8px' }}>
-                Monthly Staff Summary
+                {periodLabel}
               </span>
+            </div>
+            <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+              Live Dynamic Incentives synchronized with Sales Reports
             </div>
           </div>
         </div>
 
+        {/* Action Toolbar */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => setShowImportModal(true)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', fontWeight: 600 }}
+          >
+            <FileSpreadsheet size={15} />
+            <span>Import Orders (Excel)</span>
+          </button>
+
           <button
             type="button"
             className={`btn ${showFilters ? 'btn-primary' : 'btn-secondary'} btn-sm`}
             onClick={() => setShowFilters(!showFilters)}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '7px',
-              padding: '8px 14px',
-              fontWeight: 600,
-              fontSize: '12.5px'
-            }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '8px 14px', fontWeight: 600, fontSize: '12.5px' }}
           >
             <Filter size={14} />
             <span>Filtration</span>
-            {search.trim() && (
-              <span
-                style={{
-                  background: showFilters ? '#ffffff' : 'var(--primary-600)',
-                  color: showFilters ? 'var(--primary-600)' : '#ffffff',
-                  borderRadius: '10px',
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  padding: '1px 6px',
-                  marginLeft: '2px'
-                }}
-              >
-                1
-              </span>
-            )}
-            <ChevronDown
-              size={14}
-              style={{
-                transform: showFilters ? 'rotate(180deg)' : 'none',
-                transition: 'transform 0.2s ease'
-              }}
-            />
+            <ChevronDown size={14} style={{ transform: showFilters ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }} />
           </button>
 
           <button
+            type="button"
             className="btn btn-secondary btn-sm"
-            onClick={handleExportMonthlyCsv}
-            disabled={filteredStaff.length === 0}
+            onClick={() => handleExportSheetCsv(filteredSheetRows, 'All_Staff_Incentive_Sheet')}
+            disabled={filteredSheetRows.length === 0}
             style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px' }}
+            title="Export Sheet Matrix as CSV"
           >
             <Download size={14} />
-            <span>Export CSV</span>
+            <span>Export Sheet (.csv)</span>
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => setShowClearConfirm(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', color: '#dc2626', borderColor: '#fca5a5' }}
+            title="Clear all orders and returns"
+          >
+            <Trash2 size={14} />
+            <span>Clear Orders &amp; Returns</span>
           </button>
         </div>
       </div>
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div style={{ padding: '10px 16px', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '8px', color: '#065f46', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+          <CheckCircle2 size={16} color="#059669" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Error Message */}
+      {error && (
+        <div style={{ padding: '10px 16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#991b1b', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+          <AlertCircle size={16} color="#dc2626" />
+          <span>{error}</span>
+        </div>
+      )}
 
       {/* Real-time Calculation Flow Strip */}
       <div className="calc-breakdown-bar">
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)', fontWeight: 600 }}>
           <Sparkles size={15} color="var(--primary-600)" />
-          <span>{currentMonthName} {currentYear} Team Total:</span>
+          <span>Team Incentive Calculation:</span>
         </div>
         <div className="calc-step">
           <span style={{ color: 'var(--text-muted)' }}>Total Incentive:</span>
-          <strong style={{ color: '#d97706' }}>₹{totals.total_incentive?.toLocaleString() ?? 0}</strong>
+          <strong style={{ color: '#d97706' }}>₹{Number(summary.earnedIncentive || summary.grossIncentive || 0).toLocaleString()}</strong>
         </div>
         <span className="calc-operator">&minus;</span>
         <div className="calc-step">
-          <span style={{ color: 'var(--text-muted)' }}>Return Adjustments:</span>
-          <strong style={{ color: '#dc2626' }}>₹{totals.return_adjustments?.toLocaleString() ?? 0}</strong>
+          <span style={{ color: 'var(--text-muted)' }}>Return Deductions:</span>
+          <strong style={{ color: '#dc2626' }}>₹{Number(summary.returnAdjustments || summary.reversedIncentive || 0).toLocaleString()}</strong>
         </div>
         <span className="calc-operator">=</span>
         <div className="calc-step" style={{ background: '#ecfdf5', padding: '3px 10px', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
-          <span style={{ color: '#166534', fontWeight: 600 }}>Net Incentive:</span>
-          <strong style={{ color: '#16a34a', fontSize: '14px' }}>₹{totals.net_incentive?.toLocaleString() ?? 0}</strong>
+          <span style={{ color: '#166534', fontWeight: 600 }}>Net Payable:</span>
+          <strong style={{ color: '#16a34a', fontSize: '14px' }}>₹{Number(summary.netIncentive || 0).toLocaleString()}</strong>
         </div>
       </div>
 
@@ -1145,351 +1178,526 @@ export default function IncentiveRecords() {
             </div>
           </div>
           <div>
-            <div className="kpi-value">{totals.total_orders ?? 0}</div>
-            <div className="kpi-subtext">Orders placed across {totals.total_staff} staff</div>
+            <div className="kpi-value">{summary.totalOrders || 0}</div>
+            <div className="kpi-subtext">Across {staffList.length} sales staff members</div>
           </div>
         </div>
 
         <div className="kpi-card-premium" style={{ '--card-accent': '#f59e0b' }}>
           <div className="kpi-header">
-            <span className="kpi-title">Total Incentive</span>
+            <span className="kpi-title">Gross Incentive</span>
             <div className="kpi-icon-wrap" style={{ background: '#fef3c7', color: '#d97706' }}>
               <TrendingUp size={19} />
             </div>
           </div>
           <div>
             <div className="kpi-value" style={{ color: '#b45309' }}>
-              ₹{totals.total_incentive?.toLocaleString() ?? 0}
+              ₹{Number(summary.earnedIncentive || summary.grossIncentive || 0).toLocaleString()}
             </div>
-            <div className="kpi-subtext">Gross staff incentive earned</div>
+            <div className="kpi-subtext">Earned from valid sales orders</div>
           </div>
         </div>
 
         <div className="kpi-card-premium" style={{ '--card-accent': '#ef4444' }}>
           <div className="kpi-header">
-            <span className="kpi-title">Return Adjustments</span>
+            <span className="kpi-title">Return Deductions</span>
             <div className="kpi-icon-wrap" style={{ background: '#fef2f2', color: '#dc2626' }}>
               <RotateCcw size={19} />
             </div>
           </div>
           <div>
             <div className="kpi-value" style={{ color: '#dc2626' }}>
-              {totals.return_adjustments > 0 ? `-₹${totals.return_adjustments?.toLocaleString()}` : '₹0'}
+              {(summary.returnAdjustments || summary.reversedIncentive) > 0
+                ? `-₹${Number(summary.returnAdjustments || summary.reversedIncentive).toLocaleString()}`
+                : '₹0'}
             </div>
-            <div className="kpi-subtext">Returns against {currentMonthName} orders</div>
+            <div className="kpi-subtext">Incentive reversed on returned orders</div>
           </div>
         </div>
 
         <div className="kpi-card-premium kpi-card-hero">
           <div className="kpi-header">
-            <span className="kpi-title" style={{ color: '#166534', fontWeight: 800 }}>Net Incentive</span>
+            <span className="kpi-title" style={{ color: '#166534', fontWeight: 800 }}>Net Team Incentive</span>
             <div className="kpi-icon-wrap" style={{ background: '#dcfce7', color: '#16a34a' }}>
               <CheckCircle2 size={20} />
             </div>
           </div>
           <div>
             <div className="kpi-value" style={{ color: '#15803d', fontSize: '28px' }}>
-              ₹{totals.net_incentive?.toLocaleString() ?? 0}
+              ₹{Number(summary.netIncentive || 0).toLocaleString()}
             </div>
             <div className="kpi-subtext" style={{ color: '#166534' }}>Net payable team incentive</div>
           </div>
         </div>
       </div>
 
-      {/* Compact Applied Filtration Pill Bar (when collapsed) */}
-      {!showFilters && (
-        <div className="filter-pill-bar">
-          <div className="filter-pill-items">
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontWeight: 600, color: 'var(--text-secondary)' }}>
-              <Filter size={13} color="var(--primary-600)" /> Active Filters:
-            </span>
-            <span className="badge badge-info" style={{ fontSize: '11.5px' }}>
-              Period: {currentMonthName} {currentYear}
-            </span>
-            {search.trim() && (
-              <span className="badge badge-neutral" style={{ fontSize: '11.5px' }}>
-                Search: "{search.trim()}"
-              </span>
-            )}
-          </div>
-          <div className="filter-pill-actions">
-            <button
-              type="button"
-              className="btn btn-sm btn-outline"
-              onClick={() => setShowFilters(true)}
-              style={{ fontSize: '11.5px', padding: '5px 12px', height: 'auto' }}
-            >
-              Change Filters ▾
-            </button>
-            {search.trim() && (
-              <button
-                type="button"
-                className="btn btn-sm btn-ghost"
-                onClick={() => setSearch('')}
-                style={{ fontSize: '11.5px', padding: '5px 10px', color: '#dc2626', height: 'auto' }}
-              >
-                <X size={12} style={{ marginRight: '4px' }} /> Clear Search
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Dedicated Filtration Section Card */}
+      {/* Filtration Card */}
       {showFilters && (
-        <div className="filter-card">
+        <div className="filter-card" style={{ marginBottom: '22px' }}>
           <div className="filter-card-header">
             <div className="filter-title-wrap">
-              <div className="filter-icon-box">
-                <Filter size={15} />
-              </div>
+              <div className="filter-icon-box"><Filter size={15} /></div>
               <strong className="filter-title">Filtration</strong>
-              <span className="filter-desc">
-                (Period selection and staff search filtration)
-              </span>
+              <span className="filter-desc">(Filter by reporting period presets or custom date range)</span>
             </div>
-            <button
-              type="button"
-              className="filter-hide-btn"
-              onClick={() => setShowFilters(false)}
-            >
+            <button type="button" className="filter-hide-btn" onClick={() => setShowFilters(false)}>
               <X size={14} /> Hide
             </button>
           </div>
 
           <div className="filter-body">
-            <div className="filter-row">
-              {/* 1. Period Controls */}
-              <div className="filter-field">
-                <span className="filter-field-label">Period</span>
-                <div className="filter-month-nav">
-                  <button className="btn btn-secondary btn-sm" onClick={handlePrevMonth} title="Previous Month">
-                    <ChevronLeft size={15} />
-                  </button>
-                  <select
-                    className="form-control"
-                    value={currentMonth}
-                    onChange={e => setCurrentMonth(parseInt(e.target.value, 10))}
-                  >
-                    {MONTHS.map(m => (
-                      <option key={m.value} value={m.value}>{m.label}</option>
-                    ))}
-                  </select>
-                  <select
-                    className="form-control"
-                    value={currentYear}
-                    onChange={e => setCurrentYear(parseInt(e.target.value, 10))}
-                  >
-                    {YEARS.map(y => (
-                      <option key={y} value={y}>{y}</option>
-                    ))}
-                  </select>
-                  <button className="btn btn-secondary btn-sm" onClick={handleNextMonth} title="Next Month">
-                    <ChevronRight size={15} />
-                  </button>
-                  <button className="btn btn-secondary btn-sm" onClick={handleCurrentMonth} style={{ fontSize: '12px', padding: '5px 10px' }}>
-                    Current
-                  </button>
-                </div>
-              </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
+              {PRESETS.map(p => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={`btn btn-sm ${preset === p.id ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => handlePresetSelect(p.id)}
+                  style={{ fontSize: '12px', padding: '6px 12px' }}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
 
-              {/* 2. Staff Search */}
-              <div className="filter-search-row">
-                <div className="search-input-wrap">
-                  <Search size={15} />
+            {preset === 'custom' && (
+              <form onSubmit={handleCustomDateApply} style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 600 }}>Start Date:</label>
                   <input
-                    type="text"
-                    className="search-input"
-                    placeholder="Search staff by name or Staff ID..."
-                    value={search}
-                    onChange={e => setSearch(e.target.value)}
+                    type="date"
+                    className="form-control"
+                    value={startDate}
+                    onChange={e => setStartDate(e.target.value)}
+                    required
                   />
                 </div>
-                {search && (
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => setSearch('')}
-                    title="Clear search"
-                    style={{ minHeight: '36px', padding: '0 12px', fontSize: '12px' }}
-                  >
-                    <X size={13} style={{ marginRight: '4px' }} /> Clear
-                  </button>
-                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 600 }}>End Date:</label>
+                  <input
+                    type="date"
+                    className="form-control"
+                    value={endDate}
+                    onChange={e => setEndDate(e.target.value)}
+                    required
+                  />
+                </div>
+                <button type="submit" className="btn btn-primary btn-sm">Apply Custom Range</button>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* View Mode Navigation Tabs & Search */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+        <div style={{ display: 'inline-flex', background: '#f1f5f9', padding: '3px', borderRadius: '8px' }}>
+          <button
+            type="button"
+            className={`btn btn-sm ${activeTab === 'sheet' ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => setActiveTab('sheet')}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', borderRadius: '6px' }}
+          >
+            <FileSpreadsheet size={15} />
+            <span>Dynamic Sheet Matrix ({filteredSheetRows.length} rows)</span>
+          </button>
+          <button
+            type="button"
+            className={`btn btn-sm ${activeTab === 'staff' ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => setActiveTab('staff')}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', borderRadius: '6px' }}
+          >
+            <User size={15} />
+            <span>Staff Ranking &amp; Audit ({filteredStaffList.length} staff)</span>
+          </button>
+        </div>
+
+        <div className="search-input-wrap" style={{ maxWidth: '320px', width: '100%' }}>
+          <Search size={14} />
+          <input
+            type="text"
+            className="search-input"
+            placeholder="Search by staff name, Employee ID, date..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ fontSize: '12.5px', height: '36px' }}
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '0 6px' }}
+              title="Clear search"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* TAB 1: DYNAMIC SHEET MATRIX VIEW */}
+      {activeTab === 'sheet' && (
+        <div className="table-card">
+          <div className="table-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#ecfdf5', color: '#047857', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <FileSpreadsheet size={16} />
               </div>
+              <strong style={{ fontSize: '14.5px' }}>Dynamic Sheet Matrix (Grouped by Date &amp; Employee ID)</strong>
+              <span className="badge badge-success" style={{ fontSize: '11px' }}>
+                {filteredSheetRows.length} rows
+              </span>
+            </div>
+
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => handleExportSheetCsv(filteredSheetRows, 'All_Staff_Incentive_Sheet')}
+              disabled={filteredSheetRows.length === 0}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}
+            >
+              <Download size={14} />
+              <span>Export Sheet (.csv)</span>
+            </button>
+          </div>
+
+          <div className="responsive-table-view">
+            <div className="table-responsive" style={{ maxHeight: '650px', overflowY: 'auto' }}>
+              <table className="data-table" style={{ fontSize: '12.5px', width: '100%' }}>
+                <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#1e293b', color: '#ffffff' }}>
+                  <tr>
+                    {(data?.sheetColumns || []).map(col => {
+                      const isNumeric = col.type === 'product' || col.type === 'return' || col.type === 'currency';
+                      return (
+                        <th
+                          key={col.key}
+                          style={{
+                            textAlign: isNumeric ? 'right' : 'left',
+                            whiteSpace: 'nowrap',
+                            background: '#1e293b',
+                            color: '#ffffff',
+                            padding: '10px 12px'
+                          }}
+                        >
+                          {col.label}
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={(data?.sheetColumns?.length) || 10} style={{ textAlign: 'center', padding: '32px' }}>
+                        Loading dynamic sheet records...
+                      </td>
+                    </tr>
+                  ) : filteredSheetRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={(data?.sheetColumns?.length) || 10}>
+                        <div className="empty-state">
+                          <div className="empty-state-icon"><FileSpreadsheet size={24} /></div>
+                          <div className="empty-state-title">No incentive records found</div>
+                          <div className="empty-state-desc">
+                            Import an Excel sheet using "Import Orders (Excel)" or select "All Records" preset.
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredSheetRows.map((r, idx) => (
+                      <tr key={`${r.date}_${r.staff_id || r.employee_id}_${idx}`}>
+                        {(data?.sheetColumns || []).map(col => {
+                          if (col.key === 'date') return <td key={col.key} style={{ fontWeight: 600 }}>{r.date}</td>;
+                          if (col.key === 'employee_id') {
+                            return (
+                              <td key={col.key}>
+                                <span className="badge badge-neutral" style={{ fontWeight: 700 }}>
+                                  {r.employee_id || '—'}
+                                </span>
+                              </td>
+                            );
+                          }
+                          if (col.key === 'staff_name') {
+                            return (
+                              <td key={col.key}>
+                                {r.staff_id ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedStaffId(r.staff_id)}
+                                    style={{
+                                      background: 'none',
+                                      border: 'none',
+                                      padding: 0,
+                                      color: 'var(--primary-600)',
+                                      fontWeight: 600,
+                                      cursor: 'pointer',
+                                      textDecoration: 'underline',
+                                      textAlign: 'left'
+                                    }}
+                                    title={`View ${r.staff_name}'s detailed incentive records`}
+                                  >
+                                    {r.staff_name}
+                                  </button>
+                                ) : (
+                                  <strong>{r.staff_name || '—'}</strong>
+                                )}
+                              </td>
+                            );
+                          }
+                          if (col.type === 'product') {
+                            const qty = r.quantities?.[col.key] || 0;
+                            return (
+                              <td key={col.key} style={{ textAlign: 'right', fontWeight: qty > 0 ? 600 : 400, color: qty > 0 ? '#1e293b' : '#94a3b8' }}>
+                                {qty > 0 ? qty : '—'}
+                              </td>
+                            );
+                          }
+                          if (col.key === 'incentive') {
+                            return (
+                              <td key={col.key} style={{ textAlign: 'right', fontWeight: 600, color: r.incentive > 0 ? '#059669' : '#94a3b8' }}>
+                                {r.incentive > 0 ? `₹${Number(r.incentive).toLocaleString()}` : '₹0'}
+                              </td>
+                            );
+                          }
+                          if (col.type === 'return') {
+                            const retQty = r.returns?.[col.key] || 0;
+                            return (
+                              <td key={col.key} style={{ textAlign: 'right', fontWeight: retQty > 0 ? 700 : 400, color: retQty > 0 ? '#dc2626' : '#94a3b8' }}>
+                                {retQty > 0 ? retQty : '—'}
+                              </td>
+                            );
+                          }
+                          if (col.key === 'return_deductions') {
+                            return (
+                              <td key={col.key} style={{ textAlign: 'right', fontWeight: 600, color: r.return_deductions > 0 ? '#dc2626' : '#94a3b8' }}>
+                                {r.return_deductions > 0 ? `-₹${Number(r.return_deductions).toLocaleString()}` : '₹0'}
+                              </td>
+                            );
+                          }
+                          if (col.key === 'total_net') {
+                            return (
+                              <td key={col.key} style={{ textAlign: 'right', fontWeight: 700, color: '#15803d' }}>
+                                ₹{Number(r.total_net || 0).toLocaleString()}
+                              </td>
+                            );
+                          }
+                          return <td key={col.key}>—</td>;
+                        })}
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {filteredSheetRows.length > 0 && (
+                  <tfoot>
+                    <tr style={{ background: '#f1f5f9', fontWeight: 700, position: 'sticky', bottom: 0, zIndex: 5, borderTop: '2px solid #cbd5e1' }}>
+                      {(data?.sheetColumns || []).map((col, idx) => {
+                        if (idx === 0) return <td key={col.key}>Total ({filteredSheetRows.length} rows)</td>;
+                        if (col.key === 'employee_id' || col.key === 'staff_name') return <td key={col.key}></td>;
+                        if (col.type === 'product' || col.type === 'return') {
+                          const val = sheetTotals[col.key] || 0;
+                          return (
+                            <td key={col.key} style={{ textAlign: 'right', color: col.type === 'return' && val > 0 ? '#dc2626' : 'inherit' }}>
+                              {val > 0 ? val : '—'}
+                            </td>
+                          );
+                        }
+                        if (col.key === 'incentive') {
+                          return (
+                            <td key={col.key} style={{ textAlign: 'right', color: '#059669' }}>
+                              ₹{sheetTotals.incentive?.toLocaleString()}
+                            </td>
+                          );
+                        }
+                        if (col.key === 'return_deductions') {
+                          return (
+                            <td key={col.key} style={{ textAlign: 'right', color: '#dc2626' }}>
+                              {sheetTotals.return_deductions > 0 ? `-₹${sheetTotals.return_deductions?.toLocaleString()}` : '₹0'}
+                            </td>
+                          );
+                        }
+                        if (col.key === 'total_net') {
+                          return (
+                            <td key={col.key} style={{ textAlign: 'right', color: '#15803d', fontSize: '13.5px' }}>
+                              ₹{sheetTotals.total_net?.toLocaleString()}
+                            </td>
+                          );
+                        }
+                        return <td key={col.key}></td>;
+                      })}
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
             </div>
           </div>
         </div>
       )}
 
-      {/* Staff Incentive List Table Card */}
-      <div className="table-card">
-        {/* Desktop / Laptop / Tablet Landscape Table View */}
-        <div className="responsive-table-view">
-          <div className="table-responsive">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Staff</th>
-                  <th style={{ textAlign: 'right' }}>Total Orders</th>
-                  <th style={{ textAlign: 'right' }}>Total Incentive</th>
-                  <th style={{ textAlign: 'right' }}>Return Adjustments</th>
-                  <th style={{ textAlign: 'right' }}>Net Incentive</th>
-                  <th style={{ textAlign: 'center', width: '80px' }}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
+      {/* TAB 2: STAFF INCENTIVE RANKING & AUDIT TABLE */}
+      {activeTab === 'staff' && (
+        <div className="table-card">
+          <div className="table-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#e0e7ff', color: '#4338ca', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Award size={16} />
+              </div>
+              <strong style={{ fontSize: '14.5px' }}>Staff Incentive Ranking &amp; Audit</strong>
+              <span className="badge badge-info" style={{ fontSize: '11px' }}>
+                {filteredStaffList.length} staff
+              </span>
+            </div>
+
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={handleExportStaffCsv}
+              disabled={filteredStaffList.length === 0}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}
+            >
+              <Download size={13} />
+              <span>Export Ranking (.csv)</span>
+            </button>
+          </div>
+
+          <div className="responsive-table-view">
+            <div className="table-responsive">
+              <table className="data-table">
+                <thead>
                   <tr>
-                    <td colSpan="6" style={{ textAlign: 'center', padding: '32px' }}>Loading staff incentives...</td>
-                  </tr>
-                ) : filteredStaff.length === 0 ? (
-                  <tr>
-                    <td colSpan="6">
-                      <div className="empty-state">
-                        <div className="empty-state-icon"><User size={24} /></div>
-                        <div className="empty-state-title">No staff found</div>
-                        <div className="empty-state-desc">No active staff accounts matched your search.</div>
+                    <th style={{ width: '60px' }}>Rank</th>
+                    <th onClick={() => handleSort('staff_name')} style={{ cursor: 'pointer' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span>Staff Member</span>
+                        <ArrowUpDown size={12} />
                       </div>
-                    </td>
+                    </th>
+                    <th onClick={() => handleSort('total_orders')} style={{ textAlign: 'right', cursor: 'pointer' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                        <span>Total Orders</span>
+                        <ArrowUpDown size={12} />
+                      </div>
+                    </th>
+                    <th onClick={() => handleSort('gross_sales')} style={{ textAlign: 'right', cursor: 'pointer' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                        <span>Gross Sales</span>
+                        <ArrowUpDown size={12} />
+                      </div>
+                    </th>
+                    <th onClick={() => handleSort('earned_incentive')} style={{ textAlign: 'right', cursor: 'pointer' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                        <span>Earned Incentive</span>
+                        <ArrowUpDown size={12} />
+                      </div>
+                    </th>
+                    <th onClick={() => handleSort('return_adjustments')} style={{ textAlign: 'right', cursor: 'pointer' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                        <span>Return Deductions</span>
+                        <ArrowUpDown size={12} />
+                      </div>
+                    </th>
+                    <th onClick={() => handleSort('net_incentive')} style={{ textAlign: 'right', cursor: 'pointer' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                        <span>Net Payable</span>
+                        <ArrowUpDown size={12} />
+                      </div>
+                    </th>
+                    <th style={{ textAlign: 'center', width: '90px' }}>Action</th>
                   </tr>
-                ) : (
-                  filteredStaff.map((s) => (
-                    <tr
-                      key={s.staff_id}
-                      className="table-row-clickable"
-                      onClick={() => {
-                        setSearch('');
-                        setSelectedStaffId(s.staff_id);
-                      }}
-                    >
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <div>
-                            <strong>{s.name}</strong>
-                            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                              <span className="badge badge-neutral" style={{ padding: '1px 6px', fontSize: '10.5px', marginRight: '6px' }}>
-                                {s.staff_code}
-                              </span>
-                              @{s.username}
-                            </div>
-                          </div>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan="8" style={{ textAlign: 'center', padding: '32px' }}>Loading staff rankings...</td>
+                    </tr>
+                  ) : sortedStaffList.length === 0 ? (
+                    <tr>
+                      <td colSpan="8">
+                        <div className="empty-state">
+                          <div className="empty-state-icon"><User size={24} /></div>
+                          <div className="empty-state-title">No staff records found</div>
+                          <div className="empty-state-desc">No sales staff matched your active filters.</div>
                         </div>
                       </td>
-                      <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                        {s.total_orders}
-                      </td>
-                      <td style={{ textAlign: 'right', color: s.total_incentive > 0 ? '#b45309' : 'var(--text-muted)', fontWeight: 700 }}>
-                        ₹{s.total_incentive?.toLocaleString()}
-                      </td>
-                      <td style={{ textAlign: 'right', color: s.return_adjustments > 0 ? '#dc2626' : 'var(--text-muted)', fontWeight: s.return_adjustments > 0 ? 700 : 400 }}>
-                        {s.return_adjustments > 0 ? `-₹${s.return_adjustments?.toLocaleString()}` : '₹0'}
-                      </td>
-                      <td style={{ textAlign: 'right', color: '#16a34a', fontWeight: 800, fontSize: '14px' }}>
-                        ₹{s.net_incentive?.toLocaleString()}
-                      </td>
-                      <td style={{ textAlign: 'center' }}>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
+                    </tr>
+                  ) : (
+                    sortedStaffList.map((s, idx) => {
+                      const netVal = s.net_incentive || 0;
+                      const earnedVal = s.earned_incentive || s.gross_incentive || 0;
+                      const returnVal = s.return_adjustments || s.reversed_incentive || 0;
+                      return (
+                        <tr
+                          key={s.staff_id}
+                          className="table-row-clickable"
+                          onClick={() => {
                             setSearch('');
                             setSelectedStaffId(s.staff_id);
                           }}
-                          title="View Staff Orders Breakdown"
-                          style={{ padding: '4px 10px', fontSize: '12px' }}
                         >
-                          Details &rarr;
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                          <td style={{ fontWeight: 700, color: idx < 3 ? '#b45309' : 'inherit' }}>
+                            #{idx + 1}
+                          </td>
+                          <td>
+                            <div>
+                              <strong>{s.staff_name || s.name}</strong>
+                              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                <span className="badge badge-neutral" style={{ padding: '1px 6px', fontSize: '10.5px', marginRight: '6px' }}>
+                                  {s.staff_code}
+                                </span>
+                                @{s.username}
+                              </div>
+                            </div>
+                          </td>
+                          <td style={{ textAlign: 'right', fontWeight: 600 }}>{s.total_orders || 0}</td>
+                          <td style={{ textAlign: 'right' }}>₹{Number(s.gross_sales || 0).toLocaleString()}</td>
+                          <td style={{ textAlign: 'right', color: earnedVal > 0 ? '#b45309' : 'inherit', fontWeight: 600 }}>
+                            ₹{Number(earnedVal).toLocaleString()}
+                          </td>
+                          <td style={{ textAlign: 'right', color: returnVal > 0 ? '#dc2626' : 'inherit', fontWeight: returnVal > 0 ? 600 : 400 }}>
+                            {returnVal > 0 ? `-₹${Number(returnVal).toLocaleString()}` : '₹0'}
+                          </td>
+                          <td style={{ textAlign: 'right', color: '#16a34a', fontWeight: 800, fontSize: '14px' }}>
+                            ₹{Number(netVal).toLocaleString()}
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSearch('');
+                                setSelectedStaffId(s.staff_id);
+                              }}
+                              style={{ padding: '4px 10px', fontSize: '12px' }}
+                            >
+                              Details &rarr;
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
+      )}
 
-        {/* Mobile & Tablet Portrait Cards View */}
-        <div className="responsive-card-view">
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>Loading staff incentives...</div>
-          ) : filteredStaff.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-state-icon"><User size={24} /></div>
-              <div className="empty-state-title">No staff found</div>
-              <div className="empty-state-desc">No active staff accounts matched your search.</div>
-            </div>
-          ) : (
-            filteredStaff.map((s) => (
-              <div
-                key={s.staff_id}
-                className="mobile-data-card"
-                onClick={() => {
-                  setSearch('');
-                  setSelectedStaffId(s.staff_id);
-                }}
-              >
-                <div className="mobile-card-header">
-                  <div className="mobile-card-title-group">
-                    <span className="mobile-card-id">{s.name}</span>
-                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '2px' }}>
-                      <span className="badge badge-neutral" style={{ padding: '1px 6px', fontSize: '10.5px' }}>
-                        {s.staff_code}
-                      </span>
-                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>@{s.username}</span>
-                    </div>
-                  </div>
-                  <span className="badge badge-success" style={{ fontSize: '12px', fontWeight: 800 }}>
-                    ₹{s.net_incentive?.toLocaleString()}
-                  </span>
-                </div>
+      {/* Bulk Order Excel Import Modal */}
+      <BulkOrderImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onSuccess={handleImportSuccess}
+      />
 
-                <div className="mobile-card-grid">
-                  <div className="mobile-card-item">
-                    <span className="mobile-card-label">Total Orders</span>
-                    <span className="mobile-card-val">{s.total_orders}</span>
-                  </div>
-                  <div className="mobile-card-item">
-                    <span className="mobile-card-label">Total Incentive</span>
-                    <span className="mobile-card-val" style={{ color: s.total_incentive > 0 ? '#b45309' : 'inherit', fontWeight: 600 }}>
-                      ₹{s.total_incentive?.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="mobile-card-item">
-                    <span className="mobile-card-label">Return Deductions</span>
-                    <span className="mobile-card-val" style={{ color: s.return_adjustments > 0 ? '#dc2626' : 'inherit', fontWeight: s.return_adjustments > 0 ? 600 : 400 }}>
-                      {s.return_adjustments > 0 ? `-₹${s.return_adjustments?.toLocaleString()}` : '₹0'}
-                    </span>
-                  </div>
-                  <div className="mobile-card-item">
-                    <span className="mobile-card-label">Net Incentive</span>
-                    <span className="mobile-card-val" style={{ color: '#16a34a', fontWeight: 700 }}>
-                      ₹{s.net_incentive?.toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="mobile-card-footer">
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    style={{ width: '100%', justifyContent: 'center' }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSearch('');
-                      setSelectedStaffId(s.staff_id);
-                    }}
-                  >
-                    View Staff Orders Breakdown &rarr;
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
+      {/* Clear Confirmation Modal */}
+      <ClearConfirmModal
+        isOpen={showClearConfirm}
+        onClose={() => setShowClearConfirm(false)}
+        onConfirm={handleClearAll}
+        clearing={clearing}
+      />
     </div>
   );
 }

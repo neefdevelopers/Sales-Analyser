@@ -295,6 +295,60 @@ router.get('/returnable', authenticate, (req, res) => {
   res.json({ returnableOrders: returnable });
 });
 
+// GET /api/orders/date-range - Get min and max dates of all orders in database
+router.get('/date-range', authenticate, (req, res) => {
+  const range = get(`
+    SELECT
+      MIN(order_date) AS minDate,
+      MAX(order_date) AS maxDate,
+      COUNT(*) AS totalOrders
+    FROM orders
+  `);
+  res.json({
+    minDate: range?.minDate || null,
+    maxDate: range?.maxDate || null,
+    totalOrders: range?.totalOrders || 0
+  });
+});
+
+// DELETE /api/orders/clear-all - Clear all orders, returns, and import logs (Brand Manager only)
+router.delete('/clear-all', authenticate, (req, res) => {
+  if (req.user.role !== 'brand_manager') {
+    return res.status(403).json({ error: 'Only Brand Managers can clear all orders and returns.' });
+  }
+
+  try {
+    transaction(() => {
+      run('DELETE FROM returns');
+      run('DELETE FROM orders');
+      run('DELETE FROM import_logs');
+      run('DELETE FROM customers');
+      try {
+        run("DELETE FROM sqlite_sequence WHERE name IN ('orders', 'returns', 'import_logs', 'customers')");
+      } catch (e) {
+        // Ignored if sequence is absent
+      }
+    });
+
+    const ordersCount = query('SELECT COUNT(*) as c FROM orders')[0].c;
+    const returnsCount = query('SELECT COUNT(*) as c FROM returns')[0].c;
+    const logsCount = query('SELECT COUNT(*) as c FROM import_logs')[0].c;
+
+    res.json({
+      success: true,
+      message: 'All orders, returns, and import logs have been completely cleared.',
+      counts: {
+        orders: ordersCount,
+        returns: returnsCount,
+        import_logs: logsCount
+      }
+    });
+  } catch (err) {
+    console.error('Failed to clear orders & returns:', err);
+    res.status(500).json({ error: 'Failed to clear records: ' + err.message });
+  }
+});
+
 // POST preview order calculations (estimate total & incentive before saving)
 router.post('/preview', authenticate, (req, res) => {
   const { product_id, quantity, payment_method = 'Prepaid' } = req.body;
@@ -508,7 +562,7 @@ router.get('/bulk-template', authenticate, async (req, res) => {
 
     sheet.columns = [
       { header: 'Order ID', key: 'order_number', width: 24 },
-      { header: 'Staff ID', key: 'staff_code', width: 14 },
+      { header: 'Employee ID', key: 'staff_code', width: 14 },
       { header: 'Staff Name (Ref)', key: 'staff_name', width: 22 },
       { header: 'Product Code', key: 'product_code', width: 16 },
       { header: 'Product Name (Ref)', key: 'product_name', width: 26 },
@@ -601,7 +655,7 @@ router.get('/bulk-template', authenticate, async (req, res) => {
 
     const instructionsData = [
       { field: 'Order ID', req: 'Required', desc: 'Existing unique order identifier (e.g. ORD-20261102-0001). Cannot be empty.' },
-      { field: 'Staff ID', req: 'Required', desc: 'Valid Staff ID code (e.g. STF-001). Order must belong to this staff member.' },
+      { field: 'Employee ID', req: 'Required', desc: 'Valid Employee ID code (e.g. STF-001). Order must belong to this staff member.' },
       { field: 'Staff Name (Ref)', req: 'Optional', desc: 'Reference only. Ignored during matching.' },
       { field: 'Product Code', req: 'Optional', desc: 'Valid active product SKU (e.g. PRD-001). Leave blank to keep existing product.' },
       { field: 'Product Name (Ref)', req: 'Optional', desc: 'Reference only. Ignored during matching.' },
@@ -673,18 +727,82 @@ function cleanProductName(headerStr) {
   if (!headerStr) return '';
   if (isStaffHeader(headerStr)) return '';
   return headerStr
-    .replace(/\b(prepaid|cod|cash\s*on\s*delivery|online|card|upi|returns?|ret|quantity|qty|units?|amount|total|order|orders|nos|rate|rs|inr)\b/gi, ' ')
+    .replace(/\b(prepaid|cod|cash\s*on\s*delivery|c\.?o\.?d\.?|online|card|upi|returns?|ret|quantity|qty|units?|amount|total|order|orders|nos|rate|rs|inr|net\s*banking|neft|pod|advance)\b/gi, ' ')
     .replace(/[()[\]{}_:;#\-–—/]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
+// Auto-detect month & year from filename (e.g. JULY-2026-HYP MONK -> 2026-07)
+export function detectMonthYearFromFilename(filename) {
+  if (!filename) return null;
+  const name = filename.toUpperCase();
+  const months = {
+    'JANUARY': '01', 'JAN': '01',
+    'FEBRUARY': '02', 'FEB': '02',
+    'MARCH': '03', 'MAR': '03',
+    'APRIL': '04', 'APR': '04',
+    'MAY': '05',
+    'JUNE': '06', 'JUN': '06',
+    'JULY': '07', 'JUL': '07',
+    'AUGUST': '08', 'AUG': '08',
+    'SEPTEMBER': '09', 'SEP': '09',
+    'OCTOBER': '10', 'OCT': '10',
+    'NOVEMBER': '11', 'NOV': '11',
+    'DECEMBER': '12', 'DEC': '12'
+  };
+
+  for (const [mName, mNum] of Object.entries(months)) {
+    const r1 = new RegExp(`(^|[^A-Z0-9])${mName}[-_ ]?(\\d{4})([^A-Z0-9]|$)`, 'i');
+    const m1 = name.match(r1);
+    if (m1 && m1[2]) return `${m1[2]}-${mNum}`;
+    const r2 = new RegExp(`(^|[^A-Z0-9])(\\d{4})[-_ ]?${mName}([^A-Z0-9]|$)`, 'i');
+    const m2 = name.match(r2);
+    if (m2 && m2[2]) return `${m2[2]}-${mNum}`;
+  }
+
+  const ym = name.match(/(^|[^0-9])(20\\d{2})[-_](0[1-9]|1[0-2])([^0-9]|$)/);
+  if (ym && ym[2] && ym[3]) return `${ym[2]}-${ym[3]}`;
+
+  const my = name.match(/(^|[^0-9])(0[1-9]|1[0-2])[-_](20\\d{2})([^0-9]|$)/);
+  if (my && my[2] && my[3]) return `${my[3]}-${my[2]}`;
+
+  return null;
+}
+
+// Checks if a normalized string corresponds to a payment method subcolumn
+function isPaymentHeader(norm) {
+  if (!norm) return false;
+  return (
+    norm === 'cod' || norm === 'prepaid' || norm === 'cash' || norm === 'online' ||
+    norm === 'upi' || norm === 'card' || norm === 'cash on delivery' ||
+    norm === 'pre paid' || norm === 'c o d' || norm === 'net banking' ||
+    norm === 'paid' || norm === 'advance' || norm === 'pod' || norm === 'neft' ||
+    norm.includes('cod') || norm.includes('prepaid') || norm.includes('cash on delivery')
+  );
+}
+
 // Identifies consolidated summary / rollup sheets to skip (e.g. INCENTIVE, SUMMARY)
 function isSummarySheet(sheet) {
+  // If the sheet has actual row-level data with DATE and EMPLOYEE ID columns, it is NOT a summary to skip!
+  for (let r = 1; r <= Math.min(sheet.rowCount || 10, 10); r++) {
+    const row = sheet.getRow(r);
+    let hasDate = false;
+    let hasStaff = false;
+    row.eachCell(cell => {
+      const val = normalizeText(getCellValue(cell));
+      if (val === 'date' || val === 'day' || val === 'order date' || val === 'dt') hasDate = true;
+      if (isStaffHeader(val)) hasStaff = true;
+    });
+    if (hasDate && hasStaff) {
+      return false; // It has real date and employee id transaction rows!
+    }
+  }
+
   const nameNorm = normalizeText(sheet.name);
   const summaryKeywords = [
-    'incentive', 'summary', 'total', 'consolidated', 'overall',
-    'dashboard', 'master', 'combined', 'monthly summary', 'all staff'
+    'summary', 'total', 'consolidated', 'overall',
+    'dashboard', 'master summary', 'monthly summary'
   ];
   if (summaryKeywords.some(kw => nameNorm.includes(kw))) {
     return true;
@@ -931,15 +1049,28 @@ function matchProductRecord(rawProductName, allProducts, manualMappings) {
   });
   if (tokenMatch) return { product: tokenMatch, isMatched: true, rawProductName };
 
+  // 5. Substring match (e.g. "max ojus" matches "OJUS" or vice versa)
+  const subMatch = allProducts.find(p => {
+    const pNorm = normalizeText(p.name);
+    return (rawNorm.length >= 3 && pNorm.includes(rawNorm)) || (pNorm.length >= 3 && rawNorm.includes(pNorm));
+  });
+  if (subMatch) return { product: subMatch, isMatched: true, rawProductName };
+
+  // 6. Common business aliases: "MAX" or "HYPER MAX" -> OJUS if an OJUS product exists and not Hyper Monk
+  if ((rawNorm.includes('max') || rawNorm === 'hyper max') && !rawNorm.includes('monk')) {
+    const ojusProd = allProducts.find(p => normalizeText(p.name).includes('ojus') || normalizeText(p.code).includes('ojus'));
+    if (ojusProd) return { product: ojusProd, isMatched: true, rawProductName };
+  }
+
   return { product: null, isMatched: false, rawProductName };
 }
 
-// Detects sheet layout (Matrix vs List) and maps product/date columns
+// Detects sheet layout (Matrix vs List) and maps product/date/return columns
 function detectSheetColumns(sheet, allProducts, manualMappings) {
-  const maxRows = Math.min(sheet.rowCount || 6, 6);
+  const maxScanRows = Math.min(sheet.rowCount || 15, 20);
 
   // Check for List / Tabular layout headers
-  for (let r = 1; r <= maxRows; r++) {
+  for (let r = 1; r <= maxScanRows; r++) {
     const row = sheet.getRow(r);
     const textMap = {};
     row.eachCell((cell, colIdx) => {
@@ -966,36 +1097,106 @@ function detectSheetColumns(sheet, allProducts, manualMappings) {
   }
 
   // Check for Matrix / Columnar layout (Products in columns across Prepaid / COD)
+  // Step 1: Scan rows 1-20 to locate the row containing DATE / DAY / DT / ORDER DATE / SL NO
+  let dateRowIdx = null;
   let dateCol = null;
-  let returnCol = null;
-  let remarksCol = null;
-  let staffCol = null;
-  let staffNameCol = null;
-  let headerRowIdx = 1;
-  const productCols = [];
 
-  for (let r = 1; r <= maxRows; r++) {
+  for (let r = 1; r <= maxScanRows; r++) {
     const row = sheet.getRow(r);
-    row.eachCell((cell, colIdx) => {
-      const t = normalizeText(getCellValue(cell));
-      if (!dateCol && (t === 'date' || t === 'day' || t === 'order date' || t === 'dt' || t === 'sl no' || t === 'slno')) {
-        dateCol = colIdx;
-        headerRowIdx = r;
+    for (let c = 1; c <= Math.min(sheet.columnCount || 30, 30); c++) {
+      const t = normalizeText(getCellValue(row.getCell(c)));
+      if (t === 'date' || t === 'day' || t === 'order date' || t === 'dt' || t === 'sl no' || t === 'slno') {
+        dateRowIdx = r;
+        dateCol = c;
+        break;
+      }
+    }
+    if (dateRowIdx) break;
+  }
+
+  if (!dateRowIdx) {
+    dateRowIdx = 1;
+    dateCol = 1;
+  }
+
+  // Step 2: Determine if this is a 2-row header (e.g. Row A = products/returns, Row B = COD/Prepaid/Monk/Ojus)
+  let headerRowA = dateRowIdx;
+  let headerRowB = dateRowIdx;
+  let dataStartRow = dateRowIdx + 1;
+
+  if (dateRowIdx < (sheet.rowCount || 0)) {
+    const nextRow = sheet.getRow(dateRowIdx + 1);
+    let subHeaderCount = 0;
+    nextRow.eachCell(cell => {
+      const val = normalizeText(getCellValue(cell));
+      if (
+        val === 'cod' || val === 'prepaid' || val === 'monk' || val === 'ojus' ||
+        val === 'amount' || val === 'date' || val === 'incentive' ||
+        val === 'total amount' || isStaffHeader(val)
+      ) {
+        subHeaderCount++;
       }
     });
-    if (dateCol) break;
-  }
-  if (!dateCol) dateCol = 1;
 
-  const maxCol = Math.min(sheet.columnCount || 30, 30);
-  const rowA = headerRowIdx > 1 ? sheet.getRow(headerRowIdx - 1) : sheet.getRow(headerRowIdx);
-  const rowB = sheet.getRow(headerRowIdx);
+    if (subHeaderCount >= 2) {
+      headerRowA = dateRowIdx;
+      headerRowB = dateRowIdx + 1;
+      dataStartRow = dateRowIdx + 2;
+    }
+  }
+
+  const rowA = sheet.getRow(headerRowA);
+  const rowB = sheet.getRow(headerRowB);
+
+  let staffCol = null;
+  let staffNameCol = null;
+  let remarksCol = null;
+  let returnAmountCol = null;
+  let generalReturnCol = null;
+  let incentiveCol = null;
+  let totalNetCol = null;
+  const productCols = [];
+  const returnCols = [];
+
+  const maxCol = Math.min(sheet.columnCount || 35, 35);
+
+  let lastNonEmptyValA = '';
+  let lastValAWasReturn = false;
 
   for (let c = 1; c <= maxCol; c++) {
     if (c === dateCol) continue;
 
-    const valA = getCellValue(rowA.getCell(c));
-    const valB = getCellValue(rowB.getCell(c));
+    const cellA = rowA.getCell(c);
+    const cellB = rowB.getCell(c);
+
+    let valA = getCellValue(cellA);
+    if (!valA && cellA.master) {
+      valA = getCellValue(cellA.master);
+    }
+
+    let valB = getCellValue(cellB);
+    if (!valB && cellB.master) {
+      valB = getCellValue(cellB.master);
+    }
+
+    const normA = normalizeText(valA);
+    const normB = normalizeText(valB);
+
+    // Forward-fill merged parent headers if valA is empty
+    if (!valA && lastNonEmptyValA && headerRowA !== headerRowB) {
+      const isSubPayment = isPaymentHeader(normB);
+      const isSubReturn = lastValAWasReturn && !isSubPayment && normB && !normB.includes('total') && !normB.includes('incentive');
+      if (isSubPayment || isSubReturn) {
+        valA = lastNonEmptyValA;
+      }
+    }
+
+    if (valA) {
+      lastNonEmptyValA = valA;
+      const vNorm = normalizeText(valA);
+      lastValAWasReturn = vNorm.includes('return') || vNorm.includes('refund');
+    }
+
     const combinedHeader = [valA, valB].filter(Boolean).join(' ');
     const combinedNorm = normalizeText(combinedHeader);
 
@@ -1011,9 +1212,25 @@ function detectSheetColumns(sheet, allProducts, manualMappings) {
       continue;
     }
 
-    // Detect returns column
-    if (combinedNorm.includes('return') || combinedNorm.includes('refund') || combinedNorm.includes('ret qty')) {
-      if (!returnCol) returnCol = c;
+    // Detect returns column (product-specific return quantity vs return monetary amount)
+    const isReturn = combinedNorm.includes('return') || combinedNorm.includes('refund') || combinedNorm.includes('ret qty') || normB === 'return' || normB === 'returns' || normB === 'ret';
+    if (isReturn) {
+      const isAmount = combinedNorm.includes('amount') || combinedNorm.includes('inr') || combinedNorm.includes('rs') || combinedNorm.includes('price');
+      if (isAmount) {
+        if (!returnAmountCol) returnAmountCol = c;
+      } else {
+        const targetClean = cleanProductName(combinedHeader) || cleanProductName(valB) || cleanProductName(valA);
+        const match = targetClean ? matchProductRecord(targetClean, allProducts, manualMappings) : { product: null, isMatched: false };
+        returnCols.push({
+          colIndex: c,
+          rawHeader: combinedHeader,
+          rawTarget: targetClean || combinedHeader,
+          matchedProduct: match.product,
+          isMatched: match.isMatched,
+          mappedManually: match.mappedManually || false
+        });
+        if (!generalReturnCol) generalReturnCol = c;
+      }
       continue;
     }
 
@@ -1023,26 +1240,49 @@ function detectSheetColumns(sheet, allProducts, manualMappings) {
       continue;
     }
 
-    // Skip rollup / totals
+    // Detect explicit incentive column on the sheet
+    if (combinedNorm.includes('incentive') || combinedNorm.includes('commission')) {
+      if (!incentiveCol) incentiveCol = c;
+      continue;
+    }
+
+    // Detect total amount / net payout column on the sheet
+    if (combinedNorm.includes('total amount') || combinedNorm.includes('net amount') || combinedNorm.includes('total net')) {
+      if (!totalNetCol) totalNetCol = c;
+      continue;
+    }
+
+    // Skip rollup / totals / non-product columns
     if (
-      combinedNorm.includes('total') || combinedNorm.includes('sum') ||
-      combinedNorm.includes('incentive') || combinedNorm.includes('commission') ||
-      combinedNorm.includes('net') || combinedNorm.includes('gross')
+      combinedNorm.includes('total') || combinedNorm.includes('sum') || combinedNorm.includes('grand') ||
+      combinedNorm.includes('basic pay') || combinedNorm.includes('attendance') ||
+      combinedNorm.includes('loan') || combinedNorm.includes('deduction') ||
+      combinedNorm.includes('bonus') || combinedNorm.includes('present') ||
+      combinedNorm.includes('absent') || combinedNorm.includes('leave')
     ) {
       continue;
     }
 
-    // Determine payment method
+    // Product name
+    const rawProdName = cleanProductName(valA) || cleanProductName(valB) || cleanProductName(combinedHeader);
+    if (!rawProdName || rawProdName.length < 2) continue;
+
+    // Determine payment method dynamically
     let paymentMethod = 'Prepaid';
-    if (combinedNorm.includes('cod') || combinedNorm.includes('cash on delivery') || combinedNorm.includes('cash')) {
+    if (
+      combinedNorm.includes('cod') || combinedNorm.includes('cash on delivery') ||
+      combinedNorm.includes('cash') || normB === 'cod' || normB === 'cash' || normA === 'cod' ||
+      normB.includes('cod') || normA.includes('cod')
+    ) {
       paymentMethod = 'COD';
-    } else if (combinedNorm.includes('prepaid') || combinedNorm.includes('online') || combinedNorm.includes('card') || combinedNorm.includes('upi')) {
+    } else if (
+      combinedNorm.includes('prepaid') || combinedNorm.includes('online') ||
+      combinedNorm.includes('card') || combinedNorm.includes('upi') ||
+      normB === 'prepaid' || normB === 'online' || normA === 'prepaid' ||
+      normB.includes('prepaid') || normA.includes('prepaid')
+    ) {
       paymentMethod = 'Prepaid';
     }
-
-    // Determine product name
-    const rawProdName = cleanProductName(valA) || cleanProductName(valB) || cleanProductName(combinedHeader);
-    if (!rawProdName) continue;
 
     const match = matchProductRecord(rawProdName, allProducts, manualMappings);
 
@@ -1059,13 +1299,17 @@ function detectSheetColumns(sheet, allProducts, manualMappings) {
 
   return {
     layoutType: 'matrix',
-    headerRow: headerRowIdx,
-    dataStartRow: headerRowIdx + 1,
+    headerRow: headerRowB,
+    dataStartRow,
     dateCol,
-    returnCol,
-    remarksCol,
     staffCol,
     staffNameCol,
+    remarksCol,
+    returnAmountCol,
+    generalReturnCol,
+    incentiveCol,
+    totalNetCol,
+    returnCols,
     productCols
   };
 }
@@ -1117,9 +1361,10 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
 
   const fileName = req.body.fileName || 'monthly_orders.xlsx';
   const fileData = req.body.fileData || req.body.fileBase64;
+  const detectedMonth = detectMonthYearFromFilename(fileName);
   const monthYear = (req.body.monthYear && /^\d{4}-\d{2}$/.test(req.body.monthYear.trim()))
     ? req.body.monthYear.trim()
-    : new Date().toISOString().slice(0, 7);
+    : (detectedMonth || new Date().toISOString().slice(0, 7));
   const manualMappings = req.body.manualMappings || {};
 
   if (!fileData) {
@@ -1176,12 +1421,22 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
     }
 
     const skippedSheets = [];
+    const sheetLayoutSummaries = [];
     const detectedStaffMap = new Map();
     const detectedProductsMap = new Map();
 
     const parsedRows = [];
     const validUpdateRowsToCache = [];
     const validCreateRowsToCache = [];
+    const validStandaloneReturnsToCache = [];
+    let totalDetectedReturns = 0;
+
+    const batchOrderKeys = new Set();
+    const batchReturnKeys = new Set();
+    const matrixPreviewRows = [];
+    const seenMatrixRowKeys = new Set();
+    const detectedMatrixColDefs = new Map();
+    const detectedReturnColDefs = new Map();
 
     let processedSheetsCount = 0;
     let globalRowIndex = 1;
@@ -1236,6 +1491,20 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
           }
         }
 
+        // Register any product from return columns that might not be in productCols
+        for (const rCol of (layout.returnCols || [])) {
+          const prodKey = rCol.rawTarget;
+          if (prodKey && !detectedProductsMap.has(prodKey)) {
+            detectedProductsMap.set(prodKey, {
+              rawName: prodKey,
+              columnHeader: rCol.rawHeader,
+              matchedProduct: rCol.matchedProduct,
+              isMatched: rCol.isMatched,
+              mappedManually: rCol.mappedManually || false
+            });
+          }
+        }
+
         // Iterate data rows (daily records)
         const rowCount = sheet.rowCount || 0;
         for (let r = layout.dataStartRow; r <= rowCount; r++) {
@@ -1252,16 +1521,162 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
           const parsedDate = parseExcelDate(rawDateVal, monthYear);
           if (!parsedDate) continue;
 
-          // Extract returns if present
-          let returnQty = 0;
-          if (layout.returnCol) {
-            const rawRet = getCellValue(row.getCell(layout.returnCol));
-            if (rawRet && !isNaN(parseInt(rawRet, 10))) {
-              returnQty = parseInt(rawRet, 10);
+          // 1. Determine staff for this row (from layout.staffCol or sheet info)
+          let currentStaff = staffMatch.staff;
+          let currentStaffId = staffInfo.rawStaffId || sheet.name;
+          let currentStaffName = staffInfo.rawStaffName || sheet.name;
+          let isCurrentStaffMatched = staffMatch.isMatched;
+
+          if (layout.staffCol) {
+            const rawCellStaff = getCellValue(row.getCell(layout.staffCol));
+            const rawCellStaffName = layout.staffNameCol ? getCellValue(row.getCell(layout.staffNameCol)) : '';
+            if (rawCellStaff && !isStaffHeaderLabel(rawCellStaff)) {
+              currentStaffId = String(rawCellStaff).trim();
+              currentStaffName = rawCellStaffName || currentStaffId;
+              const rStaffMatch = matchStaffRecord(
+                { rawStaffId: currentStaffId, rawStaffName: currentStaffName, sheetName: sheet.name },
+                allStaff,
+                manualMappings
+              );
+              currentStaff = rStaffMatch.staff;
+              isCurrentStaffMatched = rStaffMatch.isMatched;
+
+              const staffKey = currentStaffId;
+              if (!detectedStaffMap.has(staffKey)) {
+                detectedStaffMap.set(staffKey, {
+                  rawId: currentStaffId,
+                  rawName: currentStaff ? currentStaff.name : currentStaffName,
+                  sheetName: sheet.name,
+                  matchedStaff: currentStaff,
+                  isMatched: rStaffMatch.isMatched,
+                  mappedManually: rStaffMatch.mappedManually || false
+                });
+              }
             }
           }
 
-          // Evaluate each product column
+          // 2. Extract all returns present on this row from detected return columns
+          const rowReturns = [];
+          for (const rCol of (layout.returnCols || [])) {
+            const rawRet = getCellValue(row.getCell(rCol.colIndex));
+            const retQty = parseInt(rawRet, 10);
+            if (!isNaN(retQty) && retQty > 0) {
+              const retTargetKey = rCol.matchedProduct ? rCol.matchedProduct.id : rCol.rawTarget;
+              const batchRetKey = `${currentStaffId}_${retTargetKey}_${parsedDate}_${retQty}`;
+              if (!batchReturnKeys.has(batchRetKey)) {
+                batchReturnKeys.add(batchRetKey);
+                rowReturns.push({
+                  colIndex: rCol.colIndex,
+                  rawHeader: rCol.rawHeader,
+                  rawTarget: rCol.rawTarget,
+                  matchedProduct: rCol.matchedProduct,
+                  returnQty: retQty
+                });
+                totalDetectedReturns += retQty;
+              }
+            }
+          }
+
+          // Build returns remaining map for this row (keyed by product id or target name)
+          const returnsRemainingMap = new Map();
+          for (const ret of rowReturns) {
+            const key = ret.matchedProduct ? ret.matchedProduct.id : ret.rawTarget;
+            returnsRemainingMap.set(key, (returnsRemainingMap.get(key) || 0) + ret.returnQty);
+          }
+
+          // 3. Build matrix row snapshot for dynamic columns preview
+          const rowQuantities = {};
+          const rowReturnsObj = {};
+          let rowIncentiveEarned = 0;
+          let rowReturnDeduction = 0;
+
+          for (const pCol of layout.productCols) {
+            const rawQ = getCellValue(row.getCell(pCol.colIndex));
+            const q = parseInt(rawQ, 10);
+            const pKey = `${pCol.matchedProduct ? pCol.matchedProduct.code : pCol.rawProductName}_${pCol.paymentMethod}`;
+            rowQuantities[pKey] = (!isNaN(q) && q > 0) ? q : 0;
+            if (!isNaN(q) && q > 0 && pCol.matchedProduct) {
+              const uPrice = pCol.matchedProduct.price || 0;
+              const tAmt = Math.round(uPrice * q * 100) / 100;
+              const inc = calculateIncentive(pCol.matchedProduct, pCol.paymentMethod, q, tAmt);
+              rowIncentiveEarned += inc.amount;
+            }
+            if (!detectedMatrixColDefs.has(pKey)) {
+              detectedMatrixColDefs.set(pKey, {
+                key: pKey,
+                label: `${pCol.matchedProduct ? pCol.matchedProduct.name : pCol.rawProductName} (${pCol.paymentMethod})`,
+                type: 'product',
+                productName: pCol.matchedProduct ? pCol.matchedProduct.name : pCol.rawProductName,
+                paymentMethod: pCol.paymentMethod
+              });
+            }
+          }
+
+          for (const rCol of (layout.returnCols || [])) {
+            const rawR = getCellValue(row.getCell(rCol.colIndex));
+            const rq = parseInt(rawR, 10);
+            const rKey = `RET_${rCol.matchedProduct ? rCol.matchedProduct.code : rCol.rawTarget}`;
+            rowReturnsObj[rKey] = (!isNaN(rq) && rq > 0) ? rq : 0;
+            if (!isNaN(rq) && rq > 0 && rCol.matchedProduct) {
+              const uPrice = rCol.matchedProduct.price || 0;
+              const refAmt = Math.round(uPrice * rq * 100) / 100;
+              const rInc = calculateIncentive(rCol.matchedProduct, 'COD', rq, refAmt);
+              rowReturnDeduction += rInc.amount;
+            }
+            if (!detectedReturnColDefs.has(rKey)) {
+              detectedReturnColDefs.set(rKey, {
+                key: rKey,
+                label: `Return ${rCol.matchedProduct ? rCol.matchedProduct.name : rCol.rawTarget}`,
+                type: 'return',
+                productName: rCol.matchedProduct ? rCol.matchedProduct.name : rCol.rawTarget
+              });
+            }
+          }
+
+          let rowRetAmt = 0;
+          if (layout.returnAmountCol) {
+            const rawA = getCellValue(row.getCell(layout.returnAmountCol));
+            const numA = parseFloat(String(rawA).replace(/[^0-9.]/g, ''));
+            if (!isNaN(numA) && numA > 0) rowRetAmt = numA;
+          }
+
+          let sheetIncentive = 0;
+          if (layout.incentiveCol) {
+            const rawInc = getCellValue(row.getCell(layout.incentiveCol));
+            const numInc = parseFloat(String(rawInc).replace(/[^0-9.]/g, ''));
+            if (!isNaN(numInc) && numInc > 0) sheetIncentive = numInc;
+          }
+
+          let sheetTotalNet = 0;
+          if (layout.totalNetCol) {
+            const rawTot = getCellValue(row.getCell(layout.totalNetCol));
+            const numTot = parseFloat(String(rawTot).replace(/[^0-9.]/g, ''));
+            if (!isNaN(numTot) && numTot > 0) sheetTotalNet = numTot;
+          }
+
+          const matrixKey = `${currentStaffId}_${parsedDate}`;
+          if (!seenMatrixRowKeys.has(matrixKey)) {
+            seenMatrixRowKeys.add(matrixKey);
+            matrixPreviewRows.push({
+              sheetName: sheet.name,
+              rowNumber: r,
+              date: parsedDate,
+              employeeId: currentStaffId,
+              staffName: currentStaff ? currentStaff.name : (currentStaffName || currentStaffId),
+              isStaffMatched: isCurrentStaffMatched,
+              quantities: rowQuantities,
+              returns: rowReturnsObj,
+              returnAmount: rowRetAmt,
+              grossIncentive: sheetIncentive > 0 ? sheetIncentive : Math.round(rowIncentiveEarned * 100) / 100,
+              sheetIncentive,
+              returnDeductions: Math.round(rowReturnDeduction * 100) / 100,
+              netIncentive: sheetTotalNet > 0 ? sheetTotalNet : Math.max(0, Math.round((rowIncentiveEarned - rowReturnDeduction) * 100) / 100),
+              sheetTotalNet,
+              status: isCurrentStaffMatched ? 'valid' : 'unmatched'
+            });
+          }
+
+          // Evaluate each product sales column
           for (const pCol of layout.productCols) {
             const rawQtyVal = getCellValue(row.getCell(pCol.colIndex));
             if (!rawQtyVal || isNaN(parseInt(rawQtyVal, 10))) continue;
@@ -1269,40 +1684,15 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
             const quantity = parseInt(rawQtyVal, 10);
             if (quantity <= 0) continue;
 
-            let currentStaff = staffMatch.staff;
-            let currentStaffId = staffInfo.rawStaffId || sheet.name;
-            let currentStaffName = staffInfo.rawStaffName || sheet.name;
-            let isCurrentStaffMatched = staffMatch.isMatched;
-
-            if (layout.staffCol) {
-              const rawCellStaff = getCellValue(row.getCell(layout.staffCol));
-              const rawCellStaffName = layout.staffNameCol ? getCellValue(row.getCell(layout.staffNameCol)) : '';
-              if (rawCellStaff && !isStaffHeaderLabel(rawCellStaff)) {
-                currentStaffId = String(rawCellStaff).trim();
-                currentStaffName = rawCellStaffName || currentStaffId;
-                const rStaffMatch = matchStaffRecord(
-                  { rawStaffId: currentStaffId, rawStaffName: currentStaffName, sheetName: sheet.name },
-                  allStaff,
-                  manualMappings
-                );
-                currentStaff = rStaffMatch.staff;
-                isCurrentStaffMatched = rStaffMatch.isMatched;
-
-                const staffKey = currentStaffId;
-                if (!detectedStaffMap.has(staffKey)) {
-                  detectedStaffMap.set(staffKey, {
-                    rawId: currentStaffId,
-                    rawName: currentStaff ? currentStaff.name : currentStaffName,
-                    sheetName: sheet.name,
-                    matchedStaff: currentStaff,
-                    isMatched: rStaffMatch.isMatched,
-                    mappedManually: rStaffMatch.mappedManually || false
-                  });
-                }
-              }
-            }
-
             const currentProduct = pCol.matchedProduct;
+
+            // Allocate product-specific return quantity (does not bleed into other products)
+            const prodKey = currentProduct ? currentProduct.id : pCol.rawProductName;
+            const availReturn = returnsRemainingMap.get(prodKey) || 0;
+            const orderReturnQty = Math.min(quantity, availReturn);
+            if (orderReturnQty > 0) {
+              returnsRemainingMap.set(prodKey, availReturn - orderReturnQty);
+            }
 
             const rowItem = {
               rowNumber: globalRowIndex++,
@@ -1314,7 +1704,7 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
                 productName: pCol.rawProductName,
                 quantity,
                 paymentMethod: pCol.paymentMethod,
-                returnQuantity: returnQty
+                returnQuantity: orderReturnQty
               },
               currentOrder: null,
               newValues: null,
@@ -1365,6 +1755,11 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
 
             // Look up existing order by (staff_id, product_id, payment_method, order_date)
             const matchKey = `${currentStaff.id}_${currentProduct.id}_${pCol.paymentMethod}_${parsedDate}`;
+            if (batchOrderKeys.has(matchKey)) {
+              continue;
+            }
+            batchOrderKeys.add(matchKey);
+
             const existingOrder = orderByKey.get(matchKey);
 
             if (existingOrder) {
@@ -1390,6 +1785,21 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
               // Check if values changed
               if (existingOrder.quantity === quantity && existingOrder.product_id === currentProduct.id) {
                 rowItem.status = 'no_change';
+                if (orderReturnQty > 0) {
+                  validUpdateRowsToCache.push({
+                    orderId: existingOrder.id,
+                    orderNumber: existingOrder.order_number,
+                    staffId: currentStaff.id,
+                    newProductId: currentProduct.id,
+                    newQuantity: quantity,
+                    newPaymentMethod: pCol.paymentMethod,
+                    newOrderDate: parsedDate,
+                    newStatus: existingOrder.status || 'Confirmed',
+                    newRemarks: existingOrder.remarks || '',
+                    returnQuantity: orderReturnQty,
+                    rowNumber: rowItem.rowNumber
+                  });
+                }
               } else {
                 rowItem.status = 'valid_update';
                 rowItem.changes.push({
@@ -1407,6 +1817,7 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
                   newOrderDate: parsedDate,
                   newStatus: existingOrder.status || 'Confirmed',
                   newRemarks: existingOrder.remarks || '',
+                  returnQuantity: orderReturnQty,
                   rowNumber: rowItem.rowNumber
                 });
               }
@@ -1419,12 +1830,62 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
                 quantity,
                 paymentMethod: pCol.paymentMethod,
                 orderDate: parsedDate,
-                returnQuantity: returnQty,
+                returnQuantity: orderReturnQty,
                 rowNumber: rowItem.rowNumber
               });
             }
 
             parsedRows.push(rowItem);
+          }
+
+          // Handle any unallocated returns on this date (e.g. staff on leave or returns > sales)
+          for (const [prodKey, remQty] of returnsRemainingMap.entries()) {
+            if (remQty > 0) {
+              const retItem = rowReturns.find(r => (r.matchedProduct ? r.matchedProduct.id : r.rawTarget) === prodKey);
+              const targetProduct = retItem?.matchedProduct || allProducts.find(p => p.id === prodKey);
+              const targetProdName = targetProduct?.name || retItem?.rawTarget || String(prodKey);
+
+              const rowItem = {
+                rowNumber: globalRowIndex++,
+                sheetName: sheet.name,
+                excelData: {
+                  date: parsedDate,
+                  staffId: currentStaffId,
+                  staffName: currentStaff ? currentStaff.name : currentStaffName,
+                  productName: targetProdName,
+                  quantity: 0,
+                  paymentMethod: 'COD',
+                  returnQuantity: remQty
+                },
+                currentOrder: null,
+                newValues: null,
+                status: (isCurrentStaffMatched && targetProduct) ? 'valid_create' : 'unmatched',
+                error: !isCurrentStaffMatched
+                  ? `Unmatched staff Employee ID "${currentStaffId}" on sheet "${sheet.name}".`
+                  : (!targetProduct ? `Unmatched product "${targetProdName}".` : null),
+                changes: []
+              };
+
+              if (isCurrentStaffMatched && currentStaff && targetProduct) {
+                const retMatchKey = `${currentStaff.id}_${targetProduct.id}_${parsedDate}_${remQty}`;
+                if (batchReturnKeys.has(retMatchKey)) {
+                  continue;
+                }
+                batchReturnKeys.add(retMatchKey);
+
+                validStandaloneReturnsToCache.push({
+                  staffId: currentStaff.id,
+                  productId: targetProduct.id,
+                  paymentMethod: 'COD',
+                  returnQuantity: remQty,
+                  orderDate: parsedDate,
+                  sheetName: sheet.name,
+                  rowNumber: rowItem.rowNumber
+                });
+              }
+
+              parsedRows.push(rowItem);
+            }
           }
         }
       } else {
@@ -1444,6 +1905,16 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
           const rawPayment = cols.paymentMethod ? getCellValue(row.getCell(cols.paymentMethod)) : 'Prepaid';
           const paymentMethod = normalizeText(rawPayment).includes('cod') ? 'COD' : 'Prepaid';
           const quantity = parseInt(rawQtyVal, 10) || 1;
+
+          let returnQty = 0;
+          if (cols.returnQty) {
+            const rawRet = getCellValue(row.getCell(cols.returnQty));
+            const q = parseInt(rawRet, 10);
+            if (!isNaN(q) && q > 0) {
+              returnQty = q;
+              totalDetectedReturns += q;
+            }
+          }
 
           // Product matching (ensure staff headers/codes are never registered as products)
           let rawProdValClean = rawProdVal;
@@ -1504,7 +1975,8 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
               staffName: rowStaff ? rowStaff.name : (rowStaffName || rowStaffId),
               productName: rawProdValClean || rawProdVal,
               quantity,
-              paymentMethod
+              paymentMethod,
+              returnQuantity: returnQty
             },
             currentOrder: null,
             newValues: null,
@@ -1580,6 +2052,21 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
 
             if (existingOrder.quantity === quantity && existingOrder.product_id === currentProduct.id) {
               rowItem.status = 'no_change';
+              if (returnQty > 0) {
+                validUpdateRowsToCache.push({
+                  orderId: existingOrder.id,
+                  orderNumber: existingOrder.order_number,
+                  staffId: rowStaff.id,
+                  newProductId: currentProduct.id,
+                  newQuantity: quantity,
+                  newPaymentMethod: paymentMethod,
+                  newOrderDate: parsedDate,
+                  newStatus: existingOrder.status || 'Confirmed',
+                  newRemarks: existingOrder.remarks || '',
+                  returnQuantity: returnQty,
+                  rowNumber: rowItem.rowNumber
+                });
+              }
             } else {
               rowItem.status = 'valid_update';
               rowItem.changes.push({
@@ -1597,6 +2084,7 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
                 newOrderDate: parsedDate,
                 newStatus: existingOrder.status || 'Confirmed',
                 newRemarks: existingOrder.remarks || '',
+                returnQuantity: returnQty,
                 rowNumber: rowItem.rowNumber
               });
             }
@@ -1608,6 +2096,7 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
               quantity,
               paymentMethod,
               orderDate: parsedDate,
+              returnQuantity: returnQty,
               rowNumber: rowItem.rowNumber
             });
           }
@@ -1615,6 +2104,32 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
           parsedRows.push(rowItem);
         }
       }
+
+      // Record sheet layout summary for dynamic column visibility
+      sheetLayoutSummaries.push({
+        sheetName: sheet.name,
+        layoutType: layout.layoutType,
+        staff: staffMatch.staff ? { id: staffMatch.staff.id, name: staffMatch.staff.name, staff_id: staffMatch.staff.staff_id } : null,
+        rawStaffId: staffInfo.rawStaffId || sheet.name,
+        isStaffMatched: staffMatch.isMatched,
+        dateCol: layout.dateCol,
+        staffCol: layout.staffCol,
+        productColumns: (layout.productCols || []).map(p => ({
+          colIndex: p.colIndex,
+          header: p.rawProductHeader,
+          productName: p.rawProductName,
+          paymentMethod: p.paymentMethod,
+          matchedProduct: p.matchedProduct ? { id: p.matchedProduct.id, name: p.matchedProduct.name, code: p.matchedProduct.code } : null,
+          isMatched: p.isMatched
+        })),
+        returnColumns: (layout.returnCols || []).map(r => ({
+          colIndex: r.colIndex,
+          header: r.rawHeader,
+          target: r.rawTarget,
+          matchedProduct: r.matchedProduct ? { id: r.matchedProduct.id, name: r.matchedProduct.name, code: r.matchedProduct.code } : null,
+          isMatched: r.isMatched
+        }))
+      });
     }
 
     const detectedStaff = Array.from(detectedStaffMap.values()).filter(
@@ -1635,7 +2150,7 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
 
     const canConfirm = unmatchedStaff.length === 0 &&
                        unmatchedProducts.length === 0 &&
-                       (toUpdateCount > 0 || toCreateCount > 0);
+                       (toUpdateCount > 0 || toCreateCount > 0 || validStandaloneReturnsToCache.length > 0);
 
     // Cache preview session
     const previewToken = crypto.randomBytes(24).toString('hex');
@@ -1644,9 +2159,22 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
       fileName,
       rowsToUpdate: validUpdateRowsToCache,
       rowsToCreate: validCreateRowsToCache,
+      standaloneReturns: validStandaloneReturnsToCache,
       createdBy: req.user.id,
       expiresAt: Date.now() + 15 * 60 * 1000
     });
+
+    const matrixColumns = [
+      { key: 'date', label: 'Date', width: '100px' },
+      { key: 'employeeId', label: 'Employee ID', width: '110px' },
+      { key: 'staffName', label: 'Staff Name', width: '130px' },
+      ...Array.from(detectedMatrixColDefs.values()),
+      { key: 'grossIncentive', label: 'Incentive', type: 'currency' },
+      ...Array.from(detectedReturnColDefs.values()),
+      { key: 'returnDeductions', label: 'Return Deductions', type: 'currency' },
+      { key: 'netIncentive', label: 'Total Net', type: 'currency' },
+      { key: 'status', label: 'Status', width: '90px' }
+    ];
 
     res.json({
       previewToken,
@@ -1664,6 +2192,7 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
         detectedProducts,
         unmatchedProducts,
         totalRows: parsedRows.length,
+        totalReturns: totalDetectedReturns,
         matchedOrders: toUpdateCount + toCreateCount + unchangedCount,
         toUpdate: toUpdateCount,
         toCreate: toCreateCount,
@@ -1673,6 +2202,9 @@ router.post('/bulk-update-preview', authenticate, async (req, res) => {
       },
       canConfirm,
       mappingRequired: unmatchedStaff.length > 0 || unmatchedProducts.length > 0,
+      sheetLayouts: sheetLayoutSummaries,
+      matrixColumns,
+      matrixRows: matrixPreviewRows,
       rows: parsedRows
     });
   } catch (err) {
@@ -1704,6 +2236,7 @@ router.post('/bulk-update-confirm', authenticate, (req, res) => {
   const now = new Date().toISOString();
   let updatedOrdersCount = 0;
   let createdOrdersCount = 0;
+  let returnsCreatedCount = 0;
   const errors = [];
 
   try {
@@ -1779,6 +2312,40 @@ router.post('/bulk-update-confirm', authenticate, (req, res) => {
               now,
               ret.id
             ]);
+          }
+
+          // If row had a return recorded and no return exists yet
+          if (item.returnQuantity && item.returnQuantity > 0 && linkedReturns.length === 0) {
+            const dateClean = (item.newOrderDate || now.slice(0, 10)).replace(/-/g, '');
+            const retNum = `RET-${dateClean}-${String(Math.floor(1000 + Math.random() * 9000))}`;
+            const revIncentive = item.newQuantity > 0
+              ? Math.round((item.returnQuantity / item.newQuantity) * incentive.amount * 100) / 100
+              : 0;
+            const refundAmount = Math.round(unitPrice * item.returnQuantity * 100) / 100;
+
+            run(`
+              INSERT INTO returns (
+                return_number, order_id, staff_id, product_id, returned_by_staff_id, payment_method,
+                return_quantity, return_amount, return_date, return_reason, remarks, reversed_incentive,
+                created_at, updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, [
+              retNum,
+              currentOrder.id,
+              currentOrder.staff_id,
+              product.id,
+              currentOrder.staff_id,
+              item.newPaymentMethod,
+              item.returnQuantity,
+              refundAmount,
+              item.newOrderDate,
+              'Product Return (Excel Import)',
+              'Imported via monthly Excel report',
+              revIncentive,
+              now,
+              now
+            ]);
+            returnsCreatedCount++;
           }
 
           updatedOrdersCount++;
@@ -1883,7 +2450,7 @@ router.post('/bulk-update-confirm', authenticate, (req, res) => {
           const newOrderId = orderRes.lastInsertRowid;
 
           // If row had a return recorded and quantity was valid
-          if (item.returnQuantity && item.returnQuantity > 0 && item.returnQuantity <= item.quantity) {
+          if (item.returnQuantity && item.returnQuantity > 0) {
             const retNum = `RET-${dateClean}-${String(Math.floor(1000 + Math.random() * 9000))}`;
             const revIncentive = Math.round((item.returnQuantity / item.quantity) * incentive.amount * 100) / 100;
             const refundAmount = Math.round(unitPrice * item.returnQuantity * 100) / 100;
@@ -1921,6 +2488,7 @@ router.post('/bulk-update-confirm', authenticate, (req, res) => {
               now,
               now
             ]);
+            returnsCreatedCount++;
           }
 
           createdOrdersCount++;
@@ -1929,6 +2497,73 @@ router.post('/bulk-update-confirm', authenticate, (req, res) => {
             rowNumber: item.rowNumber,
             reason: createErr.message || 'Failed to create new order record'
           });
+        }
+      }
+
+      // 3. Process Standalone Returns (Returns on leave days or where return quantity was unattached)
+      for (const item of (preview.standaloneReturns || [])) {
+        try {
+          const product = get('SELECT * FROM products WHERE id = ?', [item.productId]);
+          const staff = get('SELECT id FROM users WHERE id = ? AND role = "sales_staff"', [item.staffId]);
+          if (!product || !staff) continue;
+
+          // Find candidate order for this staff and product to link if available
+          const candidateOrder = get(`
+            SELECT o.*,
+              COALESCE((SELECT SUM(r.return_quantity) FROM returns r WHERE r.order_id = o.id), 0) AS already_returned_qty
+            FROM orders o
+            WHERE o.staff_id = ? AND o.product_id = ? AND o.status != 'Cancelled'
+              AND o.quantity > COALESCE((SELECT SUM(r.return_quantity) FROM returns r WHERE r.order_id = o.id), 0)
+            ORDER BY o.order_date DESC, o.id DESC
+            LIMIT 1
+          `, [staff.id, product.id]);
+
+          const linkedOrderId = (candidateOrder && (candidateOrder.quantity - candidateOrder.already_returned_qty) >= item.returnQuantity)
+            ? candidateOrder.id
+            : null;
+
+          const dateClean = (item.orderDate || now.slice(0, 10)).replace(/-/g, '');
+          const retNum = `RET-${dateClean}-${String(Math.floor(1000 + Math.random() * 9000))}`;
+          const unitPrice = product.price || 0;
+          const refundAmount = Math.round(unitPrice * item.returnQuantity * 100) / 100;
+          const incObj = calculateIncentive(product, item.paymentMethod || 'COD', item.returnQuantity, refundAmount);
+
+          run(`
+            INSERT INTO returns (
+              return_number,
+              order_id,
+              staff_id,
+              product_id,
+              returned_by_staff_id,
+              payment_method,
+              return_quantity,
+              return_amount,
+              return_date,
+              return_reason,
+              remarks,
+              reversed_incentive,
+              created_at,
+              updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `, [
+            retNum,
+            linkedOrderId,
+            staff.id,
+            product.id,
+            staff.id,
+            item.paymentMethod || 'COD',
+            item.returnQuantity,
+            refundAmount,
+            item.orderDate,
+            'Product Return (Excel Import)',
+            'Imported via monthly Excel report',
+            incObj.amount,
+            now,
+            now
+          ]);
+          returnsCreatedCount++;
+        } catch (stErr) {
+          console.error('Failed to create standalone return record:', stErr);
         }
       }
 
@@ -1953,9 +2588,10 @@ router.post('/bulk-update-confirm', authenticate, (req, res) => {
       success: true,
       updatedCount: updatedOrdersCount,
       createdCount: createdOrdersCount,
+      returnsCreatedCount,
       totalProcessed: updatedOrdersCount + createdOrdersCount,
       errors,
-      message: `Successfully processed ${updatedOrdersCount + createdOrdersCount} orders (${updatedOrdersCount} updated, ${createdOrdersCount} created).`
+      message: `Successfully processed ${updatedOrdersCount + createdOrdersCount} orders (${updatedOrdersCount} updated, ${createdOrdersCount} created) and recorded ${returnsCreatedCount} returns.`
     });
   } catch (err) {
     console.error('Failed to commit bulk order updates:', err);

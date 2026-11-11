@@ -19,7 +19,8 @@ import {
   Calendar,
   Sparkles,
   Link,
-  ChevronDown
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 function isStaffHeader(str) {
@@ -36,6 +37,42 @@ function isStaffHeader(str) {
     /(?:employee|staff|emp)\s*(?:id|code|no|name)/i.test(s) ||
     /^(?:stf|emp)[-_ ]?\d+$/i.test(s)
   );
+}
+
+function detectMonthYearFromFilename(filename) {
+  if (!filename) return null;
+  const name = filename.toUpperCase();
+  const months = {
+    'JANUARY': '01', 'JAN': '01',
+    'FEBRUARY': '02', 'FEB': '02',
+    'MARCH': '03', 'MAR': '03',
+    'APRIL': '04', 'APR': '04',
+    'MAY': '05',
+    'JUNE': '06', 'JUN': '06',
+    'JULY': '07', 'JUL': '07',
+    'AUGUST': '08', 'AUG': '08',
+    'SEPTEMBER': '09', 'SEP': '09',
+    'OCTOBER': '10', 'OCT': '10',
+    'NOVEMBER': '11', 'NOV': '11',
+    'DECEMBER': '12', 'DEC': '12'
+  };
+
+  for (const [mName, mNum] of Object.entries(months)) {
+    const r1 = new RegExp(`(^|[^A-Z0-9])${mName}[-_ ]?(\\d{4})([^A-Z0-9]|$)`, 'i');
+    const m1 = name.match(r1);
+    if (m1 && m1[2]) return `${m1[2]}-${mNum}`;
+    const r2 = new RegExp(`(^|[^A-Z0-9])(\\d{4})[-_ ]?${mName}([^A-Z0-9]|$)`, 'i');
+    const m2 = name.match(r2);
+    if (m2 && m2[2]) return `${m2[2]}-${mNum}`;
+  }
+
+  const ym = name.match(/(^|[^0-9])(20\d{2})[-_](0[1-9]|1[0-2])([^0-9]|$)/);
+  if (ym && ym[2] && ym[3]) return `${ym[2]}-${ym[3]}`;
+
+  const my = name.match(/(^|[^0-9])(0[1-9]|1[0-2])[-_](20\d{2})([^0-9]|$)/);
+  if (my && my[2] && my[3]) return `${my[3]}-${my[2]}`;
+
+  return null;
 }
 
 export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess }) {
@@ -64,8 +101,13 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
 
   // Preview data
   const [previewData, setPreviewData] = useState(null);
+  const [previewViewMode, setPreviewViewMode] = useState('sheet'); // 'sheet' (Dynamic Sheet View) | 'flat' (Order Line Items)
+  const [sheetSearch, setSheetSearch] = useState('');
+  const [clearingRecords, setClearingRecords] = useState(false);
+  const [clearSuccessMsg, setClearSuccessMsg] = useState('');
   const [previewFilter, setPreviewFilter] = useState('all'); // 'all' | 'update' | 'create' | 'no_change' | 'unmatched' | 'invalid'
   const [confirmDuplicate, setConfirmDuplicate] = useState(false);
+  const [showLayoutDetails, setShowLayoutDetails] = useState(false);
 
   // Result data
   const [resultData, setResultData] = useState(null);
@@ -98,12 +140,36 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
     setStep('upload');
     setFile(null);
     setError('');
+    setClearSuccessMsg('');
     setPreviewData(null);
+    setPreviewViewMode('sheet');
+    setSheetSearch('');
     setPreviewFilter('all');
     setConfirmDuplicate(false);
     setStaffMappings({});
     setProductMappings({});
+    setShowLayoutDetails(false);
     setResultData(null);
+  }
+
+  async function handleClearAllRecords() {
+    if (!window.confirm('Are you sure you want to completely clear ALL orders, returns, and import logs? All sales staff and products will be safely preserved.')) {
+      return;
+    }
+    try {
+      setClearingRecords(true);
+      setError('');
+      setClearSuccessMsg('');
+      await api.delete('/orders/clear-all');
+      setClearSuccessMsg('All orders, returns, and import history cleared successfully.');
+      if (onImportSuccess) {
+        onImportSuccess();
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to clear records.');
+    } finally {
+      setClearingRecords(false);
+    }
   }
 
   function handleModalClose() {
@@ -150,6 +216,11 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
     }
     setError('');
     setFile(selectedFile);
+
+    const detected = detectMonthYearFromFilename(selectedFile.name);
+    if (detected) {
+      setMonthYear(detected);
+    }
   }
 
   function handleDragOver(e) {
@@ -289,7 +360,7 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
     }
   }
 
-  // Filter preview rows
+  // Filter preview rows (Flat line-items)
   const filteredRows = (previewData?.rows || []).filter(r => {
     if (previewFilter === 'all') return true;
     if (previewFilter === 'update') return r.status === 'valid_update';
@@ -298,6 +369,44 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
     if (previewFilter === 'unmatched') return r.status === 'unmatched';
     if (previewFilter === 'invalid') return r.status === 'invalid';
     return true;
+  });
+
+  // Filter matrix preview rows (Dynamic sheet rows matching Excel sheet)
+  const filteredMatrixRows = (previewData?.matrixRows || []).filter(r => {
+    if (!sheetSearch.trim()) return true;
+    const term = sheetSearch.trim().toLowerCase();
+    return (
+      (r.employeeId && String(r.employeeId).toLowerCase().includes(term)) ||
+      (r.staffName && String(r.staffName).toLowerCase().includes(term)) ||
+      (r.date && String(r.date).toLowerCase().includes(term)) ||
+      (r.sheetName && String(r.sheetName).toLowerCase().includes(term))
+    );
+  });
+
+  const matrixProductCols = (previewData?.matrixColumns || []).filter(c => c.type === 'product');
+  const matrixReturnCols = (previewData?.matrixColumns || []).filter(c => c.type === 'return');
+
+  const matrixTotals = {
+    products: {},
+    returns: {},
+    grossIncentive: 0,
+    returnDeductions: 0,
+    netIncentive: 0
+  };
+
+  matrixProductCols.forEach(c => { matrixTotals.products[c.key] = 0; });
+  matrixReturnCols.forEach(c => { matrixTotals.returns[c.key] = 0; });
+
+  filteredMatrixRows.forEach(r => {
+    matrixProductCols.forEach(c => {
+      matrixTotals.products[c.key] = (matrixTotals.products[c.key] || 0) + (r.quantities?.[c.key] || 0);
+    });
+    matrixReturnCols.forEach(c => {
+      matrixTotals.returns[c.key] = (matrixTotals.returns[c.key] || 0) + (r.returns?.[c.key] || 0);
+    });
+    matrixTotals.grossIncentive += (r.grossIncentive || 0);
+    matrixTotals.returnDeductions += (r.returnDeductions || 0);
+    matrixTotals.netIncentive += (r.netIncentive || 0);
   });
 
   // Combine all unmatched staff items (including any staff headers that backend might have passed in unmatchedProducts)
@@ -434,6 +543,25 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
             >
               <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
               <div style={{ flex: 1 }}>{error}</div>
+            </div>
+          )}
+
+          {clearSuccessMsg && (
+            <div
+              style={{
+                padding: '12px 16px',
+                borderRadius: '8px',
+                backgroundColor: '#ecfdf5',
+                border: '1px solid #a7f3d0',
+                color: '#065f46',
+                fontSize: '13px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px'
+              }}
+            >
+              <CheckCircle2 size={18} color="#059669" style={{ flexShrink: 0 }} />
+              <div style={{ flex: 1, fontWeight: 600 }}>{clearSuccessMsg}</div>
             </div>
           )}
 
@@ -598,28 +726,74 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
               >
                 <div>
                   <strong style={{ color: '#0f172a', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    <Layers size={14} color="#0284c7" /> Auto-Worksheet Detection
+                    <Layers size={14} color="#0284c7" /> Dynamic Sheet & Column Detection
                   </strong>
                   <p style={{ margin: '3px 0 0', lineHeight: 1.4 }}>
-                    Scans all staff sheets automatically while skipping consolidated summary sheets (e.g. INCENTIVE).
+                    Dynamically detects all product columns (COD & Prepaid) and return columns. Transactional sheets like INCENTIVE are automatically parsed row-by-row matching Employee ID.
                   </p>
                 </div>
                 <div>
                   <strong style={{ color: '#0f172a', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    <Users size={14} color="#059669" /> Dynamic Staff Matching
+                    <Users size={14} color="#059669" /> Row-Level Employee ID Association
                   </strong>
                   <p style={{ margin: '3px 0 0', lineHeight: 1.4 }}>
-                    Extracts Employee ID from header cells and matches against active Sales Staff in database.
+                    Reads the Employee ID directly from each row to assign orders and returns to the correct sales staff member.
                   </p>
                 </div>
                 <div>
                   <strong style={{ color: '#0f172a', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    <Package size={14} color="#d97706" /> Dynamic Product Matching
+                    <Package size={14} color="#d97706" /> Dynamic Returns & Deductions
                   </strong>
                   <p style={{ margin: '3px 0 0', lineHeight: 1.4 }}>
-                    Detects column names across Prepaid & COD. If any product is unmatched, you can map it manually.
+                    Extracts product-specific returns and reverses incentives automatically without manual mapping.
                   </p>
                 </div>
+              </div>
+
+              {/* Database Clean Reset Action */}
+              <div
+                style={{
+                  padding: '14px 18px',
+                  backgroundColor: '#fff1f2',
+                  border: '1px solid #fecdd3',
+                  borderRadius: '10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '12px',
+                  flexWrap: 'wrap'
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#9f1239', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <AlertTriangle size={15} color="#e11d48" /> Reset Orders & Returns Database
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#be123c', marginTop: '2px' }}>
+                    Completely clear all existing orders, returns, and import history for a clean re-import. All staff users and products remain preserved.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleClearAllRecords}
+                  disabled={clearingRecords}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 16px',
+                    fontSize: '12.5px',
+                    fontWeight: 700,
+                    borderRadius: '7px',
+                    border: '1px solid #f43f5e',
+                    backgroundColor: '#ffffff',
+                    color: '#e11d48',
+                    cursor: clearingRecords ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 1px 2px rgba(225, 29, 72, 0.05)'
+                  }}
+                >
+                  <RefreshCw size={14} className={clearingRecords ? 'animate-spin' : ''} />
+                  {clearingRecords ? 'Clearing Database...' : 'Clear All Orders & Returns'}
+                </button>
               </div>
             </div>
           )}
@@ -681,6 +855,115 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
                     <strong>Summary sheets skipped to avoid duplication:</strong>{' '}
                     {previewData.summary.skippedSheets.map(s => s.name).join(', ')}.
                   </div>
+                </div>
+              )}
+
+              {/* Dynamic Worksheet Columns & Subcolumns Detection Panel */}
+              {previewData.sheetLayouts?.length > 0 && (
+                <div
+                  style={{
+                    borderRadius: '10px',
+                    border: '1px solid #e2e8f0',
+                    backgroundColor: '#ffffff',
+                    overflow: 'hidden'
+                  }}
+                >
+                  <div
+                    onClick={() => setShowLayoutDetails(!showLayoutDetails)}
+                    style={{
+                      padding: '10px 14px',
+                      backgroundColor: '#f8fafc',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      cursor: 'pointer',
+                      userSelect: 'none'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600, color: '#334155' }}>
+                      <Layers size={16} color="#0284c7" />
+                      Dynamic Sheet Columns & Subcolumns ({previewData.sheetLayouts.length} sheets analyzed)
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#64748b' }}>
+                      <span>{showLayoutDetails ? 'Hide Column Mapping' : 'View Detected Columns & Subcolumns'}</span>
+                      {showLayoutDetails ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </div>
+                  </div>
+
+                  {showLayoutDetails && (
+                    <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '240px', overflowY: 'auto' }}>
+                      {previewData.sheetLayouts.map((sl, idx) => (
+                        <div
+                          key={idx}
+                          style={{
+                            padding: '10px 12px',
+                            borderRadius: '8px',
+                            backgroundColor: '#f8fafc',
+                            border: '1px solid #e2e8f0',
+                            fontSize: '12px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '6px'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                            <span style={{ fontWeight: 700, color: '#0f172a' }}>{sl.sheetName}</span>
+                            <span style={{ fontSize: '11px', color: '#64748b' }}>
+                              Staff: <strong style={{ color: sl.isStaffMatched ? '#047857' : '#c2410c' }}>{sl.staff ? `${sl.staff.name} (${sl.staff.staff_id})` : (sl.rawStaffId || 'Unmatched')}</strong>
+                              {sl.dateCol && ` • Date Col: C${sl.dateCol}`}
+                              {sl.staffCol && ` • Employee ID Col: C${sl.staffCol}`}
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '2px' }}>
+                            {sl.productColumns?.map((p, pIdx) => (
+                              <span
+                                key={pIdx}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '2px 8px',
+                                  borderRadius: '4px',
+                                  backgroundColor: p.isMatched ? '#ecfdf5' : '#fff7ed',
+                                  border: `1px solid ${p.isMatched ? '#a7f3d0' : '#fed7aa'}`,
+                                  color: p.isMatched ? '#065f46' : '#9a3412',
+                                  fontSize: '11px'
+                                }}
+                              >
+                                <strong>Col {p.colIndex}:</strong> {p.productName} ({p.paymentMethod})
+                                {p.matchedProduct?.name && (
+                                  <span style={{ opacity: 0.85, fontWeight: 600 }}>&rarr; {p.matchedProduct.name}</span>
+                                )}
+                              </span>
+                            ))}
+
+                            {sl.returnColumns?.map((r, rIdx) => (
+                              <span
+                                key={rIdx}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '2px 8px',
+                                  borderRadius: '4px',
+                                  backgroundColor: '#fff1f2',
+                                  border: '1px solid #fecdd3',
+                                  color: '#9f1239',
+                                  fontSize: '11px'
+                                }}
+                              >
+                                <strong>Col {r.colIndex} (Return):</strong> {r.target}
+                                {r.matchedProduct?.name && (
+                                  <span style={{ opacity: 0.85, fontWeight: 600 }}>&rarr; {r.matchedProduct.name}</span>
+                                )}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -912,6 +1195,23 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
                   style={{
                     padding: '12px',
                     borderRadius: '8px',
+                    backgroundColor: '#fff1f2',
+                    border: '1px solid #fecdd3',
+                    textAlign: 'center'
+                  }}
+                >
+                  <div style={{ fontSize: '11px', color: '#be123c', textTransform: 'uppercase', fontWeight: 600 }}>
+                    Returns
+                  </div>
+                  <div style={{ fontSize: '20px', fontWeight: 700, color: '#be123c', marginTop: '2px' }}>
+                    {previewData.summary?.totalReturns || 0}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    padding: '12px',
+                    borderRadius: '8px',
                     backgroundColor: '#f8fafc',
                     border: '1px solid #e2e8f0',
                     textAlign: 'center'
@@ -988,174 +1288,473 @@ export default function BulkOrderImportModal({ isOpen, onClose, onImportSuccess 
                 </div>
               </div>
 
-              {/* Filter Tabs & Preview Rows Table */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ display: 'flex', gap: '6px', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px', overflowX: 'auto' }}>
-                  {[
-                    { id: 'all', label: `All (${previewData.summary?.totalRows || 0})` },
-                    { id: 'update', label: `To Update (${previewData.summary?.toUpdate || 0})` },
-                    { id: 'create', label: `To Create (${previewData.summary?.toCreate || 0})` },
-                    { id: 'no_change', label: `No Change (${previewData.summary?.noChange || 0})` },
-                    { id: 'unmatched', label: `Unmatched (${previewData.summary?.unmatched || 0})` },
-                    { id: 'invalid', label: `Invalid (${previewData.summary?.invalid || 0})` }
-                  ].map(tab => (
+              {/* Preview View Mode Switch & Rows Table */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
+                  <div style={{ display: 'flex', gap: '4px', background: '#f1f5f9', padding: '3px', borderRadius: '8px' }}>
                     <button
-                      key={tab.id}
                       type="button"
-                      onClick={() => setPreviewFilter(tab.id)}
+                      onClick={() => setPreviewViewMode('sheet')}
                       style={{
-                        padding: '6px 12px',
+                        padding: '6px 14px',
                         borderRadius: '6px',
                         border: 'none',
                         fontSize: '12px',
-                        fontWeight: previewFilter === tab.id ? 700 : 500,
-                        backgroundColor: previewFilter === tab.id ? '#0284c7' : '#f1f5f9',
-                        color: previewFilter === tab.id ? '#ffffff' : '#475569',
+                        fontWeight: previewViewMode === 'sheet' ? 700 : 500,
+                        backgroundColor: previewViewMode === 'sheet' ? '#ffffff' : 'transparent',
+                        color: previewViewMode === 'sheet' ? '#0284c7' : '#64748b',
+                        boxShadow: previewViewMode === 'sheet' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
                         cursor: 'pointer',
-                        whiteSpace: 'nowrap'
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
                       }}
                     >
-                      {tab.label}
+                      <Layers size={14} />
+                      <span>Dynamic Sheet View ({previewData.matrixRows?.length || 0} rows)</span>
                     </button>
-                  ))}
+                    <button
+                      type="button"
+                      onClick={() => setPreviewViewMode('flat')}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: '6px',
+                        border: 'none',
+                        fontSize: '12px',
+                        fontWeight: previewViewMode === 'flat' ? 700 : 500,
+                        backgroundColor: previewViewMode === 'flat' ? '#ffffff' : 'transparent',
+                        color: previewViewMode === 'flat' ? '#0284c7' : '#64748b',
+                        boxShadow: previewViewMode === 'flat' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      <Package size={14} />
+                      <span>Order Line Items ({previewData.summary?.totalRows || 0})</span>
+                    </button>
+                  </div>
+
+                  {previewViewMode === 'sheet' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="text"
+                        placeholder="Filter by Employee ID or Name..."
+                        value={sheetSearch}
+                        onChange={e => setSheetSearch(e.target.value)}
+                        style={{
+                          padding: '5px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '12px',
+                          width: '240px'
+                        }}
+                      />
+                      {sheetSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setSheetSearch('')}
+                          style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '2px' }}
+                          title="Clear filter"
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {previewViewMode === 'flat' && (
+                    <div style={{ display: 'flex', gap: '4px', overflowX: 'auto' }}>
+                      {[
+                        { id: 'all', label: `All (${previewData.summary?.totalRows || 0})` },
+                        { id: 'update', label: `To Update (${previewData.summary?.toUpdate || 0})` },
+                        { id: 'create', label: `To Create (${previewData.summary?.toCreate || 0})` },
+                        { id: 'no_change', label: `No Change (${previewData.summary?.noChange || 0})` },
+                        { id: 'unmatched', label: `Unmatched (${previewData.summary?.unmatched || 0})` },
+                        { id: 'invalid', label: `Invalid (${previewData.summary?.invalid || 0})` }
+                      ].map(tab => (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setPreviewFilter(tab.id)}
+                          style={{
+                            padding: '4px 10px',
+                            borderRadius: '5px',
+                            border: 'none',
+                            fontSize: '11.5px',
+                            fontWeight: previewFilter === tab.id ? 700 : 500,
+                            backgroundColor: previewFilter === tab.id ? '#0284c7' : '#f1f5f9',
+                            color: previewFilter === tab.id ? '#ffffff' : '#475569',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                <div
-                  style={{
-                    maxHeight: '340px',
-                    overflowY: 'auto',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '8px'
-                  }}
-                >
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-                    <thead style={{ backgroundColor: '#f8fafc', position: 'sticky', top: 0, zIndex: 1 }}>
-                      <tr style={{ borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#64748b' }}>
-                        <th style={{ padding: '8px 12px' }}>Sheet / Row</th>
-                        <th style={{ padding: '8px 12px' }}>Order Date</th>
-                        <th style={{ padding: '8px 12px' }}>Sales Staff</th>
-                        <th style={{ padding: '8px 12px' }}>Product</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'center' }}>Qty</th>
-                        <th style={{ padding: '8px 12px' }}>Payment</th>
-                        <th style={{ padding: '8px 12px' }}>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredRows.length === 0 ? (
-                        <tr>
-                          <td colSpan={7} style={{ textAlign: 'center', padding: '24px', color: '#94a3b8' }}>
-                            No rows matching the selected filter.
-                          </td>
+                {/* VIEW 1: DYNAMIC SHEET COLUMNS VIEW (Matching Excel Layout) */}
+                {previewViewMode === 'sheet' && (
+                  <div
+                    style={{
+                      maxHeight: '380px',
+                      overflow: 'auto',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '8px'
+                    }}
+                  >
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px' }}>
+                      <thead style={{ backgroundColor: '#f8fafc', position: 'sticky', top: 0, zIndex: 2 }}>
+                        <tr style={{ borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#475569' }}>
+                          <th style={{ padding: '8px 10px', whiteSpace: 'nowrap', borderRight: '1px solid #f1f5f9' }}>Date</th>
+                          <th style={{ padding: '8px 10px', whiteSpace: 'nowrap', borderRight: '1px solid #f1f5f9' }}>Employee ID</th>
+                          <th style={{ padding: '8px 10px', whiteSpace: 'nowrap', borderRight: '1px solid #f1f5f9' }}>Staff Name</th>
+                          {matrixProductCols.map(col => (
+                            <th
+                              key={col.key}
+                              style={{
+                                padding: '8px 10px',
+                                textAlign: 'center',
+                                whiteSpace: 'nowrap',
+                                backgroundColor: '#f0f9ff',
+                                color: '#0369a1',
+                                borderRight: '1px solid #e0f2fe'
+                              }}
+                            >
+                              {col.label}
+                            </th>
+                          ))}
+                          <th style={{ padding: '8px 10px', textAlign: 'right', whiteSpace: 'nowrap', backgroundColor: '#fef3c7', color: '#b45309', borderRight: '1px solid #fde68a' }}>
+                            Incentive
+                          </th>
+                          {matrixReturnCols.map(col => (
+                            <th
+                              key={col.key}
+                              style={{
+                                padding: '8px 10px',
+                                textAlign: 'center',
+                                whiteSpace: 'nowrap',
+                                backgroundColor: '#fef2f2',
+                                color: '#b91c1c',
+                                borderRight: '1px solid #fee2e2'
+                              }}
+                            >
+                              {col.label}
+                            </th>
+                          ))}
+                          <th style={{ padding: '8px 10px', textAlign: 'right', whiteSpace: 'nowrap', backgroundColor: '#fff1f2', color: '#be123c', borderRight: '1px solid #fecdd3' }}>
+                            Return Deductions
+                          </th>
+                          <th style={{ padding: '8px 10px', textAlign: 'right', whiteSpace: 'nowrap', backgroundColor: '#ecfdf5', color: '#047857', borderRight: '1px solid #a7f3d0' }}>
+                            Total Net
+                          </th>
+                          <th style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>Status</th>
                         </tr>
-                      ) : (
-                        filteredRows.map((r, i) => (
-                          <tr
-                            key={i}
-                            style={{
-                              borderBottom: '1px solid #f1f5f9',
-                              backgroundColor:
-                                r.status === 'valid_update'
-                                  ? '#f0f9ff'
-                                  : r.status === 'valid_create'
-                                  ? '#f0fdf4'
-                                  : r.status === 'unmatched'
-                                  ? '#fffbeb'
-                                  : r.status === 'invalid'
-                                  ? '#fef2f2'
-                                  : '#ffffff'
-                            }}
-                          >
-                            <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
-                              <span style={{ fontWeight: 600, color: '#0f172a' }}>{r.sheetName}</span>
-                              <div style={{ fontSize: '11px', color: '#64748b' }}>Row {r.rowNumber}</div>
-                            </td>
-                            <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
-                              {r.excelData?.date || '—'}
-                            </td>
-                            <td style={{ padding: '8px 12px' }}>
-                              <span style={{ fontWeight: 600, color: '#1e293b' }}>
-                                {r.matchedStaff ? r.matchedStaff.name : r.excelData?.staffCode || 'Unmatched'}
-                              </span>
-                              <div style={{ fontSize: '11px', color: '#64748b' }}>
-                                {r.matchedStaff?.staff_id || r.sheetName}
-                              </div>
-                            </td>
-                            <td style={{ padding: '8px 12px' }}>
-                              <span style={{ fontWeight: 600, color: '#1e293b' }}>
-                                {r.matchedProduct ? r.matchedProduct.name : r.excelData?.productName || 'Unmatched'}
-                              </span>
-                              <div style={{ fontSize: '11px', color: '#64748b' }}>
-                                {r.matchedProduct?.code || ''}
-                              </div>
-                            </td>
-                            <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700 }}>
-                              {r.excelData?.quantity || 1}
-                            </td>
-                            <td style={{ padding: '8px 12px' }}>
-                              <span
-                                style={{
-                                  padding: '2px 8px',
-                                  borderRadius: '4px',
-                                  fontSize: '11px',
-                                  fontWeight: 600,
-                                  backgroundColor: r.excelData?.paymentMethod === 'Prepaid' ? '#dcfce7' : '#f1f5f9',
-                                  color: r.excelData?.paymentMethod === 'Prepaid' ? '#166534' : '#475569'
-                                }}
-                              >
-                                {r.excelData?.paymentMethod || 'Prepaid'}
-                              </span>
-                            </td>
-                            <td style={{ padding: '8px 12px' }}>
-                              <span
-                                style={{
-                                  padding: '2px 8px',
-                                  borderRadius: '4px',
-                                  fontSize: '11px',
-                                  fontWeight: 600,
-                                  backgroundColor:
-                                    r.status === 'valid_update'
-                                      ? '#bfdbfe'
-                                      : r.status === 'valid_create'
-                                      ? '#bbf7d0'
-                                      : r.status === 'no_change'
-                                      ? '#e2e8f0'
-                                      : r.status === 'unmatched'
-                                      ? '#fed7aa'
-                                      : '#fecaca',
-                                  color:
-                                    r.status === 'valid_update'
-                                      ? '#1e40af'
-                                      : r.status === 'valid_create'
-                                      ? '#15803d'
-                                      : r.status === 'no_change'
-                                      ? '#475569'
-                                      : r.status === 'unmatched'
-                                      ? '#9a3412'
-                                      : '#991b1b'
-                                }}
-                              >
-                                {r.status === 'valid_update'
-                                  ? 'To Update'
-                                  : r.status === 'valid_create'
-                                  ? 'To Create'
-                                  : r.status === 'no_change'
-                                  ? 'No Change'
-                                  : r.status === 'unmatched'
-                                  ? 'Unmatched'
-                                  : 'Invalid'}
-                              </span>
-                              {r.reasons?.length > 0 && (
-                                <div style={{ fontSize: '10.5px', color: '#b91c1c', marginTop: '2px' }}>
-                                  {r.reasons.join(', ')}
-                                </div>
-                              )}
+                      </thead>
+                      <tbody>
+                        {filteredMatrixRows.length === 0 ? (
+                          <tr>
+                            <td colSpan={6 + matrixProductCols.length + matrixReturnCols.length} style={{ textAlign: 'center', padding: '28px', color: '#94a3b8' }}>
+                              No sheet rows match the search query "{sheetSearch}".
                             </td>
                           </tr>
-                        ))
+                        ) : (
+                          filteredMatrixRows.map((r, i) => (
+                            <tr
+                              key={i}
+                              style={{
+                                borderBottom: '1px solid #f1f5f9',
+                                backgroundColor: i % 2 === 0 ? '#ffffff' : '#fafafa'
+                              }}
+                            >
+                              <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', borderRight: '1px solid #f1f5f9', fontFamily: 'monospace', fontWeight: 600 }}>
+                                {r.date}
+                              </td>
+                              <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', borderRight: '1px solid #f1f5f9' }}>
+                                <span
+                                  style={{
+                                    padding: '2px 8px',
+                                    borderRadius: '5px',
+                                    backgroundColor: '#f1f5f9',
+                                    color: '#0f172a',
+                                    fontWeight: 700,
+                                    fontFamily: 'monospace',
+                                    fontSize: '11px',
+                                    border: '1px solid #e2e8f0'
+                                  }}
+                                >
+                                  {r.employeeId || '—'}
+                                </span>
+                              </td>
+                              <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', borderRight: '1px solid #f1f5f9', fontWeight: 600, color: '#334155' }}>
+                                {r.staffName || '—'}
+                              </td>
+                              {matrixProductCols.map(col => {
+                                const qty = r.quantities?.[col.key] || 0;
+                                return (
+                                  <td
+                                    key={col.key}
+                                    style={{
+                                      padding: '7px 10px',
+                                      textAlign: 'center',
+                                      borderRight: '1px solid #f1f5f9',
+                                      fontWeight: qty > 0 ? 700 : 400,
+                                      color: qty > 0 ? '#0284c7' : '#94a3b8',
+                                      backgroundColor: qty > 0 ? '#f0f9ff44' : 'transparent'
+                                    }}
+                                  >
+                                    {qty > 0 ? qty : '—'}
+                                  </td>
+                                );
+                              })}
+                              <td style={{ padding: '7px 10px', textAlign: 'right', borderRight: '1px solid #f1f5f9', fontWeight: 700, color: '#b45309' }}>
+                                ₹{Number(r.grossIncentive || 0).toLocaleString()}
+                              </td>
+                              {matrixReturnCols.map(col => {
+                                const retQty = r.returns?.[col.key] || 0;
+                                return (
+                                  <td
+                                    key={col.key}
+                                    style={{
+                                      padding: '7px 10px',
+                                      textAlign: 'center',
+                                      borderRight: '1px solid #f1f5f9',
+                                      fontWeight: retQty > 0 ? 700 : 400,
+                                      color: retQty > 0 ? '#dc2626' : '#94a3b8',
+                                      backgroundColor: retQty > 0 ? '#fef2f2' : 'transparent'
+                                    }}
+                                  >
+                                    {retQty > 0 ? retQty : '—'}
+                                  </td>
+                                );
+                              })}
+                              <td style={{ padding: '7px 10px', textAlign: 'right', borderRight: '1px solid #f1f5f9', color: r.returnDeductions > 0 ? '#dc2626' : '#94a3b8', fontWeight: r.returnDeductions > 0 ? 700 : 400 }}>
+                                {r.returnDeductions > 0 ? `-₹${Number(r.returnDeductions).toLocaleString()}` : '₹0'}
+                              </td>
+                              <td style={{ padding: '7px 10px', textAlign: 'right', borderRight: '1px solid #f1f5f9', fontWeight: 800, color: '#16a34a' }}>
+                                ₹{Number(r.netIncentive || 0).toLocaleString()}
+                              </td>
+                              <td style={{ padding: '7px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                <span
+                                  style={{
+                                    padding: '2px 7px',
+                                    borderRadius: '4px',
+                                    fontSize: '10.5px',
+                                    fontWeight: 700,
+                                    backgroundColor: r.isStaffMatched ? '#dcfce7' : '#fee2e2',
+                                    color: r.isStaffMatched ? '#166534' : '#991b1b'
+                                  }}
+                                >
+                                  {r.isStaffMatched ? 'Valid' : 'Unmatched'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                      {filteredMatrixRows.length > 0 && (
+                        <tfoot style={{ backgroundColor: '#f8fafc', position: 'sticky', bottom: 0, zIndex: 2, borderTop: '2px solid #cbd5e1' }}>
+                          <tr style={{ fontWeight: 800, color: '#0f172a' }}>
+                            <td colSpan={3} style={{ padding: '9px 10px', textAlign: 'right', borderRight: '1px solid #e2e8f0' }}>
+                              TOTALS ({filteredMatrixRows.length} ROWS):
+                            </td>
+                            {matrixProductCols.map(col => (
+                              <td
+                                key={col.key}
+                                style={{
+                                  padding: '9px 10px',
+                                  textAlign: 'center',
+                                  borderRight: '1px solid #e2e8f0',
+                                  color: '#0284c7',
+                                  backgroundColor: '#f0f9ff'
+                                }}
+                              >
+                                {matrixTotals.products[col.key] || 0}
+                              </td>
+                            ))}
+                            <td style={{ padding: '9px 10px', textAlign: 'right', color: '#b45309', backgroundColor: '#fef3c7', borderRight: '1px solid #e2e8f0' }}>
+                              ₹{Math.round(matrixTotals.grossIncentive).toLocaleString()}
+                            </td>
+                            {matrixReturnCols.map(col => (
+                              <td
+                                key={col.key}
+                                style={{
+                                  padding: '9px 10px',
+                                  textAlign: 'center',
+                                  borderRight: '1px solid #e2e8f0',
+                                  color: '#dc2626',
+                                  backgroundColor: '#fef2f2'
+                                }}
+                              >
+                                {matrixTotals.returns[col.key] || 0}
+                              </td>
+                            ))}
+                            <td style={{ padding: '9px 10px', textAlign: 'right', color: '#dc2626', backgroundColor: '#fff1f2', borderRight: '1px solid #e2e8f0' }}>
+                              -₹{Math.round(matrixTotals.returnDeductions).toLocaleString()}
+                            </td>
+                            <td style={{ padding: '9px 10px', textAlign: 'right', color: '#16a34a', backgroundColor: '#ecfdf5', borderRight: '1px solid #e2e8f0' }}>
+                              ₹{Math.round(matrixTotals.netIncentive).toLocaleString()}
+                            </td>
+                            <td style={{ padding: '9px 10px', textAlign: 'center', color: '#64748b' }}>—</td>
+                          </tr>
+                        </tfoot>
                       )}
-                    </tbody>
-                  </table>
-                </div>
+                    </table>
+                  </div>
+                )}
+
+                {/* VIEW 2: ORDER LINE ITEMS VIEW (Flat Database Records) */}
+                {previewViewMode === 'flat' && (
+                  <div
+                    style={{
+                      maxHeight: '340px',
+                      overflowY: 'auto',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '8px'
+                    }}
+                  >
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                      <thead style={{ backgroundColor: '#f8fafc', position: 'sticky', top: 0, zIndex: 1 }}>
+                        <tr style={{ borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#64748b' }}>
+                          <th style={{ padding: '8px 12px' }}>Sheet / Row</th>
+                          <th style={{ padding: '8px 12px' }}>Order Date</th>
+                          <th style={{ padding: '8px 12px' }}>Sales Staff</th>
+                          <th style={{ padding: '8px 12px' }}>Product</th>
+                          <th style={{ padding: '8px 12px', textAlign: 'center' }}>Qty</th>
+                          <th style={{ padding: '8px 12px', textAlign: 'center' }}>Returns</th>
+                          <th style={{ padding: '8px 12px' }}>Payment</th>
+                          <th style={{ padding: '8px 12px' }}>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredRows.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} style={{ textAlign: 'center', padding: '24px', color: '#94a3b8' }}>
+                              No rows matching the selected filter.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredRows.map((r, i) => (
+                            <tr
+                              key={i}
+                              style={{
+                                borderBottom: '1px solid #f1f5f9',
+                                backgroundColor:
+                                  r.status === 'valid_update'
+                                    ? '#f0f9ff'
+                                    : r.status === 'valid_create'
+                                    ? '#f0fdf4'
+                                    : r.status === 'unmatched'
+                                    ? '#fffbeb'
+                                    : r.status === 'invalid'
+                                    ? '#fef2f2'
+                                    : '#ffffff'
+                              }}
+                            >
+                              <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                                <span style={{ fontWeight: 600, color: '#0f172a' }}>{r.sheetName}</span>
+                                <div style={{ fontSize: '11px', color: '#64748b' }}>Row {r.rowNumber}</div>
+                              </td>
+                              <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                                {r.excelData?.date || '—'}
+                              </td>
+                              <td style={{ padding: '8px 12px' }}>
+                                <span style={{ fontWeight: 600, color: '#1e293b' }}>
+                                  {r.matchedStaff ? r.matchedStaff.name : r.excelData?.staffCode || 'Unmatched'}
+                                </span>
+                                <div style={{ fontSize: '11px', color: '#64748b' }}>
+                                  {r.matchedStaff?.staff_id || r.sheetName}
+                                </div>
+                              </td>
+                              <td style={{ padding: '8px 12px' }}>
+                                <span style={{ fontWeight: 600, color: '#1e293b' }}>
+                                  {r.matchedProduct ? r.matchedProduct.name : r.excelData?.productName || 'Unmatched'}
+                                </span>
+                                <div style={{ fontSize: '11px', color: '#64748b' }}>
+                                  {r.matchedProduct?.code || ''}
+                                </div>
+                              </td>
+                              <td style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700 }}>
+                                {r.excelData?.quantity ?? 0}
+                              </td>
+                              <td style={{
+                                padding: '8px 12px',
+                                textAlign: 'center',
+                                fontWeight: r.excelData?.returnQuantity > 0 ? 700 : 400,
+                                color: r.excelData?.returnQuantity > 0 ? '#dc2626' : '#94a3b8'
+                              }}>
+                                {r.excelData?.returnQuantity > 0 ? `${r.excelData.returnQuantity} units` : '—'}
+                              </td>
+                              <td style={{ padding: '8px 12px' }}>
+                                <span
+                                  style={{
+                                    padding: '2px 8px',
+                                    borderRadius: '4px',
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                    backgroundColor: r.excelData?.paymentMethod === 'Prepaid' ? '#dcfce7' : '#f1f5f9',
+                                    color: r.excelData?.paymentMethod === 'Prepaid' ? '#166534' : '#475569'
+                                  }}
+                                >
+                                  {r.excelData?.paymentMethod || 'Prepaid'}
+                                </span>
+                              </td>
+                              <td style={{ padding: '8px 12px' }}>
+                                <span
+                                  style={{
+                                    padding: '2px 8px',
+                                    borderRadius: '4px',
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                    backgroundColor:
+                                      r.status === 'valid_update'
+                                        ? '#bfdbfe'
+                                        : r.status === 'valid_create'
+                                        ? '#bbf7d0'
+                                        : r.status === 'no_change'
+                                        ? '#e2e8f0'
+                                        : r.status === 'unmatched'
+                                        ? '#fed7aa'
+                                        : '#fecaca',
+                                    color:
+                                      r.status === 'valid_update'
+                                        ? '#1e40af'
+                                        : r.status === 'valid_create'
+                                        ? '#15803d'
+                                        : r.status === 'no_change'
+                                        ? '#475569'
+                                        : r.status === 'unmatched'
+                                        ? '#9a3412'
+                                        : '#991b1b'
+                                  }}
+                                >
+                                  {r.status === 'valid_update'
+                                    ? 'To Update'
+                                    : r.status === 'valid_create'
+                                    ? 'To Create'
+                                    : r.status === 'no_change'
+                                    ? 'No Change'
+                                    : r.status === 'unmatched'
+                                    ? 'Unmatched'
+                                    : 'Invalid'}
+                                </span>
+                                {r.reasons?.length > 0 && (
+                                  <div style={{ fontSize: '10.5px', color: '#b91c1c', marginTop: '2px' }}>
+                                    {r.reasons.join(', ')}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           )}
