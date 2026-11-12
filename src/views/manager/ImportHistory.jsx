@@ -93,7 +93,7 @@ export default function ImportHistory({ onNavigate }) {
 
         <div className="responsive-table-view">
           <div className="table-responsive">
-            <table className="data-table">
+            <table className="data-table" style={{ minWidth: '680px' }}>
               <thead>
                 <tr>
                   <th>Reporting Month</th>

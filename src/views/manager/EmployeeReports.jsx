@@ -259,7 +259,7 @@ export default function EmployeeReports({ initialMonth, onNavigate }) {
         <div className="table-card">
           <div className="responsive-table-view">
             <div className="table-responsive" style={{ maxHeight: '650px', overflowY: 'auto' }}>
-              <table className="data-table" style={{ fontSize: '12.5px', width: '100%' }}>
+              <table className="data-table" style={{ fontSize: '12.5px', width: '100%', minWidth: `${Math.max(680, cols.length * 85)}px` }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#1e293b', color: '#ffffff' }}>
                   <tr>
                     {cols.map((col, idx) => {
@@ -487,7 +487,7 @@ export default function EmployeeReports({ initialMonth, onNavigate }) {
           <div className="table-card">
             <div className="responsive-table-view">
               <div className="table-responsive">
-                <table className="data-table">
+                <table className="data-table" style={{ minWidth: '540px' }}>
                   <thead>
                     <tr>
                       <th style={{ width: '130px' }}>Employee ID</th>

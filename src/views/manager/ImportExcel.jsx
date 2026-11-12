@@ -327,32 +327,32 @@ export default function ImportExcel({ onNavigate }) {
           )}
 
           {/* Top Summary Metrics Strip */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginBottom: '22px' }}>
-            <div className="table-card" style={{ padding: '16px', marginBottom: 0, borderLeft: '4px solid #3b82f6' }}>
-              <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>Employees Detected</div>
-              <div style={{ fontSize: '22px', fontWeight: 800, color: '#1e293b', marginTop: '2px' }}>
-                {preview.totalEmployees} employees
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px', marginBottom: '22px' }}>
+            <div className="table-card" style={{ padding: '14px 16px', marginBottom: 0, borderLeft: '4px solid #3b82f6' }}>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Employees Detected</div>
+              <div style={{ fontSize: '20px', fontWeight: 800, color: '#1e293b', marginTop: '2px' }}>
+                {preview.totalEmployees} staff
               </div>
             </div>
 
-            <div className="table-card" style={{ padding: '16px', marginBottom: 0, borderLeft: '4px solid #10b981' }}>
-              <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>Total Records Recognized</div>
-              <div style={{ fontSize: '22px', fontWeight: 800, color: '#047857', marginTop: '2px' }}>
+            <div className="table-card" style={{ padding: '14px 16px', marginBottom: 0, borderLeft: '4px solid #10b981' }}>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Total Records</div>
+              <div style={{ fontSize: '20px', fontWeight: 800, color: '#047857', marginTop: '2px' }}>
                 {preview.totalRecords?.toLocaleString()} rows
               </div>
             </div>
 
-            <div className="table-card" style={{ padding: '16px', marginBottom: 0, borderLeft: '4px solid #8b5cf6' }}>
-              <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>Worksheets Scanned</div>
-              <div style={{ fontSize: '22px', fontWeight: 800, color: '#6d28d9', marginTop: '2px' }}>
+            <div className="table-card" style={{ padding: '14px 16px', marginBottom: 0, borderLeft: '4px solid #8b5cf6' }}>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Worksheets</div>
+              <div style={{ fontSize: '20px', fontWeight: 800, color: '#6d28d9', marginTop: '2px' }}>
                 {preview.recognizedSheets?.length || 0} sheets
               </div>
             </div>
 
-            <div className="table-card" style={{ padding: '16px', marginBottom: 0, borderLeft: '4px solid #f59e0b' }}>
-              <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>Columns Identified</div>
-              <div style={{ fontSize: '22px', fontWeight: 800, color: '#b45309', marginTop: '2px' }}>
-                {preview.allColumns?.length || 0} columns
+            <div className="table-card" style={{ padding: '14px 16px', marginBottom: 0, borderLeft: '4px solid #f59e0b' }}>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Columns</div>
+              <div style={{ fontSize: '20px', fontWeight: 800, color: '#b45309', marginTop: '2px' }}>
+                {preview.allColumns?.length || 0} cols
               </div>
             </div>
           </div>
@@ -408,7 +408,7 @@ export default function ImportExcel({ onNavigate }) {
                     </div>
                   </div>
                 ) : (
-                  <table className="data-table" style={{ fontSize: '12.5px' }}>
+                  <table className="data-table" style={{ fontSize: '12.5px', minWidth: '480px' }}>
                     <thead>
                       <tr>
                         <th style={{ width: '130px' }}>Employee ID</th>
@@ -479,7 +479,7 @@ export default function ImportExcel({ onNavigate }) {
               </span>
             </div>
 
-            <div style={{ display: 'flex', gap: '10px' }}>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', width: '100%', justifyContent: 'flex-end' }}>
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -543,7 +543,7 @@ export default function ImportExcel({ onNavigate }) {
               {result.message}
             </p>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', background: '#f8fafc', padding: '16px', borderRadius: '8px', marginBottom: '24px', textAlign: 'left' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px', background: '#f8fafc', padding: '16px', borderRadius: '8px', marginBottom: '24px', textAlign: 'left' }}>
               <div>
                 <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Reporting Month</span>
                 <strong style={{ display: 'block', fontSize: '15px' }}>{result.monthName}</strong>
@@ -562,7 +562,7 @@ export default function ImportExcel({ onNavigate }) {
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
               <button
                 type="button"
                 className="btn btn-primary"

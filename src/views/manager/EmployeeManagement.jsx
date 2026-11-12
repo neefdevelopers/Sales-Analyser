@@ -400,14 +400,14 @@ export default function EmployeeManagement({ navParams, onNavigate }) {
       )}
 
       {/* Header */}
-      <div className="page-header" style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+      <div className="page-header" style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <h1 className="page-title" style={{ fontSize: '24px', fontWeight: 800 }}>
             Employee Management
           </h1>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button
             type="button"
             className="btn btn-secondary"
@@ -600,7 +600,7 @@ export default function EmployeeManagement({ navParams, onNavigate }) {
           gap: '12px'
         }}>
           {/* Search Box */}
-          <div style={{ position: 'relative', flex: '1 1 260px', maxWidth: '380px' }}>
+          <div style={{ position: 'relative', flex: '1 1 240px', maxWidth: '100%', minWidth: '200px' }}>
             <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
             <input
               type="text"
@@ -613,7 +613,8 @@ export default function EmployeeManagement({ navParams, onNavigate }) {
                 height: '36px',
                 borderRadius: '6px',
                 fontSize: '13px',
-                borderColor: '#cbd5e1'
+                borderColor: '#cbd5e1',
+                width: '100%'
               }}
             />
             {search && (
@@ -637,10 +638,10 @@ export default function EmployeeManagement({ navParams, onNavigate }) {
           </div>
 
           {/* Status Filter & Summary */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', justifyContent: 'space-between', flex: '1 1 auto' }}>
             <select
               className="form-control"
-              style={{ width: 'auto', minWidth: '150px', height: '36px', fontSize: '13px', borderRadius: '6px' }}
+              style={{ width: 'auto', minWidth: '140px', height: '36px', fontSize: '13px', borderRadius: '6px' }}
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value)}
             >
@@ -649,15 +650,15 @@ export default function EmployeeManagement({ navParams, onNavigate }) {
               <option value="inactive">Inactive Only ({inactiveEmps})</option>
             </select>
 
-            <span style={{ fontSize: '12.5px', color: '#64748b', fontWeight: 500 }}>
+            <span style={{ fontSize: '12.5px', color: '#64748b', fontWeight: 500, marginLeft: 'auto' }}>
               {filteredEmployees.length} of {totalEmps} staff
             </span>
           </div>
         </div>
 
         {/* The Clean Data Table */}
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+        <div className="table-responsive" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
+          <table style={{ width: '100%', minWidth: '580px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
             <thead style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
               <tr>
                 <th style={{ width: '50px', padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>#</th>
@@ -812,17 +813,18 @@ export default function EmployeeManagement({ navParams, onNavigate }) {
           >
             {/* Header */}
             <div style={{
-              padding: '20px 24px',
+              padding: '16px 20px',
               background: 'linear-gradient(135deg, #1e293b, #0f172a)',
               color: '#ffffff',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between'
+              justifyContent: 'space-between',
+              gap: '12px'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
                 <div style={{
-                  width: '42px',
-                  height: '42px',
+                  width: '40px',
+                  height: '40px',
                   borderRadius: '8px',
                   background: '#334155',
                   color: '#ffffff',
@@ -830,13 +832,14 @@ export default function EmployeeManagement({ navParams, onNavigate }) {
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontWeight: 700,
-                  fontSize: '15px'
+                  fontSize: '14px',
+                  flexShrink: 0
                 }}>
                   {(selectedEmployee.name || 'E').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)}
                 </div>
-                <div>
+                <div style={{ minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 700, color: '#ffffff' }}>
+                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#ffffff', wordBreak: 'break-word' }}>
                       {selectedEmployee.name}
                     </h3>
                     <span style={{
@@ -851,7 +854,7 @@ export default function EmployeeManagement({ navParams, onNavigate }) {
                       {selectedEmployee.staff_id}
                     </span>
                   </div>
-                  <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
+                  <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px', wordBreak: 'break-all' }}>
                     Sales Staff &bull; Login username: <code>{selectedEmployee.username}</code>
                   </div>
                 </div>
@@ -871,7 +874,8 @@ export default function EmployeeManagement({ navParams, onNavigate }) {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: '16px'
+                  fontSize: '16px',
+                  flexShrink: 0
                 }}
               >
                 ✕
@@ -879,22 +883,22 @@ export default function EmployeeManagement({ navParams, onNavigate }) {
             </div>
 
             {/* Modal Body */}
-            <div style={{ padding: '22px 24px', background: '#f8fafc' }}>
+            <div style={{ padding: '16px 18px', background: '#f8fafc', maxHeight: 'calc(85vh - 70px)', overflowY: 'auto' }}>
               {/* Highlight metrics */}
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(3, 1fr)',
-                gap: '12px',
-                marginBottom: '20px'
+                gridTemplateColumns: 'repeat(auto-fit, minmax(95px, 1fr))',
+                gap: '10px',
+                marginBottom: '16px'
               }}>
-                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', padding: '12px', borderRadius: '10px', textAlign: 'center' }}>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', fontWeight: 700 }}>Account Status</span>
+                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', padding: '10px', borderRadius: '10px', textAlign: 'center' }}>
+                  <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', fontWeight: 700 }}>Status</span>
                   <span style={{
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '5px',
-                    marginTop: '5px',
-                    fontSize: '12.5px',
+                    marginTop: '4px',
+                    fontSize: '12px',
                     fontWeight: 700,
                     color: selectedEmployee.status === 'active' ? '#15803d' : '#b91c1c'
                   }}>
@@ -903,35 +907,35 @@ export default function EmployeeManagement({ navParams, onNavigate }) {
                   </span>
                 </div>
 
-                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', padding: '12px', borderRadius: '10px', textAlign: 'center' }}>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', fontWeight: 700 }}>Monthly Reports</span>
-                  <strong style={{ fontSize: '15px', color: '#1e293b', marginTop: '3px', display: 'block' }}>
+                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', padding: '10px', borderRadius: '10px', textAlign: 'center' }}>
+                  <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', fontWeight: 700 }}>Reports</span>
+                  <strong style={{ fontSize: '14px', color: '#1e293b', marginTop: '2px', display: 'block' }}>
                     {selectedEmployee.report_count || 0}
                   </strong>
                 </div>
 
-                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', padding: '12px', borderRadius: '10px', textAlign: 'center' }}>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', fontWeight: 700 }}>Sales Records</span>
-                  <strong style={{ fontSize: '15px', color: '#1e293b', marginTop: '3px', display: 'block' }}>
-                    {selectedEmployee.total_records || 0} rows
+                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', padding: '10px', borderRadius: '10px', textAlign: 'center' }}>
+                  <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', fontWeight: 700 }}>Records</span>
+                  <strong style={{ fontSize: '14px', color: '#1e293b', marginTop: '2px', display: 'block' }}>
+                    {selectedEmployee.total_records || 0}
                   </strong>
                 </div>
               </div>
 
               {/* Detailed specs */}
-              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 18px', marginBottom: '20px' }}>
-                <h4 style={{ fontSize: '12px', fontWeight: 700, color: '#475569', margin: '0 0 12px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px 16px', marginBottom: '16px' }}>
+                <h4 style={{ fontSize: '11.5px', fontWeight: 700, color: '#475569', margin: '0 0 10px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                   Account &amp; System Information
                 </h4>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', fontSize: '13px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px', fontSize: '12.5px' }}>
                   <div>
-                    <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '11px', fontWeight: 600 }}>FULL NAME</span>
-                    <strong style={{ color: '#1e293b' }}>{selectedEmployee.name}</strong>
+                    <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10.5px', fontWeight: 600 }}>FULL NAME</span>
+                    <strong style={{ color: '#1e293b', wordBreak: 'break-word' }}>{selectedEmployee.name}</strong>
                   </div>
 
                   <div>
-                    <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '11px', fontWeight: 600 }}>EMPLOYEE ID</span>
+                    <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '10.5px', fontWeight: 600 }}>EMPLOYEE ID</span>
                     <code style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 6px', borderRadius: '4px', fontWeight: 700, fontSize: '12px' }}>
                       {selectedEmployee.staff_id}
                     </code>
@@ -1324,7 +1328,7 @@ export default function EmployeeManagement({ navParams, onNavigate }) {
                   Cancel
                 </button>
 
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   {!editingEmployee && pendingSuggestions.length > 1 && (
                     <button
                       type="button"

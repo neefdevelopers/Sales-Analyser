@@ -116,7 +116,7 @@ export default function ManagerDashboard({ onNavigate }) {
             </button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '14px', background: '#f8fafc', padding: '14px 18px', borderRadius: '8px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px', background: '#f8fafc', padding: '14px 18px', borderRadius: '8px' }}>
             <div>
               <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Employees Detected</div>
               <strong style={{ fontSize: '16px' }}>{latest.totalEmployees} employees</strong>
@@ -141,7 +141,7 @@ export default function ManagerDashboard({ onNavigate }) {
 
       {/* Available Imported Months Table */}
       <div className="table-card">
-        <div className="table-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="table-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Clock size={16} color="var(--primary-600)" />
             <strong style={{ fontSize: '14.5px' }}>Imported Monthly Reports</strong>
@@ -162,7 +162,7 @@ export default function ManagerDashboard({ onNavigate }) {
 
         <div className="responsive-table-view">
           <div className="table-responsive">
-            <table className="data-table">
+            <table className="data-table" style={{ minWidth: '600px' }}>
               <thead>
                 <tr>
                   <th>Reporting Month</th>
