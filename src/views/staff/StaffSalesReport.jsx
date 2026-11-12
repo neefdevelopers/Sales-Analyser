@@ -122,7 +122,7 @@ export default function StaffSalesReport({ initialMonth }) {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <h1 className="page-title" style={{ margin: 0, fontSize: '22px', fontWeight: 800 }}>
-              My Sales Report
+              Sales Report
             </h1>
             <span className="badge badge-neutral" style={{ fontSize: '12px', fontWeight: 700 }}>
               Employee ID: {data?.employeeId || user?.staff_id}
@@ -132,7 +132,7 @@ export default function StaffSalesReport({ initialMonth }) {
             </span>
           </div>
           <p className="page-subtitle" style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '4px' }}>
-            Confidential employee sales data extracted from monthly Excel reports
+            Welcome, <strong>{user?.name}</strong> &bull; Monthly sales records extracted from Excel reports
           </p>
         </div>
 

@@ -6,6 +6,7 @@ import {
   UploadCloud,
   FileSpreadsheet,
   History,
+  Users,
   Award,
   LogOut,
   ChevronDown,
@@ -35,15 +36,15 @@ export default function Sidebar({ currentView, setCurrentView, isOpen, onClose }
     };
   }, [showDemoMenu]);
 
-  // Role 1: Sales Staff Navigation
+  // Role 1: Sales Staff Navigation (only Sales Report)
   const staffNavItems = [
-    { id: 'my-dashboard', label: 'My Dashboard', icon: LayoutDashboard },
-    { id: 'my-sales-report', label: 'My Sales Report', icon: FileSpreadsheet }
+    { id: 'my-sales-report', label: 'Sales Report', icon: FileSpreadsheet }
   ];
 
   // Role 2: Brand Manager Navigation
   const managerNavItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'employee-management', label: 'Employee Management', icon: Users },
     { id: 'import-excel', label: 'Import Excel', icon: UploadCloud },
     { id: 'employee-reports', label: 'Employee Reports', icon: FileSpreadsheet },
     { id: 'import-history', label: 'Import History', icon: History }

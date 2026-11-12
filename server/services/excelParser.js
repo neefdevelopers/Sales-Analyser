@@ -131,6 +131,27 @@ export function parseDateValue(rawVal, fallbackMonthStr = '') {
   return s;
 }
 
+export function isInvalidEmployeeId(idStr) {
+  if (!idStr) return true;
+  const s = normalizeText(idStr);
+  const invalid = [
+    'employee id', 'employeeid', 'staff id', 'staffid', 'emp id', 'empid',
+    'employee code', 'staff code', 'emp code', 'code', 'id',
+    'date', 'order date', 'sales date', 'dt', 'day',
+    'total', 'grand total', 'sub total', 'subtotal', 'average', 'avg',
+    'amount', 'net', 'gross', 'sum', 'payout', 'incentive',
+    'sl', 'no', 'sr', 's.no', 'sr.no', 'name', 'employee name', 'staff name',
+    'status', 'remarks', 'signature', 'verified', 'approved', 'present', 'absent',
+    'ot (hours)', 'incomplete hours', 'basic pay', 'emergency loan', 'loan',
+    'incentive amount', 'total amount', 'salary', 'advance'
+  ];
+  if (invalid.includes(s)) return true;
+  if (/^(?:total|grand\s*total|average|subtotal|date|employee\s*id|staff\s*id|salary|basic\s*pay)$/i.test(s)) return true;
+  if (s.length < 2 || s.length > 30) return true;
+  if (!/[a-z0-9]/i.test(s)) return true;
+  return false;
+}
+
 export function isStaffHeaderLabel(str) {
   if (!str) return false;
   const s = normalizeText(str);
@@ -173,168 +194,91 @@ export function isDateHeader(str) {
   return s === 'date' || s === 'order date' || s === 'day' || s === 'dt' || s === 'sales date' || s === 'reporting date';
 }
 
-export function isSummarySheet(sheet) {
-  // If the sheet has actual row-level data with DATE and EMPLOYEE ID columns, it is NOT a summary to skip!
-  for (let r = 1; r <= Math.min(sheet.rowCount || 10, 10); r++) {
-    const row = sheet.getRow(r);
-    let hasDate = false;
-    let hasStaff = false;
-    row.eachCell(cell => {
-      const val = normalizeText(getCellValue(cell));
-      if (isDateHeader(val)) hasDate = true;
-      if (isStaffHeaderLabel(val)) hasStaff = true;
-    });
-    if (hasDate && hasStaff) {
-      return false;
+export function parseEmployeeCodeAndName(text, knownUsers = []) {
+  if (!text) return { employeeId: '', employeeName: '' };
+  const textNorm = normalizeText(text);
+
+  // Direct match with knownUsers
+  const matchedUser = knownUsers.find(u =>
+    normalizeText(u.staff_id) === textNorm ||
+    normalizeText(u.name) === textNorm ||
+    normalizeText(u.username) === textNorm
+  );
+  if (matchedUser) {
+    return {
+      employeeId: matchedUser.staff_id,
+      employeeName: matchedUser.name || matchedUser.staff_id
+    };
+  }
+
+  // Regex pattern for codes like AS100, AST04, STF01
+  const codeMatch = text.match(/\b([A-Za-z]{1,5}\s*[-_]?\s*\d{2,5})\b/);
+  if (codeMatch) {
+    const rawCode = codeMatch[1].replace(/\s+/g, '').toUpperCase();
+    if (!isInvalidEmployeeId(rawCode)) {
+      const remainingName = text.replace(codeMatch[0], '').replace(/[-_()]/g, ' ').replace(/\s+/g, ' ').trim();
+      const userByCode = knownUsers.find(u => normalizeText(u.staff_id) === normalizeText(rawCode));
+      const finalName = remainingName.length >= 2 ? remainingName : (userByCode?.name || rawCode);
+      return {
+        employeeId: rawCode,
+        employeeName: finalName
+      };
     }
   }
 
-  const nameNorm = normalizeText(sheet.name);
-  const summaryKeywords = [
-    'summary', 'total', 'consolidated', 'overall',
-    'dashboard', 'master summary', 'monthly summary'
-  ];
-  if (summaryKeywords.some(kw => nameNorm.includes(kw))) {
-    return true;
-  }
-
-  for (let r = 1; r <= Math.min(sheet.rowCount || 5, 5); r++) {
-    const row = sheet.getRow(r);
-    let rowText = '';
-    row.eachCell(cell => { rowText += ' ' + getCellValue(cell); });
-    const rowNorm = normalizeText(rowText);
-    if (rowNorm.includes('consolidated') || rowNorm.includes('monthly summary') || rowNorm.includes('all staff incentive')) {
-      return true;
-    }
-  }
-
-  return false;
+  return { employeeId: '', employeeName: '' };
 }
 
-/**
- * Extracts sheet-level Employee ID & Name from top metadata rows or sheet name
- */
 export function extractSheetEmployeeInfo(sheet, knownUsers = []) {
-  let employeeId = '';
-  let employeeName = '';
-  let foundIn = '';
-
-  const sheetNorm = normalizeText(sheet.name);
-
-  // 1. Direct match with sheet name against known users
-  const byUser = knownUsers.find(u =>
-    normalizeText(u.staff_id) === sheetNorm ||
-    normalizeText(u.name) === sheetNorm ||
-    normalizeText(u.username) === sheetNorm
-  );
-  if (byUser) {
+  const parsedSheetName = parseEmployeeCodeAndName(sheet.name, knownUsers);
+  if (parsedSheetName.employeeId) {
     return {
-      employeeId: byUser.staff_id,
-      employeeName: byUser.name,
+      employeeId: parsedSheetName.employeeId,
+      employeeName: parsedSheetName.employeeName,
       foundIn: `Sheet name (${sheet.name})`
     };
   }
 
-  // 2. Pattern in sheet name: e.g. "AS100", "THAHEEL", "AS100_THAHEEL"
-  const codeInSheet = sheet.name.match(/\b([A-Z]{1,5}[-_ ]?\d{2,5})\b/i);
-  if (codeInSheet) {
-    employeeId = codeInSheet[1].trim().toUpperCase();
-    employeeName = sheet.name.replace(codeInSheet[0], '').replace(/[-_()]/g, ' ').trim() || employeeId;
-    foundIn = `Sheet name pattern (${sheet.name})`;
-  }
+  let employeeId = '';
+  let employeeName = '';
+  let foundIn = '';
 
-  // 3. Scan metadata rows 1-8
   const maxRow = Math.min(sheet.rowCount || 10, 10);
   for (let r = 1; r <= maxRow; r++) {
     const row = sheet.getRow(r);
-    const maxCol = Math.min(row.cellCount || 20, 20);
-
-    let isHeaderRow = false;
-    row.eachCell(cCell => {
-      const cNorm = normalizeText(getCellValue(cCell));
-      if (isDateHeader(cNorm) || cNorm.includes('product') || cNorm.includes('prepaid') || cNorm.includes('cod')) {
-        isHeaderRow = true;
-      }
-    });
-    if (isHeaderRow) continue;
-
-    for (let c = 1; c <= maxCol; c++) {
-      const cell = row.getCell(c);
-      const val = getCellValue(cell);
+    for (let c = 1; c <= Math.min(row.cellCount || 15, 15); c++) {
+      const val = getCellValue(row.getCell(c));
       if (!val) continue;
-      const valNorm = normalizeText(val);
 
       // Check for inline Employee ID: e.g. "Employee ID: AS100"
       const inlineId = val.match(/(?:emp(?:loyee)?\s*(?:id|code|no)|staff\s*(?:id|code|no))\s*[:\-#]?\s*([a-zA-Z0-9_\-]+)/i);
-      if (inlineId && inlineId[1] && normalizeText(inlineId[1]) !== 'id') {
+      if (inlineId && inlineId[1] && !isInvalidEmployeeId(inlineId[1])) {
         employeeId = inlineId[1].trim().toUpperCase();
-        foundIn = `Cell ${cell.address} (inline ID)`;
+        foundIn = `Cell ${row.getCell(c).address} (inline ID)`;
       }
 
-      // Check for label cell "Employee ID" with value to the right or below
-      if (!employeeId && (
-        valNorm === 'employee id' || valNorm === 'staff id' ||
-        valNorm === 'emp id' || valNorm === 'empid' || valNorm === 'staffid'
-      )) {
-        const rightVal = getCellValue(row.getCell(c + 1));
-        if (rightVal && !isStaffHeaderLabel(rightVal) && rightVal.length <= 30) {
-          employeeId = rightVal.trim().toUpperCase();
-          foundIn = `Cell ${row.getCell(c + 1).address} (right of label)`;
-        } else {
-          const belowVal = getCellValue(sheet.getRow(r + 1).getCell(c));
-          if (belowVal && !isStaffHeaderLabel(belowVal) && belowVal.length <= 30) {
-            employeeId = belowVal.trim().toUpperCase();
-            foundIn = `Cell ${sheet.getRow(r + 1).getCell(c).address} (below label)`;
-          }
-        }
-      }
-
-      // Check for Employee Name
-      const inlineName = val.match(/(?:emp(?:loyee)?\s*name|staff\s*name)\s*[:\-#]?\s*([a-zA-Z\s\.]+)/i);
-      if (inlineName && inlineName[1] && normalizeText(inlineName[1]) !== 'name') {
-        employeeName = inlineName[1].trim();
-      } else if (!employeeName && (valNorm === 'employee name' || valNorm === 'staff name' || valNorm === 'emp name')) {
-        const rightVal = getCellValue(row.getCell(c + 1));
-        if (rightVal && rightVal.length <= 50) employeeName = rightVal.trim();
-      }
-
-      // Pattern fallback: ID code like "AS100", "STF-01" in metadata
-      if (!employeeId) {
-        const codePattern = val.match(/\b([A-Z]{1,5}[-_ ]?\d{2,5})\b/i);
-        if (codePattern && !normalizeText(codePattern[1]).includes('cod') && !normalizeText(codePattern[1]).includes('prepaid')) {
-          employeeId = codePattern[1].trim().toUpperCase();
-          foundIn = `Cell ${cell.address} (pattern code)`;
-        }
+      // Pattern fallback: "AS100 THASHEEL SALARY REPORT"
+      const parsedCell = parseEmployeeCodeAndName(val, knownUsers);
+      if (parsedCell.employeeId && !employeeId) {
+        employeeId = parsedCell.employeeId;
+        employeeName = parsedCell.employeeName;
+        foundIn = `Cell ${row.getCell(c).address} (cell text pattern)`;
       }
     }
   }
 
-  // Fallback: If name found but not ID, or ID found but not name
   if (employeeId && !employeeName) {
     const user = knownUsers.find(u => normalizeText(u.staff_id) === normalizeText(employeeId));
-    if (user) employeeName = user.name;
-    else employeeName = sheet.name;
-  } else if (!employeeId && sheet.name) {
-    const user = knownUsers.find(u => normalizeText(u.name) === sheetNorm || normalizeText(u.username) === sheetNorm);
-    if (user) {
-      employeeId = user.staff_id;
-      employeeName = user.name;
-    } else {
-      employeeId = sheet.name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || 'EMP_UNKNOWN';
-      employeeName = sheet.name;
-    }
+    employeeName = user ? user.name : employeeId;
   }
 
   return { employeeId, employeeName, foundIn };
 }
 
-/**
- * Identifies table header row and extracts column definitions
- */
 export function detectTableColumns(sheet) {
   let headerRowIndex = -1;
-  let maxColsFound = 0;
-  const maxRow = Math.min(sheet.rowCount || 15, 15);
+  let maxScore = -1;
+  const maxRow = Math.min(sheet.rowCount || 12, 12);
 
   for (let r = 1; r <= maxRow; r++) {
     const row = sheet.getRow(r);
@@ -342,6 +286,7 @@ export function detectTableColumns(sheet) {
     let staffScore = 0;
     let productScore = 0;
     let colCount = 0;
+    let hasSubheaders = false;
 
     row.eachCell(cell => {
       const val = normalizeText(getCellValue(cell));
@@ -349,92 +294,114 @@ export function detectTableColumns(sheet) {
       colCount++;
       if (isDateHeader(val)) dateScore++;
       if (isStaffHeaderLabel(val)) staffScore++;
-      if (val.includes('cod') || val.includes('prepaid') || val.includes('return') || val.includes('incentive') || val.includes('qty')) {
+      if (
+        val.includes('cod') || val.includes('prepaid') || val.includes('return') ||
+        val.includes('incentive') || val.includes('amount') || val.includes('monk') ||
+        val.includes('ojus') || val.includes('sales')
+      ) {
         productScore++;
+      }
+      if (val === 'cod' || val === 'prepaid' || val === 'monk' || val === 'amount' || val === 'ojus') {
+        hasSubheaders = true;
       }
     });
 
+    const score = (dateScore * 10) + (staffScore * 8) + (productScore * 5) + colCount + (hasSubheaders ? 20 : 0);
+
     if (dateScore > 0 || (staffScore > 0 && productScore > 0) || (productScore >= 2)) {
-      if (colCount > maxColsFound) {
-        maxColsFound = colCount;
+      if (score > maxScore) {
+        maxScore = score;
         headerRowIndex = r;
       }
     }
   }
 
-  if (headerRowIndex === -1) {
-    headerRowIndex = 1;
-  }
+  if (headerRowIndex === -1) headerRowIndex = 1;
 
   const headerRow = sheet.getRow(headerRowIndex);
   const columns = [];
-  let colIndex = 1;
   let dateCol = -1;
   let staffIdCol = -1;
   let staffNameCol = -1;
 
-  // Check if there is a parent header row above (e.g. grouped headers like HYPER MONK -> COD, Prepaid)
   const parentRow = headerRowIndex > 1 ? sheet.getRow(headerRowIndex - 1) : null;
 
   headerRow.eachCell({ includeEmpty: false }, (cell, cNum) => {
     let headerText = getCellValue(cell);
     if (!headerText) return;
 
-    // Check parent row for composite column header (e.g. "HYPER MONK" above "COD")
+    const norm = normalizeText(headerText);
+    // Exclude side tables beyond column 12 (basic pay, attendance, duty hours, etc.)
+    if (cNum > 12 && (
+      norm.includes('basic pay') || norm.includes('attendance') ||
+      norm.includes('check in') || norm.includes('duty') ||
+      norm.includes('emergency') || norm.includes('loan')
+    )) {
+      return;
+    }
+    // If column is separated by 2+ blank columns after the main table, ignore
+    if (columns.length > 0 && cNum - columns[columns.length - 1].colIndex > 2) {
+      return;
+    }
+
     if (parentRow) {
       const parentVal = getCellValue(parentRow.getCell(cNum));
       if (parentVal && !isStaffHeaderLabel(parentVal) && !isDateHeader(parentVal)) {
         const normHeader = normalizeText(headerText);
-        if (normHeader === 'cod' || normHeader === 'prepaid' || normHeader.includes('cod') || normHeader.includes('prepaid')) {
+        if (
+          normHeader === 'cod' || normHeader === 'prepaid' ||
+          normHeader === 'monk' || normHeader === 'ojus' ||
+          normHeader === 'amount' ||
+          normHeader.includes('cod') || normHeader.includes('prepaid')
+        ) {
           headerText = `${parentVal.trim()} (${headerText.trim()})`;
         }
       }
     }
 
-    const norm = normalizeText(headerText);
+    const normAfter = normalizeText(headerText);
 
-    // Identify special role columns
-    if (isDateHeader(norm) && dateCol === -1) dateCol = cNum;
-    if (isStaffIdHeader(norm) && staffIdCol === -1) staffIdCol = cNum;
-    if (isStaffNameHeader(norm) && staffNameCol === -1) staffNameCol = cNum;
+    if (isDateHeader(normAfter) && dateCol === -1) dateCol = cNum;
+    if (isStaffIdHeader(normAfter) && staffIdCol === -1) staffIdCol = cNum;
+    if (isStaffNameHeader(normAfter) && staffNameCol === -1) staffNameCol = cNum;
 
-    // Determine type
     let type = 'text';
-    if (isDateHeader(norm)) {
+    if (isDateHeader(normAfter)) {
       type = 'date';
-    } else if (
-      norm.includes('incentive') || norm.includes('deduction') ||
-      norm.includes('net') || norm.includes('amount') || norm.includes('sales') ||
-      norm.includes('payout')
-    ) {
+    } else if (normAfter.includes('incentive') || normAfter.includes('amount') || normAfter.includes('sales')) {
       type = 'currency';
     } else if (
-      norm.includes('qty') || norm.includes('quantity') || norm.includes('return') ||
-      norm.includes('cod') || norm.includes('prepaid') || norm.includes('units')
+      normAfter.includes('cod') || normAfter.includes('prepaid') ||
+      normAfter.includes('return') || normAfter.includes('qty') ||
+      normAfter.includes('units') || normAfter.includes('quantity')
     ) {
       type = 'number';
     }
 
     columns.push({
       colIndex: cNum,
-      key: `col_${cNum}_${norm.replace(/[^a-z0-9]/g, '_').slice(0, 30)}`,
+      key: `col_${cNum}_${normAfter.replace(/[^a-z0-9]/g, '_').slice(0, 30)}`,
       label: headerText.trim(),
       type
     });
   });
 
-  return {
-    headerRowIndex,
-    columns,
-    dateCol,
-    staffIdCol,
-    staffNameCol
-  };
+  return { headerRowIndex, columns, dateCol, staffIdCol, staffNameCol };
 }
 
-/**
- * Main parse function for uploaded Excel workbook buffer
- */
+export function isSummaryOrRollupSheet(sheetName, hasMultipleEmployeeSheets) {
+  const s = normalizeText(sheetName);
+  if (s.includes('summary') || s.includes('consolidated') || s.includes('overall') || s.includes('dashboard')) {
+    return true;
+  }
+  if (hasMultipleEmployeeSheets) {
+    if (s === 'incentive' || s === 'total' || s === 'totals' || s === 'incentives' || s.includes('salary report') || s.includes('all staff')) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export async function parseMonthlyExcelWorkbook(buffer, filename = '', knownUsers = []) {
   const fileHash = crypto.createHash('sha256').update(buffer).digest('hex');
 
@@ -449,57 +416,203 @@ export async function parseMonthlyExcelWorkbook(buffer, filename = '', knownUser
   let detectedMonth = detectMonthYearFromFilename(filename);
   const foundDates = [];
 
-  const employeeDataMap = new Map(); // employeeId -> { employeeId, employeeName, sheetName, records: [], columns: Map }
+  // 2. Pre-scan all worksheets to build master employee mapping and detect sheet mode
+  const sheetAnalysis = [];
+  const masterEmpMap = new Map();
+  const registeredStaffMap = new Map();
+
+  for (const user of knownUsers) {
+    if (user.staff_id && !isInvalidEmployeeId(user.staff_id)) {
+      const uId = user.staff_id.trim().toUpperCase();
+      registeredStaffMap.set(uId, user);
+      masterEmpMap.set(uId, {
+        employeeId: uId,
+        employeeName: user.name || uId
+      });
+    }
+  }
+
+  for (const sheet of workbook.worksheets) {
+    const parsed = parseEmployeeCodeAndName(sheet.name, knownUsers);
+    let isEmpSheet = false;
+    let detectedEmpId = '';
+    let detectedEmpName = '';
+
+    if (parsed.employeeId && !isInvalidEmployeeId(parsed.employeeId)) {
+      isEmpSheet = true;
+      detectedEmpId = parsed.employeeId;
+      detectedEmpName = parsed.employeeName;
+    } else {
+      const meta = extractSheetEmployeeInfo(sheet, knownUsers);
+      if (meta.employeeId && !isInvalidEmployeeId(meta.employeeId)) {
+        detectedEmpId = meta.employeeId;
+        detectedEmpName = meta.employeeName || detectedEmpId;
+        const sNorm = normalizeText(sheet.name);
+        if (!sNorm.includes('summary') && !sNorm.includes('incentive') && !sNorm.includes('consolidated')) {
+          isEmpSheet = true;
+        }
+      }
+    }
+
+    if (isEmpSheet && detectedEmpId) {
+      masterEmpMap.set(detectedEmpId, {
+        employeeId: detectedEmpId,
+        employeeName: detectedEmpName || masterEmpMap.get(detectedEmpId)?.employeeName || detectedEmpId
+      });
+    }
+
+    sheetAnalysis.push({
+      sheet,
+      name: sheet.name,
+      isEmpSheet,
+      detectedEmpId,
+      detectedEmpName
+    });
+  }
+
+  const empSheets = sheetAnalysis.filter(s => s.isEmpSheet);
+  const hasMultipleEmployeeSheets = empSheets.length >= 2;
+
+  const employeeDataMap = new Map();
+  const unregisteredEmployeesMap = new Map();
   const skippedSheets = [];
   const recognizedSheets = [];
   const unmatchedRows = [];
 
-  // 2. Iterate through worksheets
-  for (const sheet of workbook.worksheets) {
-    if (isSummarySheet(sheet)) {
+  // 3. Process worksheets
+  for (let i = 0; i < sheetAnalysis.length; i++) {
+    const { sheet, name, isEmpSheet, detectedEmpId, detectedEmpName } = sheetAnalysis[i];
+
+    if (isSummaryOrRollupSheet(name, hasMultipleEmployeeSheets)) {
       skippedSheets.push({
-        name: sheet.name,
+        name,
         reason: 'Consolidated summary or rollup worksheet'
       });
       continue;
     }
 
     const { headerRowIndex, columns, dateCol, staffIdCol, staffNameCol } = detectTableColumns(sheet);
-
     if (!columns || columns.length === 0) {
       skippedSheets.push({
-        name: sheet.name,
+        name,
         reason: 'No table columns detected'
       });
       continue;
     }
 
-    recognizedSheets.push(sheet.name);
+    let sheetEmpId = detectedEmpId;
+    let sheetEmpName = detectedEmpName;
+    if (!sheetEmpId) {
+      const sInfo = extractSheetEmployeeInfo(sheet, knownUsers);
+      sheetEmpId = sInfo.employeeId;
+      sheetEmpName = sInfo.employeeName;
+    }
 
-    // Worksheet-level employee fallback
-    const sheetEmp = extractSheetEmployeeInfo(sheet, knownUsers);
+    // RULE: Only existing registered employee IDs are fetched!
+    // If workbook has multiple employee sheets and this sheet belongs to an unregistered employee:
+    if (hasMultipleEmployeeSheets && sheetEmpId && !registeredStaffMap.has(sheetEmpId)) {
+      let unregRowsCount = 0;
+      const totalSheetRows = sheet.rowCount || 0;
+      for (let r = headerRowIndex + 1; r <= totalSheetRows; r++) {
+        const row = sheet.getRow(r);
+        const dateRaw = dateCol !== -1 ? getCellValue(row.getCell(dateCol)) : '';
+        const firstColVal = normalizeText(getCellValue(row.getCell(1)) || getCellValue(row.getCell(2)));
+        if (firstColVal.includes('total') || normalizeText(dateRaw).includes('total')) break;
+        const rowDate = parseDateValue(dateRaw, detectedMonth);
+        if (rowDate && /^\d{4}-\d{2}-\d{2}$/.test(rowDate)) {
+          unregRowsCount++;
+        }
+      }
 
-    // 3. Read data rows
+      unregisteredEmployeesMap.set(sheetEmpId, {
+        employeeId: sheetEmpId,
+        detectedName: detectedEmpName || sheetEmpName || sheetEmpId,
+        sheetName: name,
+        recordCount: unregRowsCount,
+        reason: `Employee ID "${sheetEmpId}" does not exist in Employee Management.`
+      });
+      continue; // Skip fetching this unregistered sheet!
+    }
+
+    recognizedSheets.push(name);
+
     const totalSheetRows = sheet.rowCount || 0;
     for (let r = headerRowIndex + 1; r <= totalSheetRows; r++) {
       const row = sheet.getRow(r);
-
-      // Check if row has any values
       let hasData = false;
       row.eachCell(() => { hasData = true; });
       if (!hasData) continue;
 
+      const dateRaw = dateCol !== -1 ? getCellValue(row.getCell(dateCol)) : '';
+      const firstColVal = normalizeText(getCellValue(row.getCell(1)) || getCellValue(row.getCell(2)));
+
+      // Stop as soon as we encounter a Total or Summary row in the daily sales table
+      if (firstColVal.includes('total') || normalizeText(dateRaw).includes('total')) {
+        break; // Daily records completed
+      }
+
+      // Check for summary/footer rows
+      if (
+        firstColVal.includes('grand total') || firstColVal.includes('average') ||
+        firstColVal.includes('basic pay') || firstColVal.includes('emergency loan') ||
+        firstColVal.includes('attendance') || firstColVal.includes('incomplete') ||
+        firstColVal.includes('signature')
+      ) {
+        continue;
+      }
+
+      // Parse date
+      const rowDate = parseDateValue(dateRaw, detectedMonth);
+      if (!rowDate || !/^\d{4}-\d{2}-\d{2}$/.test(rowDate)) {
+        continue; // Must be a valid daily date in the month
+      }
+
+      foundDates.push(rowDate.slice(0, 7));
+
+      let rowStaffId = staffIdCol !== -1 ? getCellValue(row.getCell(staffIdCol)).trim().toUpperCase() : '';
+      let rowStaffName = staffNameCol !== -1 ? getCellValue(row.getCell(staffNameCol)).trim() : '';
+
+      let empId = '';
+      let empName = '';
+
+      if (hasMultipleEmployeeSheets && sheetEmpId) {
+        empId = sheetEmpId;
+        empName = masterEmpMap.get(empId)?.employeeName || sheetEmpName || empId;
+      } else {
+        empId = rowStaffId || sheetEmpId;
+        if (isInvalidEmployeeId(empId)) continue;
+        empName = rowStaffName || masterEmpMap.get(empId)?.employeeName || (rowStaffId === sheetEmpId ? sheetEmpName : '') || empId;
+      }
+
+      if (!empId || isInvalidEmployeeId(empId)) {
+        unmatchedRows.push({
+          sheetName: name,
+          rowIndex: r,
+          data: {}
+        });
+        continue;
+      }
+
+      // In flat sheet mode: if employee ID is not in registeredStaffMap, skip and track as unregistered
+      if (!registeredStaffMap.has(empId)) {
+        if (!unregisteredEmployeesMap.has(empId)) {
+          unregisteredEmployeesMap.set(empId, {
+            employeeId: empId,
+            detectedName: empName || empId,
+            sheetName: name,
+            recordCount: 0,
+            reason: `Employee ID "${empId}" does not exist in Employee Management.`
+          });
+        }
+        unregisteredEmployeesMap.get(empId).recordCount++;
+        continue;
+      }
+
       // Extract row data
       const rowData = {};
-      let rowDate = '';
-      let rowStaffId = '';
-      let rowStaffName = '';
-
       for (const col of columns) {
-        const cell = row.getCell(col.colIndex);
-        let val = getCellValue(cell);
+        let val = getCellValue(row.getCell(col.colIndex));
 
-        // Normalize numeric and currency values
         if (col.type === 'number' || col.type === 'currency') {
           if (val === '' || val === null || val === undefined) {
             val = 0;
@@ -509,58 +622,28 @@ export async function parseMonthlyExcelWorkbook(buffer, filename = '', knownUser
           }
         }
 
-        if (col.colIndex === dateCol && val) {
-          rowDate = parseDateValue(val, detectedMonth);
+        if (col.colIndex === dateCol) {
           val = rowDate;
-          if (rowDate && /^\d{4}-\d{2}/.test(rowDate)) {
-            foundDates.push(rowDate.slice(0, 7));
-          }
-        }
-
-        if (col.colIndex === staffIdCol && val) {
-          rowStaffId = String(val).trim().toUpperCase();
-        }
-
-        if (col.colIndex === staffNameCol && val) {
-          rowStaffName = String(val).trim();
         }
 
         rowData[col.label] = val;
-      }
-
-      // Check for summary/footer rows like "Total"
-      const firstColVal = normalizeText(Object.values(rowData)[0]);
-      if (firstColVal.includes('total') || firstColVal.includes('grand total') || firstColVal.includes('average')) {
-        continue;
-      }
-
-      // Determine Employee ID for this row
-      const empId = rowStaffId || sheetEmp.employeeId;
-      const empName = rowStaffName || sheetEmp.employeeName || empId;
-
-      if (!empId) {
-        unmatchedRows.push({
-          sheetName: sheet.name,
-          rowIndex: r,
-          data: rowData
-        });
-        continue;
       }
 
       if (!employeeDataMap.has(empId)) {
         employeeDataMap.set(empId, {
           employeeId: empId,
           employeeName: empName,
-          sheetName: sheet.name,
+          sheetName: name,
           records: [],
           columnMap: new Map()
         });
       }
 
       const empEntry = employeeDataMap.get(empId);
-      if (!empEntry.employeeName && empName) empEntry.employeeName = empName;
+      if ((!empEntry.employeeName || empEntry.employeeName === empId) && empName && empName !== empId) {
+        empEntry.employeeName = empName;
+      }
 
-      // Register columns for this employee
       columns.forEach(c => {
         if (!empEntry.columnMap.has(c.label)) {
           empEntry.columnMap.set(c.label, c);
@@ -569,7 +652,7 @@ export async function parseMonthlyExcelWorkbook(buffer, filename = '', knownUser
 
       empEntry.records.push({
         rowIndex: r,
-        recordDate: rowDate || '',
+        recordDate: rowDate,
         data: rowData
       });
     }
@@ -610,11 +693,10 @@ export async function parseMonthlyExcelWorkbook(buffer, filename = '', knownUser
       }
     });
 
-    // Check if sales amount exists in records
     emp.records.forEach(rec => {
       for (const [k, v] of Object.entries(rec.data)) {
         const normK = normalizeText(k);
-        if (normK.includes('gross sales') || normK.includes('total sales') || normK.includes('order amount')) {
+        if (normK.includes('gross sales') || normK.includes('total sales') || normK.includes('order amount') || normK === 'total amount') {
           hasSalesAmountCol = true;
           totalSalesAmount += (typeof v === 'number' ? v : 0);
         }
@@ -633,6 +715,10 @@ export async function parseMonthlyExcelWorkbook(buffer, filename = '', knownUser
 
   const totalRecords = employees.reduce((sum, e) => sum + e.recordCount, 0);
 
+  const unregisteredEmployees = Array.from(unregisteredEmployeesMap.values());
+  const hasUnregistered = unregisteredEmployees.length > 0;
+  const allUnregistered = employees.length === 0 && hasUnregistered;
+
   return {
     reportMonth: detectedMonth,
     monthName,
@@ -643,6 +729,9 @@ export async function parseMonthlyExcelWorkbook(buffer, filename = '', knownUser
     totalSalesAmount: hasSalesAmountCol ? Math.round(totalSalesAmount * 100) / 100 : null,
     allColumns: Array.from(allColumnsMap.values()),
     employees,
+    unregisteredEmployees,
+    hasUnregistered,
+    allUnregistered,
     recognizedSheets,
     skippedSheets,
     unmatchedRows

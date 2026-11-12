@@ -11,6 +11,7 @@ import {
   RefreshCw,
   X,
   Users,
+  Plus,
   Calendar,
   Layers,
   ArrowLeft,
@@ -67,6 +68,14 @@ export default function ImportExcel({ onNavigate }) {
       setPreview(res);
       setCustomMonth(res.reportMonth || '');
       setStep('preview');
+
+      // Save pending unregistered employees to session storage for suggestions in Employee Management
+      if (res.unregisteredEmployees && res.unregisteredEmployees.length > 0) {
+        sessionStorage.setItem('pending_excel_employees', JSON.stringify(res.unregisteredEmployees));
+        sessionStorage.setItem('pending_excel_month', res.reportMonth || '');
+      } else {
+        sessionStorage.removeItem('pending_excel_employees');
+      }
     } catch (err) {
       console.error('Failed to parse Excel preview:', err);
       setError(err.message || 'Failed to parse Excel workbook.');
@@ -227,6 +236,99 @@ export default function ImportExcel({ onNavigate }) {
             </div>
           )}
 
+          {/* Unregistered Employees Error / Action Banner */}
+          {preview.hasUnregistered && (
+            <div style={{
+              padding: '16px 20px',
+              background: '#fef2f2',
+              border: '1px solid #fecaca',
+              borderRadius: '10px',
+              marginBottom: '22px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 340px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <XCircle size={20} color="#dc2626" style={{ flexShrink: 0 }} />
+                    <strong style={{ fontSize: '15px', color: '#991b1b' }}>
+                      {preview.allUnregistered
+                        ? 'No Registered Employees Matched in Workbook'
+                        : `${preview.unregisteredEmployees.length} Unregistered Employee(s) Found in Excel File`}
+                    </strong>
+                  </div>
+                  <p style={{ fontSize: '13px', color: '#7f1d1d', margin: '6px 0 14px 0', lineHeight: 1.5 }}>
+                    {preview.allUnregistered
+                      ? 'None of the employees detected in this spreadsheet are currently registered in your system. Per system rules, data is only fetched for existing registered employees. Please create these employees in Employee Management first.'
+                      : 'Data is only fetched for existing registered employees. The following employee(s) detected in the sheet do not exist in Employee Management and their data will not be fetched until their employee account is created:'}
+                  </p>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '8px' }}>
+                    {preview.unregisteredEmployees.map((unreg) => (
+                      <div
+                        key={unreg.employeeId}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          background: '#ffffff',
+                          border: '1px solid #fee2e2',
+                          padding: '8px 14px',
+                          borderRadius: '6px',
+                          fontSize: '13px',
+                          flexWrap: 'wrap',
+                          gap: '10px'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontWeight: 800, color: '#dc2626', background: '#fee2e2', padding: '2px 8px', borderRadius: '4px', fontSize: '12px' }}>
+                            {unreg.employeeId}
+                          </span>
+                          <strong style={{ color: '#1e293b' }}>{unreg.detectedName}</strong>
+                          <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>({unreg.sheetName})</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <span style={{ fontSize: '12px', color: '#b91c1c', fontWeight: 600 }}>
+                            {unreg.recordCount} rows excluded
+                          </span>
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            style={{ padding: '4px 10px', fontSize: '12px', background: '#dc2626', borderColor: '#b91c1c', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                            onClick={() => onNavigate && onNavigate('employee-management', { autoOpenAdd: true, prefillEmployee: unreg })}
+                            title={`Create employee account for ${unreg.detectedName}`}
+                          >
+                            <Plus size={13} />
+                            <span>Create Staff</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => onNavigate && onNavigate('employee-management', {
+                    autoOpenAdd: true,
+                    prefillEmployee: preview.unregisteredEmployees[0]
+                  })}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    background: '#dc2626',
+                    borderColor: '#b91c1c',
+                    fontWeight: 700,
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  <Users size={16} />
+                  <span>Go to Employee Management</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Top Summary Metrics Strip */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginBottom: '22px' }}>
             <div className="table-card" style={{ padding: '16px', marginBottom: 0, borderLeft: '4px solid #3b82f6' }}>
@@ -284,50 +386,62 @@ export default function ImportExcel({ onNavigate }) {
             </div>
           </div>
 
-          {/* Detected Employees Table */}
+          {/* Detected Registered Employees Table */}
           <div className="table-card" style={{ marginBottom: '22px' }}>
             <div className="table-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Users size={16} color="var(--primary-600)" />
-                <strong style={{ fontSize: '14.5px' }}>Detected Employees ({preview.employees?.length || 0})</strong>
+                <strong style={{ fontSize: '14.5px' }}>
+                  Registered Employees Matched ({preview.employees?.length || 0})
+                </strong>
               </div>
-              <span className="badge badge-info" style={{ fontSize: '11px' }}>
-                Individual reports will be generated
+              <span className={`badge ${preview.employees?.length > 0 ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: '11px' }}>
+                {preview.employees?.length > 0 ? 'Ready to fetch & import' : 'No registered staff found'}
               </span>
             </div>
 
             <div className="responsive-table-view">
               <div className="table-responsive" style={{ maxHeight: '320px', overflowY: 'auto' }}>
-                <table className="data-table" style={{ fontSize: '12.5px' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ width: '130px' }}>Employee ID</th>
-                      <th>Staff Name</th>
-                      <th>Worksheet Source</th>
-                      <th style={{ textAlign: 'right', width: '130px' }}>Records Found</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {preview.employees.map((emp) => (
-                      <tr key={emp.employeeId}>
-                        <td>
-                          <span className="badge badge-neutral" style={{ fontWeight: 700, fontSize: '12px' }}>
-                            {emp.employeeId}
-                          </span>
-                        </td>
-                        <td>
-                          <strong>{emp.employeeName}</strong>
-                        </td>
-                        <td>
-                          <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>{emp.sheetName}</span>
-                        </td>
-                        <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                          {emp.recordCount} rows
-                        </td>
+                {preview.employees.length === 0 ? (
+                  <div style={{ padding: '36px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                    <Users size={32} style={{ opacity: 0.4, marginBottom: '8px' }} />
+                    <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>No registered employees matched</div>
+                    <div style={{ fontSize: '12.5px', marginTop: '4px' }}>
+                      Only data for existing employees in Employee Management will be fetched.
+                    </div>
+                  </div>
+                ) : (
+                  <table className="data-table" style={{ fontSize: '12.5px' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ width: '130px' }}>Employee ID</th>
+                        <th>Staff Name</th>
+                        <th>Worksheet Source</th>
+                        <th style={{ textAlign: 'right', width: '130px' }}>Records to Fetch</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {preview.employees.map((emp) => (
+                        <tr key={emp.employeeId}>
+                          <td>
+                            <span className="badge badge-neutral" style={{ fontWeight: 700, fontSize: '12px', background: '#eff6ff', color: '#1d4ed8' }}>
+                              {emp.employeeId}
+                            </span>
+                          </td>
+                          <td>
+                            <strong>{emp.employeeName}</strong>
+                          </td>
+                          <td>
+                            <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>{emp.sheetName}</span>
+                          </td>
+                          <td style={{ textAlign: 'right', fontWeight: 600, color: '#047857' }}>
+                            {emp.recordCount} rows
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </div>
           </div>
@@ -353,9 +467,18 @@ export default function ImportExcel({ onNavigate }) {
           {/* Action Confirmation Bar */}
           <div style={{ background: '#ffffff', padding: '18px 24px', borderRadius: '12px', border: '1px solid var(--border-subtle)', boxShadow: '0 4px 16px rgba(0,0,0,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
             <div>
-              <strong style={{ fontSize: '14.5px', display: 'block' }}>Ready to Confirm Import?</strong>
+              <strong style={{ fontSize: '14.5px', display: 'block' }}>
+                {preview.allUnregistered ? 'Action Required Before Import' : 'Ready to Confirm Import?'}
+              </strong>
               <span style={{ fontSize: '12.5px', color: 'var(--text-muted)' }}>
-                This will save <strong>{preview.totalRecords} records</strong> across <strong>{preview.totalEmployees} employee reports</strong> for <strong>{customMonth || preview.reportMonth}</strong>.
+                {preview.allUnregistered ? (
+                  <span>Please create the employee accounts in Employee Management before importing this file.</span>
+                ) : (
+                  <span>
+                    This will save <strong>{preview.totalRecords} records</strong> across <strong>{preview.totalEmployees} registered employee(s)</strong> for <strong>{customMonth || preview.reportMonth}</strong>.
+                    {preview.hasUnregistered && <span> (Unregistered employees will be omitted).</span>}
+                  </span>
+                )}
               </span>
             </div>
 
@@ -369,25 +492,37 @@ export default function ImportExcel({ onNavigate }) {
                 Cancel
               </button>
 
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={handleConfirmImport}
-                disabled={confirming}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '9px 20px', fontWeight: 700 }}
-              >
-                {confirming ? (
-                  <>
-                    <RefreshCw size={16} className="spin" />
-                    <span>Saving Records to Database...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 size={16} />
-                    <span>Confirm &amp; Save Import</span>
-                  </>
-                )}
-              </button>
+              {preview.allUnregistered ? (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => onNavigate && onNavigate('employee-management')}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '9px 20px', fontWeight: 700 }}
+                >
+                  <Users size={16} />
+                  <span>Create Employees First</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleConfirmImport}
+                  disabled={confirming || preview.employees.length === 0}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '9px 20px', fontWeight: 700 }}
+                >
+                  {confirming ? (
+                    <>
+                      <RefreshCw size={16} className="spin" />
+                      <span>Saving Records to Database...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={16} />
+                      <span>Confirm &amp; Save Import ({preview.totalEmployees} staff)</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>

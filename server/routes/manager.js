@@ -4,7 +4,7 @@ import ExcelJS from 'exceljs';
 import bcrypt from 'bcryptjs';
 import { getDb, query, get, run, transaction, saveDb } from '../db.js';
 import { authenticate, requireRole } from '../auth.js';
-import { parseMonthlyExcelWorkbook, formatMonthName } from '../services/excelParser.js';
+import { parseMonthlyExcelWorkbook, formatMonthName, isInvalidEmployeeId } from '../services/excelParser.js';
 
 const router = express.Router();
 
@@ -68,7 +68,7 @@ router.post('/import/preview', async (req, res) => {
     }
 
     const buffer = Buffer.from(fileBase64, 'base64');
-    const knownUsers = query('SELECT id, staff_id, name, username FROM users');
+    const knownUsers = query("SELECT id, staff_id, name, username, role FROM users WHERE role = 'sales_staff'");
 
     const preview = await parseMonthlyExcelWorkbook(buffer, filename || 'Monthly_Report.xlsx', knownUsers);
 
@@ -106,14 +106,19 @@ router.post('/import/confirm', async (req, res) => {
     }
 
     const buffer = Buffer.from(fileBase64, 'base64');
-    const knownUsers = query('SELECT id, staff_id, name, username FROM users');
+    const knownUsers = query("SELECT id, staff_id, name, username, role FROM users WHERE role = 'sales_staff'");
 
     const parsed = await parseMonthlyExcelWorkbook(buffer, filename || 'Monthly_Report.xlsx', knownUsers);
+
+    if (parsed.employees.length === 0) {
+      return res.status(400).json({
+        error: 'Cannot import report: No matching registered employees found in the Excel workbook. Please add the employees in Employee Management before importing.'
+      });
+    }
 
     const reportMonth = customMonth || parsed.reportMonth;
     const monthName = formatMonthName(reportMonth);
     const now = new Date().toISOString();
-    const defaultPasswordHash = bcrypt.hashSync('sales123', 10);
 
     transaction(() => {
       // 1. Delete previous records for this month if re-importing (prevents duplicate data)
@@ -123,6 +128,9 @@ router.post('/import/confirm', async (req, res) => {
         run('DELETE FROM employee_sales_reports WHERE monthly_report_id = ?', [existingReport.id]);
         run('DELETE FROM monthly_reports WHERE id = ?', [existingReport.id]);
       }
+
+      // Clean up any historical fake user accounts
+      run("DELETE FROM users WHERE staff_id IN ('EMPLOYEE ID', 'DATE', 'TOTAL', 'TOTAL AMOUNT')");
 
       // 2. Insert into monthly_reports
       run(`
@@ -150,21 +158,23 @@ router.post('/import/confirm', async (req, res) => {
       const monthlyReport = get('SELECT id FROM monthly_reports WHERE report_month = ?', [reportMonth]);
       const monthlyReportId = monthlyReport.id;
 
-      // 3. For each employee, insert into employee_sales_reports and sales_records
+      // 3. For each registered employee, insert into employee_sales_reports and sales_records
       for (const emp of parsed.employees) {
-        // Auto-provision user account if Employee ID does not exist in users
-        const existingUser = get('SELECT id FROM users WHERE staff_id = ?', [emp.employeeId]);
-        if (!existingUser) {
-          const cleanUsername = (emp.employeeId || emp.employeeName).toLowerCase().replace(/[^a-z0-9]/g, '');
-          const username = cleanUsername || `emp${Math.floor(1000 + Math.random() * 9000)}`;
-          // Verify unique username
-          const usernameTaken = get('SELECT id FROM users WHERE username = ?', [username]);
-          const finalUsername = usernameTaken ? `${username}_${Math.floor(10 + Math.random() * 90)}` : username;
+        if (isInvalidEmployeeId(emp.employeeId)) {
+          continue;
+        }
 
-          run(`
-            INSERT INTO users (staff_id, name, username, password_hash, role, status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, 'sales_staff', 'active', ?, ?)
-          `, [emp.employeeId, emp.employeeName || emp.employeeId, finalUsername, defaultPasswordHash, now, now]);
+        // Must be an existing registered sales staff user! DO NOT auto-provision!
+        const existingUser = get("SELECT id, name FROM users WHERE staff_id = ? AND role = 'sales_staff'", [emp.employeeId]);
+        if (!existingUser) {
+          continue; // Skip any unregistered employee
+        }
+
+        if (emp.employeeName && emp.employeeName !== emp.employeeId) {
+          // If existing user's name is equal to staff_id or generic, update it with real parsed name
+          if (!existingUser.name || existingUser.name === emp.employeeId || existingUser.name.toLowerCase() === 'sales staff') {
+            run('UPDATE users SET name = ?, updated_at = ? WHERE id = ?', [emp.employeeName, now, existingUser.id]);
+          }
         }
 
         // Insert into employee_sales_reports
@@ -503,6 +513,241 @@ router.delete('/history/:id', (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete report: ' + err.message });
+  }
+});
+
+/**
+ * 10. GET /api/manager/employees
+ * Lists all sales staff employees with their account status and report counts
+ */
+router.get('/employees', (req, res) => {
+  try {
+    const employees = query(`
+      SELECT 
+        u.id, 
+        u.staff_id, 
+        u.name, 
+        u.username, 
+        u.role, 
+        u.status, 
+        u.created_at, 
+        u.updated_at,
+        COUNT(DISTINCT esr.id) AS report_count,
+        COALESCE(SUM(esr.record_count), 0) AS total_records
+      FROM users u
+      LEFT JOIN employee_sales_reports esr ON u.staff_id = esr.employee_id
+      WHERE u.role = 'sales_staff'
+      GROUP BY u.id
+      ORDER BY u.name ASC, u.staff_id ASC
+    `);
+
+    res.json({ employees });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch employees: ' + err.message });
+  }
+});
+
+/**
+ * 11. POST /api/manager/employees
+ * Creates a new sales staff employee
+ */
+router.post('/employees', (req, res) => {
+  try {
+    let { staff_id, name, username, password, status = 'active' } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Full name is required.' });
+    }
+    if (!staff_id || !staff_id.trim()) {
+      return res.status(400).json({ error: 'Employee ID is required.' });
+    }
+
+    staff_id = staff_id.trim().toUpperCase();
+    if (isInvalidEmployeeId(staff_id)) {
+      return res.status(400).json({ error: `"${staff_id}" is a reserved keyword and cannot be used as an Employee ID.` });
+    }
+
+    if (!username || !username.trim()) {
+      return res.status(400).json({ error: 'Login username is required.' });
+    }
+    if (!password || password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+    }
+
+    // Check duplicate staff_id
+    const existingId = get('SELECT id FROM users WHERE UPPER(staff_id) = ?', [staff_id]);
+    if (existingId) {
+      return res.status(400).json({ error: `Employee ID "${staff_id}" is already assigned to another employee.` });
+    }
+
+    // Check duplicate username
+    const existingUsername = get('SELECT id FROM users WHERE LOWER(username) = ?', [username.trim().toLowerCase()]);
+    if (existingUsername) {
+      return res.status(400).json({ error: `Username "${username}" is already taken.` });
+    }
+
+    const passwordHash = bcrypt.hashSync(password, 10);
+    const now = new Date().toISOString();
+
+    const result = run(`
+      INSERT INTO users (staff_id, name, username, password_hash, role, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'sales_staff', ?, ?, ?)
+    `, [staff_id, name.trim(), username.trim().toLowerCase(), passwordHash, status === 'inactive' ? 'inactive' : 'active', now, now]);
+
+    saveDb();
+
+    const created = get('SELECT id, staff_id, name, username, role, status, created_at FROM users WHERE id = ?', [result.lastInsertRowid]);
+    res.status(201).json({ employee: created, message: `Employee "${name.trim()}" created successfully.` });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create employee: ' + err.message });
+  }
+});
+
+/**
+ * 12. PUT /api/manager/employees/:id
+ * Updates an employee's details (Name, Staff ID, Username, Status)
+ */
+router.put('/employees/:id', (req, res) => {
+  try {
+    const targetId = parseInt(req.params.id, 10);
+    const targetUser = get('SELECT * FROM users WHERE id = ?', [targetId]);
+
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Employee not found.' });
+    }
+
+    if (targetUser.role === 'brand_manager' && targetUser.id !== req.user.id) {
+      return res.status(403).json({ error: 'Cannot modify a Brand Manager account.' });
+    }
+
+    const { name, staff_id, username, status } = req.body;
+
+    if (name !== undefined && !name.trim()) {
+      return res.status(400).json({ error: 'Full name cannot be empty.' });
+    }
+
+    let cleanStaffId = targetUser.staff_id;
+    if (staff_id !== undefined) {
+      cleanStaffId = staff_id.trim().toUpperCase();
+      if (!cleanStaffId) {
+        return res.status(400).json({ error: 'Employee ID cannot be empty.' });
+      }
+      if (isInvalidEmployeeId(cleanStaffId)) {
+        return res.status(400).json({ error: `"${cleanStaffId}" is a reserved keyword and cannot be used as an Employee ID.` });
+      }
+      const duplicateId = get('SELECT id FROM users WHERE UPPER(staff_id) = ? AND id != ?', [cleanStaffId, targetId]);
+      if (duplicateId) {
+        return res.status(400).json({ error: `Employee ID "${cleanStaffId}" is already assigned to another user.` });
+      }
+    }
+
+    let cleanUsername = targetUser.username;
+    if (username !== undefined) {
+      cleanUsername = username.trim().toLowerCase();
+      if (!cleanUsername) {
+        return res.status(400).json({ error: 'Username cannot be empty.' });
+      }
+      const duplicateUser = get('SELECT id FROM users WHERE LOWER(username) = ? AND id != ?', [cleanUsername, targetId]);
+      if (duplicateUser) {
+        return res.status(400).json({ error: `Username "${cleanUsername}" is already in use.` });
+      }
+    }
+
+    const now = new Date().toISOString();
+
+    transaction(() => {
+      // If staff_id changed, update corresponding reports and records
+      if (cleanStaffId !== targetUser.staff_id) {
+        run('UPDATE employee_sales_reports SET employee_id = ? WHERE employee_id = ?', [cleanStaffId, targetUser.staff_id]);
+        run('UPDATE sales_records SET employee_id = ? WHERE employee_id = ?', [cleanStaffId, targetUser.staff_id]);
+      }
+      // If name changed, update corresponding reports and records
+      const newName = name !== undefined ? name.trim() : targetUser.name;
+      if (newName !== targetUser.name) {
+        run('UPDATE employee_sales_reports SET employee_name = ? WHERE employee_id = ?', [newName, cleanStaffId]);
+        run('UPDATE sales_records SET employee_name = ? WHERE employee_id = ?', [newName, cleanStaffId]);
+      }
+
+      run(`
+        UPDATE users SET
+          name = ?,
+          staff_id = ?,
+          username = ?,
+          status = ?,
+          updated_at = ?
+        WHERE id = ?
+      `, [
+        newName,
+        cleanStaffId,
+        cleanUsername,
+        status !== undefined ? status : targetUser.status,
+        now,
+        targetId
+      ]);
+    });
+
+    saveDb();
+
+    const updated = get('SELECT id, staff_id, name, username, role, status, updated_at FROM users WHERE id = ?', [targetId]);
+    res.json({ employee: updated, message: `Employee "${updated.name}" updated successfully.` });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update employee: ' + err.message });
+  }
+});
+
+/**
+ * 13. POST /api/manager/employees/:id/reset-password
+ * Resets employee login password
+ */
+router.post('/employees/:id/reset-password', (req, res) => {
+  try {
+    const targetId = parseInt(req.params.id, 10);
+    const targetUser = get('SELECT * FROM users WHERE id = ?', [targetId]);
+
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Employee not found.' });
+    }
+
+    const { newPassword } = req.body;
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
+    }
+
+    const newHash = bcrypt.hashSync(newPassword, 10);
+    const now = new Date().toISOString();
+
+    run('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?', [newHash, now, targetId]);
+    saveDb();
+
+    res.json({ success: true, message: `Password reset successfully for ${targetUser.name}.` });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to reset password: ' + err.message });
+  }
+});
+
+/**
+ * 14. DELETE /api/manager/employees/:id
+ * Removes an employee user account
+ */
+router.delete('/employees/:id', (req, res) => {
+  try {
+    const targetId = parseInt(req.params.id, 10);
+    const targetUser = get('SELECT * FROM users WHERE id = ?', [targetId]);
+
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Employee not found.' });
+    }
+
+    if (targetUser.role === 'brand_manager') {
+      return res.status(403).json({ error: 'Cannot delete a Brand Manager account.' });
+    }
+
+    run('DELETE FROM users WHERE id = ?', [targetId]);
+    saveDb();
+
+    res.json({ success: true, message: `Employee account "${targetUser.name}" deleted successfully.` });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete employee: ' + err.message });
   }
 });
 

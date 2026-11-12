@@ -57,6 +57,16 @@ export default function ManagerDashboard({ onNavigate }) {
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button
             type="button"
+            className="btn btn-secondary"
+            onClick={() => onNavigate && onNavigate('employee-management')}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '9px 16px', fontWeight: 600 }}
+          >
+            <Users size={16} />
+            <span>Manage Employees</span>
+          </button>
+
+          <button
+            type="button"
             className="btn btn-primary"
             onClick={() => onNavigate && onNavigate('import-excel')}
             style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '9px 16px', fontWeight: 600 }}

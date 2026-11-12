@@ -7,18 +7,18 @@ import Login from './views/Login';
 
 // Brand Manager Views
 import ManagerDashboard from './views/manager/ManagerDashboard';
+import EmployeeManagement from './views/manager/EmployeeManagement';
 import ImportExcel from './views/manager/ImportExcel';
 import EmployeeReports from './views/manager/EmployeeReports';
 import ImportHistory from './views/manager/ImportHistory';
 
 // Sales Staff Views
-import StaffDashboard from './views/staff/StaffDashboard';
 import StaffSalesReport from './views/staff/StaffSalesReport';
 
 function MainApp() {
   const { user, loading } = useAuth();
   const isManager = user?.role === 'brand_manager';
-  const [currentView, setCurrentView] = useState(isManager ? 'dashboard' : 'my-dashboard');
+  const [currentView, setCurrentView] = useState(isManager ? 'dashboard' : 'my-sales-report');
   const [navParams, setNavParams] = useState({});
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -26,13 +26,13 @@ function MainApp() {
   useEffect(() => {
     if (user) {
       if (user.role === 'brand_manager') {
-        if (!['dashboard', 'import-excel', 'employee-reports', 'import-history'].includes(currentView)) {
+        if (!['dashboard', 'employee-management', 'import-excel', 'employee-reports', 'import-history'].includes(currentView)) {
           setCurrentView('dashboard');
           setNavParams({});
         }
       } else {
-        if (!['my-dashboard', 'my-sales-report'].includes(currentView)) {
-          setCurrentView('my-dashboard');
+        if (currentView !== 'my-sales-report') {
+          setCurrentView('my-sales-report');
           setNavParams({});
         }
       }
@@ -62,11 +62,11 @@ function MainApp() {
 
   const viewTitles = {
     'dashboard': 'Dashboard & Sales Summary',
+    'employee-management': 'Employee Management',
     'import-excel': 'Import Monthly Excel Report',
     'employee-reports': 'Employee Sales Reports',
     'import-history': 'Excel Import History',
-    'my-dashboard': 'My Dashboard',
-    'my-sales-report': 'My Sales Report'
+    'my-sales-report': 'Sales Report'
   };
 
   function renderView() {
@@ -74,6 +74,8 @@ function MainApp() {
       switch (currentView) {
         case 'dashboard':
           return <ManagerDashboard onNavigate={handleNavigate} />;
+        case 'employee-management':
+          return <EmployeeManagement navParams={navParams} onNavigate={handleNavigate} />;
         case 'import-excel':
           return <ImportExcel onNavigate={handleNavigate} />;
         case 'employee-reports':
@@ -84,15 +86,8 @@ function MainApp() {
           return <ManagerDashboard onNavigate={handleNavigate} />;
       }
     } else {
-      // Sales Staff
-      switch (currentView) {
-        case 'my-dashboard':
-          return <StaffDashboard onNavigate={handleNavigate} />;
-        case 'my-sales-report':
-          return <StaffSalesReport initialMonth={navParams?.month} />;
-        default:
-          return <StaffDashboard onNavigate={handleNavigate} />;
-      }
+      // Sales Staff - Direct to Sales Report
+      return <StaffSalesReport initialMonth={navParams?.month} />;
     }
   }
 
