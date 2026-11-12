@@ -5,10 +5,8 @@ import {
   LayoutDashboard,
   Users,
   FileSpreadsheet,
-  Calendar,
   Clock,
   ArrowRight,
-  TrendingUp,
   UploadCloud,
   CheckCircle2,
   AlertCircle,
@@ -49,9 +47,6 @@ export default function ManagerDashboard({ onNavigate }) {
           <h1 className="page-title" style={{ fontSize: '24px', fontWeight: 800 }}>
             Brand Manager Dashboard
           </h1>
-          <p className="page-subtitle" style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '4px' }}>
-            Employee Sales Report Management &bull; Monthly Excel Overview
-          </p>
         </div>
 
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
@@ -93,69 +88,6 @@ export default function ManagerDashboard({ onNavigate }) {
           <span>{error}</span>
         </div>
       )}
-
-      {/* 4 Simple Summary KPI Cards */}
-      <div className="kpi-grid sales-kpi-grid" style={{ marginBottom: '24px' }}>
-        {/* 1. Total Employees */}
-        <div className="kpi-card-premium" style={{ '--card-accent': '#3b82f6' }}>
-          <div className="kpi-header">
-            <span className="kpi-title">Total Employees</span>
-            <div className="kpi-icon-wrap" style={{ background: '#eff6ff', color: '#2563eb' }}>
-              <Users size={18} />
-            </div>
-          </div>
-          <div>
-            <div className="kpi-value">{loading ? '...' : data?.totalEmployees || 0}</div>
-            <div className="kpi-subtext">Identified across all imported reports</div>
-          </div>
-        </div>
-
-        {/* 2. Total Sales Records */}
-        <div className="kpi-card-premium" style={{ '--card-accent': '#10b981' }}>
-          <div className="kpi-header">
-            <span className="kpi-title">Total Sales Records</span>
-            <div className="kpi-icon-wrap" style={{ background: '#ecfdf5', color: '#059669' }}>
-              <FileSpreadsheet size={18} />
-            </div>
-          </div>
-          <div>
-            <div className="kpi-value">{loading ? '...' : data?.totalSalesRecords?.toLocaleString() || 0}</div>
-            <div className="kpi-subtext">Imported row-level entries</div>
-          </div>
-        </div>
-
-        {/* 3. Current Imported Month */}
-        <div className="kpi-card-premium" style={{ '--card-accent': '#8b5cf6' }}>
-          <div className="kpi-header">
-            <span className="kpi-title">Current Imported Month</span>
-            <div className="kpi-icon-wrap" style={{ background: '#f5f3ff', color: '#7c3aed' }}>
-              <Calendar size={18} />
-            </div>
-          </div>
-          <div>
-            <div className="kpi-value" style={{ fontSize: '20px', color: '#6d28d9' }}>
-              {loading ? '...' : data?.currentMonth || 'None'}
-            </div>
-            <div className="kpi-subtext">Most recent active reporting period</div>
-          </div>
-        </div>
-
-        {/* 4. Total Sales Amount */}
-        <div className="kpi-card-premium" style={{ '--card-accent': '#f59e0b' }}>
-          <div className="kpi-header">
-            <span className="kpi-title">Total Sales Amount</span>
-            <div className="kpi-icon-wrap" style={{ background: '#fef3c7', color: '#d97706' }}>
-              <TrendingUp size={18} />
-            </div>
-          </div>
-          <div>
-            <div className="kpi-value" style={{ fontSize: '20px', color: '#b45309' }}>
-              {loading ? '...' : data?.totalSalesAmount ? `₹${data.totalSalesAmount.toLocaleString()}` : 'N/A (Quantity-Based)'}
-            </div>
-            <div className="kpi-subtext">From available Excel sales columns</div>
-          </div>
-        </div>
-      </div>
 
       {/* Latest Excel Import Details Card */}
       {latest && (

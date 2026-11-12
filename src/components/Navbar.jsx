@@ -40,9 +40,6 @@ export default function Navbar({ currentViewTitle, sidebarOpen, onToggleSidebar 
 
         <div style={{ minWidth: 0 }}>
           <h1 className="navbar-title">{currentViewTitle}</h1>
-          <div className="navbar-user-meta">
-            Logged in as <strong style={{ color: 'var(--text-main)' }}>{user?.name}</strong> ({isManager ? 'Brand Manager' : user?.staff_id})
-          </div>
         </div>
       </div>
 

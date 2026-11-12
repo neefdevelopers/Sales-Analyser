@@ -61,9 +61,6 @@ export default function StaffDashboard({ onNavigate }) {
                 Employee ID: {profile.employeeId}
               </span>
             </div>
-            <p className="page-subtitle" style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '2px' }}>
-              Sales Staff Portal &bull; Monthly Sales Reports
-            </p>
           </div>
         </div>
 

@@ -59,9 +59,6 @@ export default function ImportHistory({ onNavigate }) {
           <h1 className="page-title" style={{ fontSize: '24px', fontWeight: 800 }}>
             Excel Import History
           </h1>
-          <p className="page-subtitle" style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '4px' }}>
-            Audit log of all uploaded monthly Excel workbooks and their import status
-          </p>
         </div>
 
         <button

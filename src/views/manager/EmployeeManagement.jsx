@@ -405,9 +405,6 @@ export default function EmployeeManagement({ navParams, onNavigate }) {
           <h1 className="page-title" style={{ fontSize: '24px', fontWeight: 800 }}>
             Employee Management
           </h1>
-          <p className="page-subtitle" style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '4px' }}>
-            Manage sales staff profiles, employee IDs, login credentials, and account statuses
-          </p>
         </div>
 
         <div style={{ display: 'flex', gap: '10px' }}>

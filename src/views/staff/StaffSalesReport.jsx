@@ -131,9 +131,6 @@ export default function StaffSalesReport({ initialMonth }) {
               {data?.monthName || (selectedMonth ? selectedMonth : 'No Period')}
             </span>
           </div>
-          <p className="page-subtitle" style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '4px' }}>
-            Welcome, <strong>{user?.name}</strong> &bull; Monthly sales records extracted from Excel reports
-          </p>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>

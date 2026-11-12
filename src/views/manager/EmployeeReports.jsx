@@ -386,9 +386,6 @@ export default function EmployeeReports({ initialMonth, onNavigate }) {
           <h1 className="page-title" style={{ fontSize: '24px', fontWeight: 800 }}>
             Employee Sales Reports
           </h1>
-          <p className="page-subtitle" style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '4px' }}>
-            Monthly employee reports derived directly from uploaded Excel workbooks
-          </p>
         </div>
 
         {/* Month Selector Dropdown */}
