@@ -199,18 +199,6 @@ export default function ImportExcel({ onNavigate }) {
               Select Excel File (.xlsx)
             </button>
           </div>
-
-          <div style={{ background: '#f8fafc', padding: '16px 20px', borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: '12.5px', color: '#475569', lineHeight: 1.6 }}>
-            <strong style={{ display: 'block', color: '#1e293b', marginBottom: '6px', fontSize: '13px' }}>
-              Automatic Data Processing Rules:
-            </strong>
-            <ul style={{ margin: 0, paddingLeft: '18px' }}>
-              <li>Automatically detects all employee worksheets and employee table columns.</li>
-              <li>Extracts Employee IDs, staff names, and all product, quantity, return, and incentive columns dynamically.</li>
-              <li>Consolidated summary sheets (e.g. "Summary", "Totals") are skipped to prevent duplicate counting.</li>
-              <li>Original Excel column headers and data values are 100% preserved.</li>
-            </ul>
-          </div>
         </div>
       )}
 
