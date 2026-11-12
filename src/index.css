@@ -964,32 +964,12 @@ h1, h2, h3, h4, h5, h6 {
    Responsive Table-to-Card System
    ========================================================================== */
 
-/* Desktop & Laptop: Clean Data Table */
+/* Clean Data Table: Always visible & touch-scrollable on Desktop, Tablet & Mobile */
 .responsive-table-view {
   width: 100%;
-  display: block;
+  display: block !important;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-}
-
-/* Mobile & Tablet Portrait: Clean Structured Data Cards */
-.responsive-card-view {
-  display: none;
-}
-
-@media (max-width: 768px) {
-  .responsive-table-view {
-    display: none !important;
-  }
-
-  .responsive-card-view {
-    display: flex !important;
-    flex-direction: column;
-    gap: 12px;
-    padding: 12px;
-    width: 100%;
-    box-sizing: border-box;
-  }
 }
 
 .mobile-data-card {
