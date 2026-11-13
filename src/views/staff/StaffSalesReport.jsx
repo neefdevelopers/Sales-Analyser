@@ -183,12 +183,8 @@ export default function StaffSalesReport({ initialMonth }) {
       )}
 
       {/* Quick Mobile KPI Summary Strip */}
-      {rows.length > 0 && (
+      {rows.length > 0 && cols.some(c => c.type === 'currency' || c.type === 'number') && (
         <div className="mobile-kpi-summary">
-          <div className="mobile-kpi-chip">
-            <span className="chip-label">Total Records</span>
-            <strong className="chip-val">{filteredRows.length} rows</strong>
-          </div>
           {cols.filter(c => c.type === 'currency').slice(0, 2).map((col, idx) => (
             <div key={idx} className="mobile-kpi-chip" style={{ borderLeft: '3px solid #10b981' }}>
               <span className="chip-label">{col.label}</span>

@@ -157,3 +157,4 @@ export default function DynamicMobileCardTable({
     </div>
   );
 }
+
