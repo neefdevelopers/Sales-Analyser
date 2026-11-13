@@ -657,154 +657,260 @@ export default function EmployeeManagement({ navParams, onNavigate }) {
           </div>
         </div>
 
-        {/* Mobile Swipe Hint */}
-        <div className="mobile-table-hint">
-          <ArrowLeftRight size={13} color="var(--primary-600)" />
-          <span>Swipe table &bull; Tap row for full details</span>
+        {/* Desktop View: Full Responsive Table */}
+        <div className="desktop-table-container">
+          <div className="table-responsive" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
+            <table style={{ width: '100%', minWidth: '580px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+              <thead style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                <tr>
+                  <th style={{ width: '50px', padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>#</th>
+                  <th style={{ padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Employee</th>
+                  <th style={{ width: '160px', padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Employee ID</th>
+                  <th style={{ width: '140px', padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Status</th>
+                  <th style={{ width: '130px', padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'right' }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={5} style={{ textAlign: 'center', padding: '36px', color: '#64748b' }}>
+                      Loading employee accounts...
+                    </td>
+                  </tr>
+                ) : filteredEmployees.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} style={{ textAlign: 'center', padding: '40px 20px', color: '#64748b' }}>
+                      <div style={{ fontWeight: 600, fontSize: '14px', color: '#1e293b', marginBottom: '4px' }}>
+                        {employees.length === 0 ? 'No employees registered yet' : 'No matching employees found'}
+                      </div>
+                      <div style={{ fontSize: '12.5px' }}>
+                        {employees.length === 0 ? 'Add an employee or use Excel upload suggestions.' : 'Try adjusting your search criteria.'}
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredEmployees.map((emp, idx) => {
+                    const initials = (emp.name || 'E').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+
+                    return (
+                      <tr
+                        key={emp.id}
+                        onClick={() => setSelectedEmployee(emp)}
+                        style={{
+                          borderBottom: '1px solid #f1f5f9',
+                          cursor: 'pointer',
+                          transition: 'background-color 0.15s ease'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f8fafc'}
+                        onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                        title="Click row to view details"
+                      >
+                        <td style={{ padding: '12px 16px', color: '#94a3b8', fontSize: '12px' }}>
+                          {idx + 1}
+                        </td>
+
+                        <td style={{ padding: '12px 16px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div style={{
+                              width: '32px',
+                              height: '32px',
+                              borderRadius: '6px',
+                              background: '#f1f5f9',
+                              color: '#334155',
+                              border: '1px solid #e2e8f0',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontWeight: 700,
+                              fontSize: '12px',
+                              flexShrink: 0
+                            }}>
+                              {initials}
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: 600, color: '#0f172a' }}>
+                                {emp.name}
+                              </div>
+                              <div style={{ fontSize: '11.5px', color: '#64748b' }}>
+                                @{emp.username}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td style={{ padding: '12px 16px' }}>
+                          <code style={{
+                            background: '#f8fafc',
+                            border: '1px solid #e2e8f0',
+                            color: '#334155',
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            fontSize: '12px',
+                            fontWeight: 600
+                          }}>
+                            {emp.staff_id}
+                          </code>
+                        </td>
+
+                        <td style={{ padding: '12px 16px' }}>
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            fontSize: '12px',
+                            fontWeight: 500,
+                            color: emp.status === 'active' ? '#16a34a' : '#64748b'
+                          }}>
+                            <span style={{
+                              width: '6px',
+                              height: '6px',
+                              borderRadius: '50%',
+                              background: emp.status === 'active' ? '#16a34a' : '#94a3b8'
+                            }} />
+                            {emp.status === 'active' ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+
+                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }} onClick={e => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              style={{ padding: '4px 8px', fontSize: '11.5px', height: '28px', color: '#475569' }}
+                              onClick={() => setSelectedEmployee(emp)}
+                              title="View full details"
+                            >
+                              <span>Details</span>
+                              <ChevronRight size={12} style={{ marginLeft: '2px' }} />
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              style={{ padding: '4px 8px', fontSize: '11.5px', height: '28px' }}
+                              onClick={() => handleOpenEdit(emp)}
+                              title="Edit employee"
+                            >
+                              <Edit2 size={12} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        {/* The Clean Data Table */}
-        <div className="table-responsive" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
-          <table style={{ width: '100%', minWidth: '580px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-            <thead style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-              <tr>
-                <th style={{ width: '50px', padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>#</th>
-                <th style={{ padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Employee</th>
-                <th style={{ width: '160px', padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Employee ID</th>
-                <th style={{ width: '140px', padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Status</th>
-                <th style={{ width: '130px', padding: '11px 16px', fontWeight: 600, fontSize: '11.5px', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'right' }}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', padding: '36px', color: '#64748b' }}>
-                    Loading employee accounts...
-                  </td>
-                </tr>
-              ) : filteredEmployees.length === 0 ? (
-                <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', padding: '40px 20px', color: '#64748b' }}>
-                    <div style={{ fontWeight: 600, fontSize: '14px', color: '#1e293b', marginBottom: '4px' }}>
-                      {employees.length === 0 ? 'No employees registered yet' : 'No matching employees found'}
+        {/* Mobile View: Clean Vertically Stacked Cards */}
+        <div className="mobile-card-container">
+          {loading ? (
+            <div style={{ padding: '32px 16px', textAlign: 'center', color: '#64748b', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+              Loading employee accounts...
+            </div>
+          ) : filteredEmployees.length === 0 ? (
+            <div style={{ padding: '32px 16px', textAlign: 'center', color: '#64748b', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+              <div style={{ fontWeight: 600, fontSize: '14px', color: '#1e293b', marginBottom: '4px' }}>
+                {employees.length === 0 ? 'No employees registered yet' : 'No matching employees found'}
+              </div>
+              <div style={{ fontSize: '12.5px' }}>
+                {employees.length === 0 ? 'Add an employee or use Excel upload suggestions.' : 'Try adjusting your search criteria.'}
+              </div>
+            </div>
+          ) : (
+            filteredEmployees.map((emp, idx) => {
+              const initials = (emp.name || 'E').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+              return (
+                <div
+                  key={emp.id}
+                  className="mobile-data-card clickable"
+                  onClick={() => setSelectedEmployee(emp)}
+                >
+                  <div className="mobile-card-header">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '8px',
+                        background: '#f1f5f9',
+                        color: '#334155',
+                        border: '1px solid #e2e8f0',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: 700,
+                        fontSize: '13px',
+                        flexShrink: 0
+                      }}>
+                        {initials}
+                      </div>
+                      <div className="mobile-card-title-group">
+                        <div className="mobile-card-title">{emp.name}</div>
+                        <div className="mobile-card-subtitle">@{emp.username}</div>
+                      </div>
                     </div>
-                    <div style={{ fontSize: '12.5px' }}>
-                      {employees.length === 0 ? 'Add an employee or use Excel upload suggestions.' : 'Try adjusting your search criteria.'}
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                filteredEmployees.map((emp, idx) => {
-                  const initials = (emp.name || 'E').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                      padding: '3px 8px',
+                      borderRadius: '20px',
+                      background: emp.status === 'active' ? '#ecfdf5' : '#f1f5f9',
+                      color: emp.status === 'active' ? '#059669' : '#64748b',
+                      border: emp.status === 'active' ? '1px solid #a7f3d0' : '1px solid #e2e8f0'
+                    }}>
+                      <span style={{
+                        width: '6px',
+                        height: '6px',
+                        borderRadius: '50%',
+                        background: emp.status === 'active' ? '#10b981' : '#94a3b8'
+                      }} />
+                      {emp.status === 'active' ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
 
-                  return (
-                    <tr
-                      key={emp.id}
+                  <div className="mobile-card-fields">
+                    <div className="mobile-card-field-row">
+                      <span className="mobile-card-field-label">Employee ID</span>
+                      <span className="mobile-card-field-val code">
+                        {emp.staff_id}
+                      </span>
+                    </div>
+                    <div className="mobile-card-field-row">
+                      <span className="mobile-card-field-label">Index</span>
+                      <span className="mobile-card-field-val number">
+                        #{idx + 1}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mobile-card-actions" onClick={e => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ flex: 1, justifyContent: 'center', padding: '7px 12px', fontSize: '12.5px' }}
                       onClick={() => setSelectedEmployee(emp)}
-                      style={{
-                        borderBottom: '1px solid #f1f5f9',
-                        cursor: 'pointer',
-                        transition: 'background-color 0.15s ease'
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f8fafc'}
-                      onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
-                      title="Click row to view details"
                     >
-                      <td style={{ padding: '12px 16px', color: '#94a3b8', fontSize: '12px' }}>
-                        {idx + 1}
-                      </td>
-
-                      <td style={{ padding: '12px 16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <div style={{
-                            width: '32px',
-                            height: '32px',
-                            borderRadius: '6px',
-                            background: '#f1f5f9',
-                            color: '#334155',
-                            border: '1px solid #e2e8f0',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontWeight: 700,
-                            fontSize: '12px',
-                            flexShrink: 0
-                          }}>
-                            {initials}
-                          </div>
-                          <div>
-                            <div style={{ fontWeight: 600, color: '#0f172a' }}>
-                              {emp.name}
-                            </div>
-                            <div style={{ fontSize: '11.5px', color: '#64748b' }}>
-                              @{emp.username}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-
-                      <td style={{ padding: '12px 16px' }}>
-                        <code style={{
-                          background: '#f8fafc',
-                          border: '1px solid #e2e8f0',
-                          color: '#334155',
-                          padding: '2px 8px',
-                          borderRadius: '4px',
-                          fontSize: '12px',
-                          fontWeight: 600
-                        }}>
-                          {emp.staff_id}
-                        </code>
-                      </td>
-
-                      <td style={{ padding: '12px 16px' }}>
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          fontSize: '12px',
-                          fontWeight: 500,
-                          color: emp.status === 'active' ? '#16a34a' : '#64748b'
-                        }}>
-                          <span style={{
-                            width: '6px',
-                            height: '6px',
-                            borderRadius: '50%',
-                            background: emp.status === 'active' ? '#16a34a' : '#94a3b8'
-                          }} />
-                          {emp.status === 'active' ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-
-                      <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }} onClick={e => e.stopPropagation()}>
-                          <button
-                            type="button"
-                            className="btn btn-secondary"
-                            style={{ padding: '4px 8px', fontSize: '11.5px', height: '28px', color: '#475569' }}
-                            onClick={() => setSelectedEmployee(emp)}
-                            title="View full details"
-                          >
-                            <span>Details</span>
-                            <ChevronRight size={12} style={{ marginLeft: '2px' }} />
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-secondary"
-                            style={{ padding: '4px 8px', fontSize: '11.5px', height: '28px' }}
-                            onClick={() => handleOpenEdit(emp)}
-                            title="Edit employee"
-                          >
-                            <Edit2 size={12} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                      <span>Details</span>
+                      <ChevronRight size={13} style={{ marginLeft: '4px' }} />
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ flex: 1, justifyContent: 'center', padding: '7px 12px', fontSize: '12.5px' }}
+                      onClick={() => handleOpenEdit(emp)}
+                    >
+                      <Edit2 size={13} style={{ marginRight: '5px' }} />
+                      <span>Edit</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 

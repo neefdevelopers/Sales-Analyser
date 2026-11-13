@@ -92,14 +92,8 @@ export default function ImportHistory({ onNavigate }) {
           </div>
         </div>
 
-        {history.length > 0 && (
-          <div className="mobile-table-hint">
-            <ArrowLeftRight size={13} color="var(--primary-600)" />
-            <span>Swipe table horizontally to view audit logs</span>
-          </div>
-        )}
-
-        <div className="responsive-table-view">
+        {/* Desktop View: Full Responsive Table */}
+        <div className="desktop-table-container">
           <div className="table-responsive">
             <table className="data-table" style={{ minWidth: '680px' }}>
               <thead>
@@ -187,6 +181,89 @@ export default function ImportHistory({ onNavigate }) {
               </tbody>
             </table>
           </div>
+        </div>
+
+        {/* Mobile View: Clean Vertically Stacked Cards */}
+        <div className="mobile-card-container">
+          {loading ? (
+            <div style={{ padding: '32px 16px', textAlign: 'center', color: '#64748b' }}>
+              Loading import history...
+            </div>
+          ) : history.length === 0 ? (
+            <div className="empty-state" style={{ padding: '32px 16px', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+              <div className="empty-state-icon"><FileSpreadsheet size={24} /></div>
+              <div className="empty-state-title">No imports on record</div>
+              <div className="empty-state-desc">Upload a monthly Excel file to see its import history here.</div>
+            </div>
+          ) : (
+            history.map((h) => (
+              <div key={h.id} className="mobile-data-card">
+                <div className="mobile-card-header">
+                  <div className="mobile-card-title-group">
+                    <div className="mobile-card-title">{h.month_name}</div>
+                    <div className="mobile-card-subtitle">{h.report_month}</div>
+                  </div>
+                  <span className="badge badge-success" style={{ textTransform: 'capitalize', fontSize: '12px', fontWeight: 600 }}>
+                    {h.import_status || 'Completed'}
+                  </span>
+                </div>
+
+                <div className="mobile-card-fields">
+                  <div className="mobile-card-field-row">
+                    <span className="mobile-card-field-label">Filename</span>
+                    <span className="mobile-card-field-val code" style={{ maxWidth: '60%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {h.filename}
+                    </span>
+                  </div>
+                  <div className="mobile-card-field-row">
+                    <span className="mobile-card-field-label">Total Employees</span>
+                    <span className="mobile-card-field-val number" style={{ fontWeight: 600 }}>
+                      {h.total_employees} staff
+                    </span>
+                  </div>
+                  <div className="mobile-card-field-row">
+                    <span className="mobile-card-field-label">Total Records</span>
+                    <span className="mobile-card-field-val number" style={{ fontWeight: 600 }}>
+                      {h.total_records?.toLocaleString()} rows
+                    </span>
+                  </div>
+                  <div className="mobile-card-field-row">
+                    <span className="mobile-card-field-label">Uploaded At</span>
+                    <span className="mobile-card-field-val">
+                      {new Date(h.created_at).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="mobile-card-field-row">
+                    <span className="mobile-card-field-label">Uploaded By</span>
+                    <span className="mobile-card-field-val">
+                      {h.imported_by_name || 'Brand Manager'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mobile-card-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ flex: 1, justifyContent: 'center', padding: '8px 12px', fontSize: '12.5px' }}
+                    onClick={() => onNavigate && onNavigate('employee-reports', { month: h.report_month })}
+                  >
+                    <Eye size={14} style={{ marginRight: '6px' }} />
+                    View Reports
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ padding: '8px 14px', fontSize: '12.5px', color: '#dc2626', borderColor: '#fca5a5' }}
+                    onClick={() => setDeleteTarget(h)}
+                  >
+                    <Trash2 size={14} style={{ marginRight: '4px' }} />
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 

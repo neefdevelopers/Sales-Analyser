@@ -386,14 +386,8 @@ export default function ImportExcel({ onNavigate }) {
               </span>
             </div>
 
-            {preview.employees?.length > 0 && (
-              <div className="mobile-table-hint">
-                <ArrowLeftRight size={13} color="var(--primary-600)" />
-                <span>Swipe table horizontally to inspect rows</span>
-              </div>
-            )}
-
-            <div className="responsive-table-view">
+            {/* Desktop View: Full Responsive Table */}
+            <div className="desktop-table-container">
               <div className="table-responsive" style={{ maxHeight: '320px', overflowY: 'auto' }}>
                 {preview.employees.length === 0 ? (
                   <div style={{ padding: '36px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
@@ -436,6 +430,48 @@ export default function ImportExcel({ onNavigate }) {
                   </table>
                 )}
               </div>
+            </div>
+
+            {/* Mobile View: Clean Vertically Stacked Cards */}
+            <div className="mobile-card-container">
+              {preview.employees.length === 0 ? (
+                <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-muted)', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                  <Users size={32} style={{ opacity: 0.4, marginBottom: '8px' }} />
+                  <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>No registered employees matched</div>
+                  <div style={{ fontSize: '12.5px', marginTop: '4px' }}>
+                    Only data for existing employees in Employee Management will be fetched.
+                  </div>
+                </div>
+              ) : (
+                preview.employees.map((emp) => (
+                  <div key={emp.employeeId} className="mobile-data-card">
+                    <div className="mobile-card-header">
+                      <div className="mobile-card-title-group">
+                        <div className="mobile-card-title">{emp.employeeName}</div>
+                        <div className="mobile-card-subtitle">{emp.sheetName}</div>
+                      </div>
+                      <span className="badge badge-neutral" style={{ fontWeight: 700, fontSize: '12px', background: '#eff6ff', color: '#1d4ed8' }}>
+                        {emp.employeeId}
+                      </span>
+                    </div>
+
+                    <div className="mobile-card-fields">
+                      <div className="mobile-card-field-row">
+                        <span className="mobile-card-field-label">Worksheet Source</span>
+                        <span className="mobile-card-field-val">
+                          {emp.sheetName}
+                        </span>
+                      </div>
+                      <div className="mobile-card-field-row">
+                        <span className="mobile-card-field-label">Records to Fetch</span>
+                        <span className="mobile-card-field-val number" style={{ color: '#047857', fontWeight: 600 }}>
+                          {emp.recordCount} rows
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 

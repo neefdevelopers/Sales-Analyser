@@ -1,6 +1,7 @@
 // src/views/manager/EmployeeReports.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../../api';
+import DynamicMobileCardTable from '../../components/DynamicMobileCardTable';
 import {
   FileText,
   Calendar,
@@ -284,14 +285,8 @@ export default function EmployeeReports({ initialMonth, onNavigate }) {
 
         {/* Dynamic Table Card */}
         <div className="table-card" style={{ overflow: 'hidden' }}>
-          {detailRows.length > 0 && (
-            <div className="mobile-table-hint">
-              <ArrowLeftRight size={13} color="var(--primary-600)" />
-              <span>Swipe horizontally to view all columns</span>
-            </div>
-          )}
-
-          <div className="responsive-table-view">
+          {/* Desktop View: Full Responsive Table */}
+          <div className="desktop-table-container">
             <div className="table-responsive" style={{ maxHeight: '650px', overflowY: 'auto' }}>
               <table className="data-table" style={{ fontSize: '12.5px', width: '100%', minWidth: `${Math.max(680, cols.length * 85)}px` }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#1e293b', color: '#ffffff' }}>
@@ -404,6 +399,41 @@ export default function EmployeeReports({ initialMonth, onNavigate }) {
               </table>
             </div>
           </div>
+
+          {/* Mobile View: Clean Vertically Stacked Cards (Zero Horizontal Scroll) */}
+          {!loadingDetail && detailRows.length > 0 && (
+            <DynamicMobileCardTable
+              rows={filteredDetailRows}
+              cols={cols}
+              getRowTitle={(row, idx) => {
+                const productKey = Object.keys(row.data || {}).find(k => /product|item|description|name|particulars/i.test(k));
+                if (productKey && row.data[productKey]) {
+                  return row.data[productKey];
+                }
+                return row.recordDate ? `Entry #${idx + 1} (${row.recordDate})` : `Record #${idx + 1}`;
+              }}
+              getRowSubtitle={(row) => {
+                return row.recordDate ? `Date: ${row.recordDate}` : null;
+              }}
+              getRowBadge={(row) => {
+                const currencyCol = cols.find(c => c.type === 'currency');
+                if (currencyCol) {
+                  const val = row.data?.[currencyCol.label];
+                  const num = typeof val === 'number' ? val : parseFloat(val);
+                  if (!isNaN(num) && num > 0) {
+                    return (
+                      <span className="badge badge-success" style={{ fontWeight: 700, fontSize: '12px' }}>
+                        ₹{num.toLocaleString()}
+                      </span>
+                    );
+                  }
+                }
+                return null;
+              }}
+              initialFieldsCount={5}
+              emptyMessage={filteredDetailRows.length === 0 ? "No records matched your search filter." : "No report records found."}
+            />
+          )}
         </div>
       </div>
     );
@@ -521,14 +551,8 @@ export default function EmployeeReports({ initialMonth, onNavigate }) {
 
           {/* Employees Table Card */}
           <div className="table-card" style={{ overflow: 'hidden' }}>
-            {filteredEmployees.length > 0 && (
-              <div className="mobile-table-hint">
-                <ArrowLeftRight size={13} color="var(--primary-600)" />
-                <span>Swipe table &bull; Tap row to open report</span>
-              </div>
-            )}
-
-            <div className="responsive-table-view">
+            {/* Desktop View: Full Responsive Table */}
+            <div className="desktop-table-container">
               <div className="table-responsive">
                 <table className="data-table" style={{ minWidth: '540px' }}>
                   <thead>
@@ -599,6 +623,61 @@ export default function EmployeeReports({ initialMonth, onNavigate }) {
                   </tbody>
                 </table>
               </div>
+            </div>
+
+            {/* Mobile View: Vertically Stacked Cards */}
+            <div className="mobile-card-container">
+              {loadingEmployees ? (
+                <div style={{ padding: '32px 16px', textAlign: 'center', color: '#64748b' }}>
+                  Loading employees...
+                </div>
+              ) : filteredEmployees.length === 0 ? (
+                <div style={{ padding: '32px 16px', textAlign: 'center', color: '#64748b' }}>
+                  No employees matched your search query.
+                </div>
+              ) : (
+                filteredEmployees.map((emp) => (
+                  <div
+                    key={emp.employee_id}
+                    className="mobile-data-card clickable"
+                    onClick={() => setSelectedEmployeeId(emp.employee_id)}
+                  >
+                    <div className="mobile-card-header">
+                      <div className="mobile-card-title-group">
+                        <div className="mobile-card-title">{emp.employee_name}</div>
+                        <div className="mobile-card-subtitle">@{emp.username || emp.employee_id.toLowerCase()}</div>
+                      </div>
+                      <span className="badge badge-neutral" style={{ fontWeight: 700, fontSize: '12px' }}>
+                        {emp.employee_id}
+                      </span>
+                    </div>
+
+                    <div className="mobile-card-fields">
+                      <div className="mobile-card-field-row">
+                        <span className="mobile-card-field-label">Records in Month</span>
+                        <span className="mobile-card-field-val number" style={{ fontWeight: 600 }}>
+                          {emp.record_count} rows
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="mobile-card-actions">
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        style={{ width: '100%', justifyContent: 'center', padding: '8px 14px', fontSize: '13px' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedEmployeeId(emp.employee_id);
+                        }}
+                      >
+                        <Eye size={14} style={{ marginRight: '6px' }} />
+                        View Report &rarr;
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </>

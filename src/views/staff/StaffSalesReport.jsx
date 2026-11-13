@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../../api';
 import { useAuth } from '../../context/AuthContext';
+import DynamicMobileCardTable from '../../components/DynamicMobileCardTable';
 import {
   FileSpreadsheet,
   Calendar,
@@ -239,14 +240,8 @@ export default function StaffSalesReport({ initialMonth }) {
 
       {/* Dynamic Report Table Card */}
       <div className="table-card" style={{ overflow: 'hidden' }}>
-        {rows.length > 0 && (
-          <div className="mobile-table-hint">
-            <ArrowLeftRight size={13} color="var(--primary-600)" />
-            <span>Swipe horizontally to view all columns</span>
-          </div>
-        )}
-
-        <div className="responsive-table-view">
+        {/* Desktop View: Full Responsive Table */}
+        <div className="desktop-table-container">
           <div className="table-responsive" style={{ maxHeight: '650px', overflowY: 'auto' }}>
             <table className="data-table" style={{ fontSize: '12.5px', width: '100%', minWidth: `${Math.max(680, cols.length * 85)}px` }}>
               <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#1e293b', color: '#ffffff' }}>
@@ -372,6 +367,41 @@ export default function StaffSalesReport({ initialMonth }) {
             </table>
           </div>
         </div>
+
+        {/* Mobile View: Clean Vertically Stacked Cards (Zero Horizontal Scroll) */}
+        {!loading && rows.length > 0 && (
+          <DynamicMobileCardTable
+            rows={filteredRows}
+            cols={cols}
+            getRowTitle={(row, idx) => {
+              const productKey = Object.keys(row.data || {}).find(k => /product|item|description|name|particulars/i.test(k));
+              if (productKey && row.data[productKey]) {
+                return row.data[productKey];
+              }
+              return row.recordDate ? `Entry #${idx + 1} (${row.recordDate})` : `Record #${idx + 1}`;
+            }}
+            getRowSubtitle={(row) => {
+              return row.recordDate ? `Date: ${row.recordDate}` : null;
+            }}
+            getRowBadge={(row) => {
+              const currencyCol = cols.find(c => c.type === 'currency');
+              if (currencyCol) {
+                const val = row.data?.[currencyCol.label];
+                const num = typeof val === 'number' ? val : parseFloat(val);
+                if (!isNaN(num) && num > 0) {
+                  return (
+                    <span className="badge badge-success" style={{ fontWeight: 700, fontSize: '12px' }}>
+                      ₹{num.toLocaleString()}
+                    </span>
+                  );
+                }
+              }
+              return null;
+            }}
+            initialFieldsCount={5}
+            emptyMessage={filteredRows.length === 0 ? "No records matched your search filter." : "No report records found."}
+          />
+        )}
       </div>
     </div>
   );

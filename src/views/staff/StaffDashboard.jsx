@@ -127,7 +127,8 @@ export default function StaffDashboard({ onNavigate }) {
           </div>
         </div>
 
-        <div className="responsive-table-view">
+        {/* Desktop View: Full Responsive Table */}
+        <div className="desktop-table-container">
           <div className="table-responsive">
             <table className="data-table">
               <thead>
@@ -186,6 +187,70 @@ export default function StaffDashboard({ onNavigate }) {
               </tbody>
             </table>
           </div>
+        </div>
+
+        {/* Mobile View: Clean Vertically Stacked Cards */}
+        <div className="mobile-card-container">
+          {loading ? (
+            <div style={{ padding: '32px 16px', textAlign: 'center', color: '#64748b' }}>
+              Loading your reports...
+            </div>
+          ) : availableMonths.length === 0 ? (
+            <div className="empty-state" style={{ padding: '32px 16px', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+              <div className="empty-state-icon"><FileSpreadsheet size={24} /></div>
+              <div className="empty-state-title">No sales reports assigned yet</div>
+              <div className="empty-state-desc">
+                Once the Brand Manager uploads a monthly report with your Employee ID ({profile.employeeId}), your sales data will appear here.
+              </div>
+            </div>
+          ) : (
+            availableMonths.map((m) => (
+              <div
+                key={m.report_month}
+                className="mobile-data-card clickable"
+                onClick={() => onNavigate && onNavigate('my-sales-report', { month: m.report_month })}
+              >
+                <div className="mobile-card-header">
+                  <div className="mobile-card-title-group">
+                    <div className="mobile-card-title">{m.month_name}</div>
+                    <div className="mobile-card-subtitle">{m.report_month}</div>
+                  </div>
+                  <span className="badge badge-info" style={{ fontWeight: 600, fontSize: '12px' }}>
+                    {m.record_count} entries
+                  </span>
+                </div>
+
+                <div className="mobile-card-fields">
+                  <div className="mobile-card-field-row">
+                    <span className="mobile-card-field-label">My Records Count</span>
+                    <span className="mobile-card-field-val number" style={{ fontWeight: 600 }}>
+                      {m.record_count} entries
+                    </span>
+                  </div>
+                  <div className="mobile-card-field-row">
+                    <span className="mobile-card-field-label">Imported Date</span>
+                    <span className="mobile-card-field-val">
+                      {new Date(m.imported_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mobile-card-actions">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    style={{ width: '100%', justifyContent: 'center', padding: '8px 14px', fontSize: '13px' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onNavigate && onNavigate('my-sales-report', { month: m.report_month });
+                    }}
+                  >
+                    View Report &rarr;
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>

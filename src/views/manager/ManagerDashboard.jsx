@@ -161,14 +161,8 @@ export default function ManagerDashboard({ onNavigate }) {
           </button>
         </div>
 
-        {availableMonths.length > 0 && (
-          <div className="mobile-table-hint">
-            <ArrowLeftRight size={13} color="var(--primary-600)" />
-            <span>Swipe table horizontally to view details</span>
-          </div>
-        )}
-
-        <div className="responsive-table-view">
+        {/* Desktop View: Full Responsive Table */}
+        <div className="desktop-table-container">
           <div className="table-responsive">
             <table className="data-table" style={{ minWidth: '600px' }}>
               <thead>
@@ -241,6 +235,82 @@ export default function ManagerDashboard({ onNavigate }) {
               </tbody>
             </table>
           </div>
+        </div>
+
+        {/* Mobile View: Clean Vertically Stacked Cards */}
+        <div className="mobile-card-container">
+          {loading ? (
+            <div style={{ padding: '32px 16px', textAlign: 'center', color: '#64748b' }}>
+              Loading imported reports...
+            </div>
+          ) : availableMonths.length === 0 ? (
+            <div className="empty-state" style={{ padding: '32px 16px', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+              <div className="empty-state-icon"><FileSpreadsheet size={24} /></div>
+              <div className="empty-state-title">No monthly sales reports yet</div>
+              <div className="empty-state-desc">Upload your first monthly Excel file to generate employee reports.</div>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => onNavigate && onNavigate('import-excel')}
+                style={{ marginTop: '12px' }}
+              >
+                Upload Excel File
+              </button>
+            </div>
+          ) : (
+            availableMonths.map((m) => (
+              <div
+                key={m.id}
+                className="mobile-data-card clickable"
+                onClick={() => onNavigate && onNavigate('employee-reports', { month: m.report_month })}
+              >
+                <div className="mobile-card-header">
+                  <div className="mobile-card-title-group">
+                    <div className="mobile-card-title">{m.month_name}</div>
+                    <div className="mobile-card-subtitle">{m.report_month}</div>
+                  </div>
+                  <span className="badge badge-primary" style={{ fontWeight: 700, fontSize: '12px' }}>
+                    {m.total_employees} staff
+                  </span>
+                </div>
+
+                <div className="mobile-card-fields">
+                  <div className="mobile-card-field-row">
+                    <span className="mobile-card-field-label">Source Excel File</span>
+                    <span className="mobile-card-field-val code" style={{ maxWidth: '60%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {m.filename}
+                    </span>
+                  </div>
+                  <div className="mobile-card-field-row">
+                    <span className="mobile-card-field-label">Total Records</span>
+                    <span className="mobile-card-field-val number" style={{ fontWeight: 600 }}>
+                      {m.total_records?.toLocaleString()} rows
+                    </span>
+                  </div>
+                  <div className="mobile-card-field-row">
+                    <span className="mobile-card-field-label">Import Date</span>
+                    <span className="mobile-card-field-val">
+                      {new Date(m.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mobile-card-actions">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    style={{ width: '100%', justifyContent: 'center', padding: '8px 14px', fontSize: '13px' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onNavigate && onNavigate('employee-reports', { month: m.report_month });
+                    }}
+                  >
+                    Open Reports &rarr;
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>
