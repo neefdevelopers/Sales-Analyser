@@ -13,7 +13,8 @@ import {
   FileSpreadsheet,
   AlertCircle,
   Eye,
-  CheckCircle2
+  CheckCircle2,
+  ArrowLeftRight
 } from 'lucide-react';
 
 export default function EmployeeReports({ initialMonth, onNavigate }) {
@@ -227,6 +228,32 @@ export default function EmployeeReports({ initialMonth, onNavigate }) {
           </button>
         </div>
 
+        {/* Quick Mobile KPI Summary Strip */}
+        {detailRows.length > 0 && (
+          <div className="mobile-kpi-summary">
+            <div className="mobile-kpi-chip">
+              <span className="chip-label">Total Records</span>
+              <strong className="chip-val">{filteredDetailRows.length} rows</strong>
+            </div>
+            {cols.filter(c => c.type === 'currency').slice(0, 2).map((col, idx) => (
+              <div key={idx} className="mobile-kpi-chip" style={{ borderLeft: '3px solid #10b981' }}>
+                <span className="chip-label">{col.label}</span>
+                <strong className="chip-val" style={{ color: '#047857' }}>
+                  ₹{(detailTotals[col.label] || 0).toLocaleString()}
+                </strong>
+              </div>
+            ))}
+            {cols.filter(c => c.type === 'number').slice(0, 1).map((col, idx) => (
+              <div key={idx} className="mobile-kpi-chip" style={{ borderLeft: '3px solid #3b82f6' }}>
+                <span className="chip-label">{col.label}</span>
+                <strong className="chip-val" style={{ color: '#1d4ed8' }}>
+                  {(detailTotals[col.label] || 0).toLocaleString()}
+                </strong>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Search Bar */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
           <div className="search-input-wrap" style={{ maxWidth: '340px', width: '100%' }}>
@@ -237,7 +264,7 @@ export default function EmployeeReports({ initialMonth, onNavigate }) {
               placeholder="Search in records..."
               value={detailSearch}
               onChange={e => setDetailSearch(e.target.value)}
-              style={{ fontSize: '12.5px', height: '36px' }}
+              style={{ fontSize: '13px', height: '38px' }}
             />
             {detailSearch && (
               <button
@@ -256,7 +283,14 @@ export default function EmployeeReports({ initialMonth, onNavigate }) {
         </div>
 
         {/* Dynamic Table Card */}
-        <div className="table-card">
+        <div className="table-card" style={{ overflow: 'hidden' }}>
+          {detailRows.length > 0 && (
+            <div className="mobile-table-hint">
+              <ArrowLeftRight size={13} color="var(--primary-600)" />
+              <span>Swipe horizontally to view all columns</span>
+            </div>
+          )}
+
           <div className="responsive-table-view">
             <div className="table-responsive" style={{ maxHeight: '650px', overflowY: 'auto' }}>
               <table className="data-table" style={{ fontSize: '12.5px', width: '100%', minWidth: `${Math.max(680, cols.length * 85)}px` }}>
@@ -389,28 +423,30 @@ export default function EmployeeReports({ initialMonth, onNavigate }) {
         </div>
 
         {/* Month Selector Dropdown */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <label style={{ fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Calendar size={15} color="var(--primary-600)" />
-            <span>Select Month:</span>
-          </label>
-          <select
-            className="form-control"
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-            disabled={months.length === 0}
-            style={{ width: '180px', height: '38px', fontWeight: 600 }}
-          >
-            {months.length === 0 ? (
-              <option value="">No Reports Available</option>
-            ) : (
-              months.map((m) => (
-                <option key={m.report_month} value={m.report_month}>
-                  {m.month_name}
-                </option>
-              ))
-            )}
-          </select>
+        <div className="mobile-control-row">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <label style={{ fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
+              <Calendar size={15} color="var(--primary-600)" />
+              <span>Select Month:</span>
+            </label>
+            <select
+              className="form-control"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              disabled={months.length === 0}
+              style={{ minWidth: '180px', height: '38px', fontWeight: 600, fontSize: '13px' }}
+            >
+              {months.length === 0 ? (
+                <option value="">No Reports Available</option>
+              ) : (
+                months.map((m) => (
+                  <option key={m.report_month} value={m.report_month}>
+                    {m.month_name}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -484,7 +520,14 @@ export default function EmployeeReports({ initialMonth, onNavigate }) {
           </div>
 
           {/* Employees Table Card */}
-          <div className="table-card">
+          <div className="table-card" style={{ overflow: 'hidden' }}>
+            {filteredEmployees.length > 0 && (
+              <div className="mobile-table-hint">
+                <ArrowLeftRight size={13} color="var(--primary-600)" />
+                <span>Swipe table &bull; Tap row to open report</span>
+              </div>
+            )}
+
             <div className="responsive-table-view">
               <div className="table-responsive">
                 <table className="data-table" style={{ minWidth: '540px' }}>

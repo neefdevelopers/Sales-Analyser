@@ -9,7 +9,8 @@ import {
   AlertCircle,
   CheckCircle2,
   X,
-  UploadCloud
+  UploadCloud,
+  ArrowLeftRight
 } from 'lucide-react';
 
 export default function ImportHistory({ onNavigate }) {
@@ -80,8 +81,8 @@ export default function ImportHistory({ onNavigate }) {
       )}
 
       {/* Table Card */}
-      <div className="table-card">
-        <div className="table-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="table-card" style={{ overflow: 'hidden' }}>
+        <div className="table-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Clock size={16} color="var(--primary-600)" />
             <strong style={{ fontSize: '14.5px' }}>Import History Entries</strong>
@@ -90,6 +91,13 @@ export default function ImportHistory({ onNavigate }) {
             </span>
           </div>
         </div>
+
+        {history.length > 0 && (
+          <div className="mobile-table-hint">
+            <ArrowLeftRight size={13} color="var(--primary-600)" />
+            <span>Swipe table horizontally to view audit logs</span>
+          </div>
+        )}
 
         <div className="responsive-table-view">
           <div className="table-responsive">

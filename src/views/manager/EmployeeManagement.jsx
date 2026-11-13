@@ -21,7 +21,8 @@ import {
   UploadCloud,
   ArrowRight,
   Eye,
-  ChevronRight
+  ChevronRight,
+  ArrowLeftRight
 } from 'lucide-react';
 
 export default function EmployeeManagement({ navParams, onNavigate }) {
@@ -654,6 +655,12 @@ export default function EmployeeManagement({ navParams, onNavigate }) {
               {filteredEmployees.length} of {totalEmps} staff
             </span>
           </div>
+        </div>
+
+        {/* Mobile Swipe Hint */}
+        <div className="mobile-table-hint">
+          <ArrowLeftRight size={13} color="var(--primary-600)" />
+          <span>Swipe table &bull; Tap row for full details</span>
         </div>
 
         {/* The Clean Data Table */}

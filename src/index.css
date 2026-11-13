@@ -2285,6 +2285,63 @@ h1, h2, h3, h4, h5, h6 {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
+  position: relative;
+}
+
+/* Subtle scroll hint above wide tables on mobile */
+.mobile-table-hint {
+  display: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  padding: 6px 12px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  user-select: none;
+}
+
+/* Mobile Quick KPI Summary Strip */
+.mobile-kpi-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.mobile-kpi-chip {
+  background: #ffffff;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+}
+
+.mobile-kpi-chip .chip-label {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  display: block;
+}
+
+.mobile-kpi-chip .chip-val {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-main);
+  display: block;
+  margin-top: 2px;
+}
+
+/* Mobile Control Row for Action Bars & Dropdowns */
+.mobile-control-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 /* Ensure root & body do not cause horizontal page bounce */
@@ -2302,6 +2359,38 @@ html, body {
 @media (max-width: 768px) {
   .page-body {
     padding: 14px 14px 32px;
+  }
+
+  .mobile-table-hint {
+    display: flex !important;
+  }
+
+  /* Prevent iOS Safari unwanted auto-zoom when tapping inputs */
+  .form-control,
+  input[type="text"],
+  input[type="password"],
+  input[type="search"],
+  input[type="month"],
+  select.form-control {
+    font-size: 16px !important;
+    min-height: 40px !important;
+  }
+
+  /* Responsive compact table cells */
+  .data-table th {
+    padding: 8px 10px !important;
+    font-size: 11px !important;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+
+  .data-table td {
+    padding: 9px 10px !important;
+    font-size: 12px !important;
+  }
+
+  .data-table tbody tr:nth-child(even) {
+    background-color: #fbfcfd;
   }
 
   /* Headers */
@@ -2327,8 +2416,23 @@ html, body {
   .page-header-actions .btn,
   .page-header > div:last-child .btn {
     flex: 1 1 auto;
-    min-height: 38px;
+    min-height: 40px;
     justify-content: center;
+  }
+
+  /* Control rows on mobile */
+  .mobile-control-row {
+    width: 100%;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+
+  .mobile-control-row > div,
+  .mobile-control-row .btn,
+  .mobile-control-row select {
+    width: 100% !important;
+    min-height: 40px !important;
   }
 
   /* Search Inputs */
@@ -2337,9 +2441,14 @@ html, body {
     width: 100% !important;
   }
 
+  .search-input-wrap input {
+    font-size: 16px !important;
+    height: 40px !important;
+  }
+
   /* Dropzones */
   .dropzone {
-    padding: 32px 16px !important;
+    padding: 28px 16px !important;
   }
 
   /* Modals */
@@ -2373,15 +2482,14 @@ html, body {
     height: 52px;
   }
 
-  .navbar-title {
-    font-size: 15px !important;
-    max-width: 140px;
+  /* On small mobile screens, prioritize title width over clock */
+  .navbar-clock {
+    display: none !important;
   }
 
-  .navbar-clock {
-    padding: 3px 6px;
-    font-size: 11px;
-    gap: 4px;
+  .navbar-title {
+    font-size: 16px !important;
+    max-width: 220px !important;
   }
 
   .navbar-portal-badge {
@@ -2421,6 +2529,7 @@ html, body {
   .modal-footer > div .btn {
     width: 100% !important;
     justify-content: center !important;
+    min-height: 42px !important;
   }
 
   /* Buttons & Tap Targets */
@@ -2432,6 +2541,10 @@ html, body {
   .table-card {
     border-radius: 8px;
     margin-bottom: 16px;
+  }
+
+  .login-card {
+    padding: 24px 18px !important;
   }
 }
 

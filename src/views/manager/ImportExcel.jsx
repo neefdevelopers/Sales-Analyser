@@ -15,7 +15,8 @@ import {
   Calendar,
   Layers,
   ArrowLeft,
-  FileText
+  FileText,
+  ArrowLeftRight
 } from 'lucide-react';
 
 export default function ImportExcel({ onNavigate }) {
@@ -372,8 +373,8 @@ export default function ImportExcel({ onNavigate }) {
           </div>
 
           {/* Detected Registered Employees Table */}
-          <div className="table-card" style={{ marginBottom: '22px' }}>
-            <div className="table-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="table-card" style={{ marginBottom: '22px', overflow: 'hidden' }}>
+            <div className="table-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Users size={16} color="var(--primary-600)" />
                 <strong style={{ fontSize: '14.5px' }}>
@@ -384,6 +385,13 @@ export default function ImportExcel({ onNavigate }) {
                 {preview.employees?.length > 0 ? 'Ready to fetch & import' : 'No registered staff found'}
               </span>
             </div>
+
+            {preview.employees?.length > 0 && (
+              <div className="mobile-table-hint">
+                <ArrowLeftRight size={13} color="var(--primary-600)" />
+                <span>Swipe table horizontally to inspect rows</span>
+              </div>
+            )}
 
             <div className="responsive-table-view">
               <div className="table-responsive" style={{ maxHeight: '320px', overflowY: 'auto' }}>

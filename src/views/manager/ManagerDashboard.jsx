@@ -10,7 +10,8 @@ import {
   UploadCloud,
   CheckCircle2,
   AlertCircle,
-  FileText
+  FileText,
+  ArrowLeftRight
 } from 'lucide-react';
 
 export default function ManagerDashboard({ onNavigate }) {
@@ -140,7 +141,7 @@ export default function ManagerDashboard({ onNavigate }) {
       )}
 
       {/* Available Imported Months Table */}
-      <div className="table-card">
+      <div className="table-card" style={{ overflow: 'hidden' }}>
         <div className="table-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Clock size={16} color="var(--primary-600)" />
@@ -159,6 +160,13 @@ export default function ManagerDashboard({ onNavigate }) {
             View Full Import History &rarr;
           </button>
         </div>
+
+        {availableMonths.length > 0 && (
+          <div className="mobile-table-hint">
+            <ArrowLeftRight size={13} color="var(--primary-600)" />
+            <span>Swipe table horizontally to view details</span>
+          </div>
+        )}
 
         <div className="responsive-table-view">
           <div className="table-responsive">

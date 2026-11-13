@@ -12,7 +12,8 @@ import {
   AlertCircle,
   FileText,
   User,
-  CheckCircle2
+  CheckCircle2,
+  ArrowLeftRight
 } from 'lucide-react';
 
 export default function StaffSalesReport({ initialMonth }) {
@@ -133,10 +134,10 @@ export default function StaffSalesReport({ initialMonth }) {
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+        <div className="mobile-control-row">
           {/* Month Selector */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <label style={{ fontSize: '12.5px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '220px' }}>
+            <label style={{ fontSize: '12.5px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}>
               <Calendar size={14} color="var(--primary-600)" />
               <span>Month:</span>
             </label>
@@ -145,7 +146,7 @@ export default function StaffSalesReport({ initialMonth }) {
               value={selectedMonth}
               onChange={e => setSelectedMonth(e.target.value)}
               disabled={availableMonths.length === 0}
-              style={{ width: '160px', height: '36px', fontSize: '12.5px', fontWeight: 600 }}
+              style={{ height: '38px', fontSize: '13px', fontWeight: 600 }}
             >
               {availableMonths.length === 0 ? (
                 <option value="">No Reports Available</option>
@@ -165,7 +166,7 @@ export default function StaffSalesReport({ initialMonth }) {
             className="btn btn-primary"
             onClick={handleExportExcel}
             disabled={exporting || loading || rows.length === 0}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '8px 14px', fontWeight: 600, fontSize: '12.5px' }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '9px 16px', fontWeight: 600, fontSize: '13px' }}
           >
             {exporting ? <RefreshCw size={14} className="spin" /> : <Download size={14} />}
             <span>{exporting ? 'Downloading...' : 'Download My Report (.xlsx)'}</span>
@@ -180,10 +181,36 @@ export default function StaffSalesReport({ initialMonth }) {
         </div>
       )}
 
+      {/* Quick Mobile KPI Summary Strip */}
+      {rows.length > 0 && (
+        <div className="mobile-kpi-summary">
+          <div className="mobile-kpi-chip">
+            <span className="chip-label">Total Records</span>
+            <strong className="chip-val">{filteredRows.length} rows</strong>
+          </div>
+          {cols.filter(c => c.type === 'currency').slice(0, 2).map((col, idx) => (
+            <div key={idx} className="mobile-kpi-chip" style={{ borderLeft: '3px solid #10b981' }}>
+              <span className="chip-label">{col.label}</span>
+              <strong className="chip-val" style={{ color: '#047857' }}>
+                ₹{(totals[col.label] || 0).toLocaleString()}
+              </strong>
+            </div>
+          ))}
+          {cols.filter(c => c.type === 'number').slice(0, 1).map((col, idx) => (
+            <div key={idx} className="mobile-kpi-chip" style={{ borderLeft: '3px solid #3b82f6' }}>
+              <span className="chip-label">{col.label}</span>
+              <strong className="chip-val" style={{ color: '#1d4ed8' }}>
+                {(totals[col.label] || 0).toLocaleString()}
+              </strong>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Search & Metadata Bar */}
       {rows.length > 0 && (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
-          <div className="search-input-wrap" style={{ maxWidth: '320px', width: '100%' }}>
+          <div className="search-input-wrap" style={{ maxWidth: '340px', width: '100%' }}>
             <Search size={14} />
             <input
               type="text"
@@ -191,7 +218,7 @@ export default function StaffSalesReport({ initialMonth }) {
               placeholder="Search in your records..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              style={{ fontSize: '12.5px', height: '36px' }}
+              style={{ fontSize: '13px', height: '38px' }}
             />
             {search && (
               <button
@@ -211,7 +238,14 @@ export default function StaffSalesReport({ initialMonth }) {
       )}
 
       {/* Dynamic Report Table Card */}
-      <div className="table-card">
+      <div className="table-card" style={{ overflow: 'hidden' }}>
+        {rows.length > 0 && (
+          <div className="mobile-table-hint">
+            <ArrowLeftRight size={13} color="var(--primary-600)" />
+            <span>Swipe horizontally to view all columns</span>
+          </div>
+        )}
+
         <div className="responsive-table-view">
           <div className="table-responsive" style={{ maxHeight: '650px', overflowY: 'auto' }}>
             <table className="data-table" style={{ fontSize: '12.5px', width: '100%', minWidth: `${Math.max(680, cols.length * 85)}px` }}>
