@@ -50,31 +50,4 @@ router.get('/me', authenticate, (req, res) => {
   });
 });
 
-// Demo switch: convenience for testing between manager and staff
-router.post('/demo-switch', async (req, res) => {
-  const { username } = req.body;
-  const user = await get('SELECT * FROM users WHERE username = ?', [username]);
-  if (!user) {
-    return res.status(404).json({ error: 'User not found' });
-  }
-  const token = generateToken(user);
-  res.json({
-    token,
-    user: {
-      id: user.id,
-      staff_id: user.staff_id,
-      name: user.name,
-      username: user.username,
-      role: user.role,
-      status: user.status
-    }
-  });
-});
-
-// Get demo accounts list for easy switching in development/evaluation
-router.get('/demo-accounts', async (req, res) => {
-  const accounts = await query('SELECT id, staff_id, name, username, role, status FROM users ORDER BY role, id');
-  res.json({ accounts });
-});
-
 export default router;

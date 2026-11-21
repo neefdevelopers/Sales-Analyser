@@ -8,11 +8,9 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(localStorage.getItem('sales_token') || null);
   const [loading, setLoading] = useState(true);
-  const [demoAccounts, setDemoAccounts] = useState([]);
 
   useEffect(() => {
     loadUser();
-    loadDemoAccounts();
   }, [token]);
 
   async function loadUser() {
@@ -32,25 +30,8 @@ export function AuthProvider({ children }) {
     }
   }
 
-  async function loadDemoAccounts() {
-    try {
-      const data = await api.get('/auth/demo-accounts');
-      setDemoAccounts(data.accounts || []);
-    } catch (err) {
-      // Ignore if server isn't up yet
-    }
-  }
-
   async function login(username, password) {
     const data = await api.post('/auth/login', { username, password });
-    localStorage.setItem('sales_token', data.token);
-    setToken(data.token);
-    setUser(data.user);
-    return data.user;
-  }
-
-  async function switchDemo(username) {
-    const data = await api.post('/auth/demo-switch', { username });
     localStorage.setItem('sales_token', data.token);
     setToken(data.token);
     setUser(data.user);
@@ -67,10 +48,8 @@ export function AuthProvider({ children }) {
     user,
     token,
     loading,
-    demoAccounts,
     login,
     logout,
-    switchDemo,
     refreshUser: loadUser
   };
 
