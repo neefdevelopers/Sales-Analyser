@@ -1,7 +1,10 @@
 // src/api.js
 // Centralized HTTP client with automatic authentication headers and response parsing
 
-const BASE_URL = '/api';
+const rawApiUrl = import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/+$/, '') : '';
+const BASE_URL = rawApiUrl
+  ? (rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl}/api`)
+  : '/api';
 
 export async function apiRequest(endpoint, options = {}) {
   const token = localStorage.getItem('sales_token');

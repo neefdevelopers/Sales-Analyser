@@ -7,14 +7,14 @@ import { generateToken, authenticate } from '../auth.js';
 const router = Router();
 
 // Login
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
   const { username, password } = req.body;
 
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password are required.' });
   }
 
-  const user = get('SELECT * FROM users WHERE username = ? OR staff_id = ?', [username.trim(), username.trim()]);
+  const user = await get('SELECT * FROM users WHERE username = ? OR staff_id = ?', [username.trim(), username.trim()]);
   if (!user) {
     return res.status(401).json({ error: 'Invalid credentials.' });
   }
@@ -51,9 +51,9 @@ router.get('/me', authenticate, (req, res) => {
 });
 
 // Demo switch: convenience for testing between manager and staff
-router.post('/demo-switch', (req, res) => {
+router.post('/demo-switch', async (req, res) => {
   const { username } = req.body;
-  const user = get('SELECT * FROM users WHERE username = ?', [username]);
+  const user = await get('SELECT * FROM users WHERE username = ?', [username]);
   if (!user) {
     return res.status(404).json({ error: 'User not found' });
   }
@@ -72,8 +72,8 @@ router.post('/demo-switch', (req, res) => {
 });
 
 // Get demo accounts list for easy switching in development/evaluation
-router.get('/demo-accounts', (req, res) => {
-  const accounts = query('SELECT id, staff_id, name, username, role, status FROM users ORDER BY role, id');
+router.get('/demo-accounts', async (req, res) => {
+  const accounts = await query('SELECT id, staff_id, name, username, role, status FROM users ORDER BY role, id');
   res.json({ accounts });
 });
 

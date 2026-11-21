@@ -20,7 +20,7 @@ export function generateToken(user) {
   );
 }
 
-export function authenticate(req, res, next) {
+export async function authenticate(req, res, next) {
   let token = null;
 
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
@@ -36,7 +36,7 @@ export function authenticate(req, res, next) {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     // Verify user still exists and is active
-    const user = get('SELECT id, staff_id, name, username, role, status FROM users WHERE id = ?', [decoded.id]);
+    const user = await get('SELECT id, staff_id, name, username, role, status FROM users WHERE id = ?', [decoded.id]);
     
     if (!user) {
       return res.status(401).json({ error: 'User account no longer exists.' });

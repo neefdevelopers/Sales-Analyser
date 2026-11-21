@@ -16,12 +16,12 @@ router.use(authenticate, requireRole('sales_staff'));
  * - Available reporting months where this employee has records
  * - Summary for current/latest month
  */
-router.get('/dashboard', (req, res) => {
+router.get('/dashboard', async (req, res) => {
   try {
     const employeeId = req.user.staff_id;
 
     // Fetch all months where this employee has reports
-    const availableMonths = query(`
+    const availableMonths = await query(`
       SELECT
         esr.id,
         esr.report_month,
@@ -61,14 +61,14 @@ router.get('/dashboard', (req, res) => {
  * Returns the authenticated employee's sales report for a given month
  * STRICT PRIVACY: Bound strictly to req.user.staff_id on the backend!
  */
-router.get('/my-report', (req, res) => {
+router.get('/my-report', async (req, res) => {
   try {
     const employeeId = req.user.staff_id;
     let { month } = req.query;
 
     // If no month specified, default to the latest available month for this employee
     if (!month) {
-      const latestMonthRow = get(`
+      const latestMonthRow = await get(`
         SELECT report_month
         FROM employee_sales_reports
         WHERE employee_id = ?
@@ -91,7 +91,7 @@ router.get('/my-report', (req, res) => {
     }
 
     // Available months list for month selector
-    const availableMonths = query(`
+    const availableMonths = await query(`
       SELECT esr.report_month, mr.month_name, esr.record_count
       FROM employee_sales_reports esr
       JOIN monthly_reports mr ON esr.monthly_report_id = mr.id
@@ -100,7 +100,7 @@ router.get('/my-report', (req, res) => {
     `, [employeeId]);
 
     // Strictly fetch report for authenticated employee_id
-    const empReport = get(`
+    const empReport = await get(`
       SELECT esr.*, mr.month_name, mr.filename
       FROM employee_sales_reports esr
       JOIN monthly_reports mr ON esr.monthly_report_id = mr.id
@@ -116,7 +116,7 @@ router.get('/my-report', (req, res) => {
 
     const columns = empReport.columns_json ? JSON.parse(empReport.columns_json) : [];
 
-    const rawRecords = query(`
+    const rawRecords = await query(`
       SELECT id, record_date, row_index, data_json
       FROM sales_records
       WHERE employee_sales_report_id = ? AND employee_id = ?
@@ -156,7 +156,7 @@ router.get('/my-report/export-excel', async (req, res) => {
     let { month } = req.query;
 
     if (!month) {
-      const latestMonthRow = get(`
+      const latestMonthRow = await get(`
         SELECT report_month
         FROM employee_sales_reports
         WHERE employee_id = ?
@@ -170,7 +170,7 @@ router.get('/my-report/export-excel', async (req, res) => {
       return res.status(400).json({ error: 'No report month available to export.' });
     }
 
-    const empReport = get(`
+    const empReport = await get(`
       SELECT esr.*, mr.month_name
       FROM employee_sales_reports esr
       JOIN monthly_reports mr ON esr.monthly_report_id = mr.id
@@ -182,7 +182,7 @@ router.get('/my-report/export-excel', async (req, res) => {
     }
 
     const columns = empReport.columns_json ? JSON.parse(empReport.columns_json) : [];
-    const rawRecords = query(`
+    const rawRecords = await query(`
       SELECT data_json FROM sales_records
       WHERE employee_sales_report_id = ? AND employee_id = ?
       ORDER BY record_date ASC, row_index ASC, id ASC

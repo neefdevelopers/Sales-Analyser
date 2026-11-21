@@ -1,27 +1,57 @@
 // server/db.js
-// SQLite database engine using sql.js WebAssembly with filesystem persistence
+// Dual-engine database layer:
+// - PostgreSQL via `pg` pool when DATABASE_URL is set (e.g. Neon on Render)
+// - SQLite fallback via `sql.js` WebAssembly with filesystem persistence when DATABASE_URL is not set
 
 import initSqlJs from 'sql.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
+import pg from 'pg';
 
+const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const DB_PATH = path.join(DATA_DIR, 'sales.db');
 
+export const isPg = Boolean(process.env.DATABASE_URL);
+
+let pgPool = null;
+let inPgTx = null;
+
 let dbInstance = null;
 let SQL = null;
+let inTransaction = false;
 
-// Ensure data folder exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+// Converts ? parameter placeholders to PostgreSQL $1, $2, ... placeholders
+function convertSqlForPg(sql) {
+  let paramIndex = 1;
+  return sql.replace(/\?/g, () => `$${paramIndex++}`);
 }
 
 export async function getDb() {
+  if (isPg) {
+    if (pgPool) return pgPool;
+    console.log('Connecting to PostgreSQL (Neon database)...');
+    pgPool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: {
+        rejectUnauthorized: false
+      }
+    });
+
+    await initPgSchema(pgPool);
+    return pgPool;
+  }
+
+  // SQLite fallback
   if (dbInstance) return dbInstance;
+
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
 
   if (!SQL) {
     SQL = await initSqlJs();
@@ -32,34 +62,41 @@ export async function getDb() {
     try {
       dbBuffer = fs.readFileSync(DB_PATH);
     } catch (err) {
-      console.warn('Could not read existing database file, creating fresh one:', err.message);
+      console.warn('Could not read existing SQLite database file, creating fresh one:', err.message);
     }
   }
 
   dbInstance = dbBuffer ? new SQL.Database(dbBuffer) : new SQL.Database();
-  initSchema(dbInstance);
+  initSqliteSchema(dbInstance);
   saveDb();
   return dbInstance;
 }
 
-let inTransaction = false;
-
 export function saveDb() {
-  if (!dbInstance || inTransaction) return;
+  if (isPg || !dbInstance || inTransaction) return;
   try {
     const data = dbInstance.export();
     const buffer = Buffer.from(data);
     fs.writeFileSync(DB_PATH, buffer);
   } catch (err) {
-    console.error('Failed to save database to disk:', err);
+    console.error('Failed to save SQLite database to disk:', err);
   }
 }
 
 /**
  * Execute SELECT query and return array of objects
  */
-export function query(sql, params = []) {
-  if (!dbInstance) throw new Error('Database not initialized');
+export async function query(sql, params = []) {
+  if (isPg) {
+    if (!pgPool) await getDb();
+    const pgSql = convertSqlForPg(sql);
+    const client = inPgTx || pgPool;
+    const res = await client.query(pgSql, params);
+    return res.rows;
+  }
+
+  // SQLite fallback
+  if (!dbInstance) await getDb();
   const stmt = dbInstance.prepare(sql);
   stmt.bind(params);
   const rows = [];
@@ -73,35 +110,69 @@ export function query(sql, params = []) {
 /**
  * Execute SELECT query and return first object or null
  */
-export function get(sql, params = []) {
-  const rows = query(sql, params);
+export async function get(sql, params = []) {
+  const rows = await query(sql, params);
   return rows.length > 0 ? rows[0] : null;
 }
 
 /**
  * Execute INSERT, UPDATE, DELETE query
  */
-export function run(sql, params = []) {
-  if (!dbInstance) throw new Error('Database not initialized');
+export async function run(sql, params = []) {
+  if (isPg) {
+    if (!pgPool) await getDb();
+    let pgSql = convertSqlForPg(sql);
+    const isInsert = /^\s*INSERT\s+INTO/i.test(sql);
+    if (isInsert && !/RETURNING/i.test(sql)) {
+      pgSql += ' RETURNING id';
+    }
+    const client = inPgTx || pgPool;
+    const res = await client.query(pgSql, params);
+    return {
+      lastInsertRowid: res.rows[0]?.id || 0,
+      changes: res.rowCount || 0
+    };
+  }
+
+  // SQLite fallback
+  if (!dbInstance) await getDb();
   dbInstance.run(sql, params);
-  
-  // Get last insert row id and changes
-  const lastIdRes = query('SELECT last_insert_rowid() AS id');
-  const changesRes = query('SELECT changes() AS changes');
-  
+
+  const stmtId = dbInstance.prepare('SELECT last_insert_rowid() AS id');
+  let lastId = 0;
+  if (stmtId.step()) {
+    lastId = stmtId.getAsObject().id;
+  }
+  stmtId.free();
+
+  const stmtCh = dbInstance.prepare('SELECT changes() AS changes');
+  let changes = 0;
+  if (stmtCh.step()) {
+    changes = stmtCh.getAsObject().changes;
+  }
+  stmtCh.free();
+
   saveDb();
 
   return {
-    lastInsertRowid: lastIdRes[0]?.id || 0,
-    changes: changesRes[0]?.changes || 0
+    lastInsertRowid: lastId || 0,
+    changes: changes || 0
   };
 }
 
 /**
  * Execute raw multiple SQL statements
  */
-export function exec(sql) {
-  if (!dbInstance) throw new Error('Database not initialized');
+export async function exec(sql) {
+  if (isPg) {
+    if (!pgPool) await getDb();
+    const client = inPgTx || pgPool;
+    await client.query(sql);
+    return;
+  }
+
+  // SQLite fallback
+  if (!dbInstance) await getDb();
   dbInstance.exec(sql);
   saveDb();
 }
@@ -109,12 +180,31 @@ export function exec(sql) {
 /**
  * Run callback inside a transaction
  */
-export function transaction(callback) {
-  if (!dbInstance) throw new Error('Database not initialized');
+export async function transaction(callback) {
+  if (isPg) {
+    if (!pgPool) await getDb();
+    const client = await pgPool.connect();
+    inPgTx = client;
+    try {
+      await client.query('BEGIN');
+      const result = await callback();
+      await client.query('COMMIT');
+      return result;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      inPgTx = null;
+      client.release();
+    }
+  }
+
+  // SQLite fallback
+  if (!dbInstance) await getDb();
   inTransaction = true;
   dbInstance.run('BEGIN TRANSACTION;');
   try {
-    const result = callback();
+    const result = await callback();
     dbInstance.run('COMMIT;');
     inTransaction = false;
     saveDb();
@@ -126,7 +216,162 @@ export function transaction(callback) {
   }
 }
 
-function initSchema(db) {
+async function initPgSchema(pool) {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      staff_id VARCHAR(100) UNIQUE NOT NULL,
+      name VARCHAR(255) NOT NULL,
+      username VARCHAR(100) UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      role VARCHAR(50) NOT NULL CHECK(role IN ('brand_manager', 'sales_staff')),
+      status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS products (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      code VARCHAR(100) UNIQUE NOT NULL,
+      price NUMERIC NOT NULL CHECK(price >= 0),
+      status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive')),
+      prepaid_incentive_type VARCHAR(20) NOT NULL DEFAULT 'fixed' CHECK(prepaid_incentive_type IN ('fixed', 'percentage')),
+      prepaid_incentive_basis VARCHAR(20) NOT NULL DEFAULT 'per_unit' CHECK(prepaid_incentive_basis IN ('per_unit', 'per_order')),
+      prepaid_incentive_value NUMERIC NOT NULL DEFAULT 0 CHECK(prepaid_incentive_value >= 0),
+      cod_incentive_type VARCHAR(20) NOT NULL DEFAULT 'fixed' CHECK(cod_incentive_type IN ('fixed', 'percentage')),
+      cod_incentive_basis VARCHAR(20) NOT NULL DEFAULT 'per_unit' CHECK(cod_incentive_basis IN ('per_unit', 'per_order')),
+      cod_incentive_value NUMERIC NOT NULL DEFAULT 0 CHECK(cod_incentive_value >= 0),
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS customers (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      phone VARCHAR(50) NOT NULL UNIQUE,
+      address TEXT,
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS orders (
+      id SERIAL PRIMARY KEY,
+      order_number VARCHAR(100) UNIQUE NOT NULL,
+      staff_id INTEGER NOT NULL REFERENCES users(id),
+      customer_id INTEGER NOT NULL REFERENCES customers(id),
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      quantity INTEGER NOT NULL CHECK(quantity > 0),
+      unit_price NUMERIC NOT NULL,
+      total_amount NUMERIC NOT NULL,
+      payment_method VARCHAR(20) NOT NULL CHECK(payment_method IN ('Prepaid', 'COD')),
+      order_date VARCHAR(50) NOT NULL,
+      status VARCHAR(50) NOT NULL DEFAULT 'Confirmed' CHECK(status IN ('Confirmed', 'Delivered', 'Pending', 'Cancelled')),
+      remarks TEXT,
+      incentive_type VARCHAR(50) NOT NULL,
+      incentive_basis VARCHAR(50) NOT NULL,
+      incentive_rate NUMERIC NOT NULL,
+      incentive_amount NUMERIC NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS returns (
+      id SERIAL PRIMARY KEY,
+      return_number VARCHAR(100) UNIQUE NOT NULL,
+      order_id INTEGER REFERENCES orders(id),
+      staff_id INTEGER NOT NULL REFERENCES users(id),
+      product_id INTEGER REFERENCES products(id),
+      returned_by_staff_id INTEGER REFERENCES users(id),
+      payment_method VARCHAR(20),
+      return_quantity INTEGER NOT NULL CHECK(return_quantity > 0),
+      return_amount NUMERIC NOT NULL,
+      return_date VARCHAR(50) NOT NULL,
+      return_reason VARCHAR(255) NOT NULL DEFAULT 'Product Return',
+      remarks TEXT,
+      reversed_incentive NUMERIC NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS import_logs (
+      id SERIAL PRIMARY KEY,
+      file_hash VARCHAR(255) UNIQUE NOT NULL,
+      file_name VARCHAR(255) NOT NULL,
+      total_rows INTEGER NOT NULL,
+      updated_count INTEGER NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL,
+      created_by INTEGER REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS monthly_reports (
+      id SERIAL PRIMARY KEY,
+      report_month VARCHAR(50) UNIQUE NOT NULL,
+      month_name VARCHAR(100) NOT NULL,
+      filename VARCHAR(255) NOT NULL,
+      file_hash VARCHAR(255),
+      sheet_names TEXT,
+      columns_json TEXT,
+      total_records INTEGER DEFAULT 0,
+      total_employees INTEGER DEFAULT 0,
+      total_sales_amount NUMERIC DEFAULT 0,
+      imported_by INTEGER REFERENCES users(id),
+      import_status VARCHAR(50) DEFAULT 'completed',
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS employee_sales_reports (
+      id SERIAL PRIMARY KEY,
+      monthly_report_id INTEGER NOT NULL REFERENCES monthly_reports(id) ON DELETE CASCADE,
+      report_month VARCHAR(50) NOT NULL,
+      employee_id VARCHAR(100) NOT NULL,
+      employee_name VARCHAR(255) NOT NULL,
+      record_count INTEGER DEFAULT 0,
+      summary_json TEXT,
+      columns_json TEXT,
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL,
+      UNIQUE(monthly_report_id, employee_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS sales_records (
+      id SERIAL PRIMARY KEY,
+      monthly_report_id INTEGER NOT NULL REFERENCES monthly_reports(id) ON DELETE CASCADE,
+      employee_sales_report_id INTEGER NOT NULL REFERENCES employee_sales_reports(id) ON DELETE CASCADE,
+      report_month VARCHAR(50) NOT NULL,
+      employee_id VARCHAR(100) NOT NULL,
+      employee_name VARCHAR(255) NOT NULL,
+      record_date VARCHAR(50),
+      row_index INTEGER,
+      data_json TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_monthly_reports_month ON monthly_reports(report_month);
+    CREATE INDEX IF NOT EXISTS idx_emp_sales_rep_emp ON employee_sales_reports(employee_id);
+    CREATE INDEX IF NOT EXISTS idx_emp_sales_rep_month ON employee_sales_reports(report_month);
+    CREATE INDEX IF NOT EXISTS idx_sales_records_emp ON sales_records(employee_id);
+    CREATE INDEX IF NOT EXISTS idx_sales_records_month ON sales_records(report_month);
+    CREATE INDEX IF NOT EXISTS idx_sales_records_date ON sales_records(record_date);
+  `);
+
+  // Seed default manager if users table is empty
+  const userCountRes = await pool.query('SELECT COUNT(*) AS c FROM users');
+  const count = parseInt(userCountRes.rows[0]?.c || '0', 10);
+  if (count === 0) {
+    console.log('Seeding initial PostgreSQL database with default manager account...');
+    const now = new Date().toISOString();
+    const adminHash = bcrypt.hashSync('admin123', 10);
+    await pool.query(`
+      INSERT INTO users (staff_id, name, username, password_hash, role, status, created_at, updated_at) VALUES
+      ($1, $2, $3, $4, $5, $6, $7, $8)
+    `, ['MGR-001', 'Arun Varma (Brand Manager)', 'manager', adminHash, 'brand_manager', 'active', now, now]);
+    console.log('PostgreSQL database initialized with default manager account.');
+  }
+}
+
+function initSqliteSchema(db) {
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -220,9 +465,6 @@ function initSchema(db) {
       created_by INTEGER REFERENCES users(id)
     );
 
-    /* ========================================================
-       EMPLOYEE SALES REPORT MANAGEMENT SYSTEM SCHEMA
-       ======================================================== */
     CREATE TABLE IF NOT EXISTS monthly_reports (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       report_month TEXT UNIQUE NOT NULL,
@@ -275,107 +517,17 @@ function initSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_sales_records_date ON sales_records(record_date);
   `);
 
-  // Ensure returns table allows nullable order_id
-  try {
-    db.run(`
-      CREATE TABLE IF NOT EXISTS returns_temp (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        return_number TEXT UNIQUE NOT NULL,
-        order_id INTEGER REFERENCES orders(id),
-        staff_id INTEGER NOT NULL REFERENCES users(id),
-        product_id INTEGER REFERENCES products(id),
-        returned_by_staff_id INTEGER REFERENCES users(id),
-        payment_method TEXT,
-        return_quantity INTEGER NOT NULL CHECK(return_quantity > 0),
-        return_amount REAL NOT NULL,
-        return_date TEXT NOT NULL,
-        return_reason TEXT NOT NULL DEFAULT 'Product Return',
-        remarks TEXT,
-        reversed_incentive REAL NOT NULL DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-      INSERT INTO returns_temp SELECT id, return_number, order_id, staff_id, product_id, returned_by_staff_id, payment_method, return_quantity, return_amount, return_date, return_reason, remarks, reversed_incentive, created_at, updated_at FROM returns;
-      DROP TABLE returns;
-      ALTER TABLE returns_temp RENAME TO returns;
-      CREATE INDEX IF NOT EXISTS idx_returns_order ON returns(order_id);
-      CREATE INDEX IF NOT EXISTS idx_returns_staff ON returns(staff_id);
-      CREATE INDEX IF NOT EXISTS idx_returns_returned_by ON returns(returned_by_staff_id);
-      CREATE INDEX IF NOT EXISTS idx_returns_product ON returns(product_id);
-    `);
-  } catch (e) {
-    // Ignore
-  }
-
-  // Ensure returns table has product_id, returned_by_staff_id, and payment_method columns
-  try {
-    db.run(`ALTER TABLE returns ADD COLUMN product_id INTEGER REFERENCES products(id);`);
-  } catch (e) {
-    // Column already exists
-  }
-  try {
-    db.run(`ALTER TABLE returns ADD COLUMN returned_by_staff_id INTEGER REFERENCES users(id);`);
-  } catch (e) {
-    // Column already exists
-  }
-  try {
-    db.run(`ALTER TABLE returns ADD COLUMN payment_method TEXT;`);
-  } catch (e) {
-    // Column already exists
-  }
-  try {
-    db.run(`
-      UPDATE returns
-      SET product_id = (SELECT product_id FROM orders WHERE orders.id = returns.order_id)
-      WHERE product_id IS NULL;
-
-      UPDATE returns
-      SET returned_by_staff_id = staff_id
-      WHERE returned_by_staff_id IS NULL;
-
-      UPDATE returns
-      SET payment_method = (SELECT payment_method FROM orders WHERE orders.id = returns.order_id)
-      WHERE payment_method IS NULL;
-
-      CREATE INDEX IF NOT EXISTS idx_returns_returned_by ON returns(returned_by_staff_id);
-      CREATE INDEX IF NOT EXISTS idx_returns_product ON returns(product_id);
-    `);
-  } catch (e) {
-    // Ignore
-  }
-
-  // Safely drop removed modules tables if they exist
-  try {
-    db.run(`
-      DROP TABLE IF EXISTS staff_performance_remarks;
-      DROP TABLE IF EXISTS daily_activities;
-      DROP TABLE IF EXISTS calls;
-      DROP TABLE IF EXISTS enquiries;
-    `);
-  } catch (err) {
-    // Ignore
-  }
-
-  // Seed default data if users table is empty
+  // Seed default manager if users table is empty
   const userCount = db.exec("SELECT COUNT(*) AS c FROM users;");
   const count = userCount[0]?.values[0]?.[0] || 0;
   if (count === 0) {
-    seedDatabase(db);
+    console.log('Seeding initial SQLite database with default manager account...');
+    const now = new Date().toISOString();
+    const adminHash = bcrypt.hashSync('admin123', 10);
+    db.run(`
+      INSERT INTO users (staff_id, name, username, password_hash, role, status, created_at, updated_at) VALUES
+      ('MGR-001', 'Arun Varma (Brand Manager)', 'manager', ?, 'brand_manager', 'active', ?, ?);
+    `, [adminHash, now, now]);
+    console.log('SQLite database initialized with default manager account.');
   }
 }
-
-function seedDatabase(db) {
-  console.log('Seeding initial database with default manager account...');
-  const now = new Date().toISOString();
-
-  const adminHash = bcrypt.hashSync('admin123', 10);
-
-  // 1. Seed Manager
-  db.run(`
-    INSERT INTO users (staff_id, name, username, password_hash, role, status, created_at, updated_at) VALUES
-    ('MGR-001', 'Arun Varma (Brand Manager)', 'manager', ?, 'brand_manager', 'active', ?, ?);
-  `, [adminHash, now, now]);
-
-  console.log('Database initialized with default manager account.');
-}
-

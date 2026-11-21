@@ -1,7 +1,7 @@
 // server/routes/manager.js
 import express from 'express';
-import ExcelJS from 'exceljs';
 import bcrypt from 'bcryptjs';
+import ExcelJS from 'exceljs';
 import { getDb, query, get, run, transaction, saveDb } from '../db.js';
 import { authenticate, requireRole } from '../auth.js';
 import { parseMonthlyExcelWorkbook, formatMonthName, isInvalidEmployeeId } from '../services/excelParser.js';
@@ -13,19 +13,19 @@ router.use(authenticate, requireRole('brand_manager'));
 
 /**
  * 1. GET /api/manager/dashboard
- * Simple executive summary:
- * - Total employees found in imported reports
+ * Aggregated KPI metrics:
+ * - Total employees identified
  * - Total sales records imported
- * - Current imported month
+ * - Current active month name
  * - Total sales amount if available
  * - Latest Excel import details
  */
-router.get('/dashboard', (req, res) => {
+router.get('/dashboard', async (req, res) => {
   try {
-    const totalEmpRow = get(`SELECT COUNT(DISTINCT employee_id) AS cnt FROM employee_sales_reports`);
-    const totalRecordsRow = get(`SELECT COUNT(*) AS cnt FROM sales_records`);
-    const latestReport = get(`SELECT * FROM monthly_reports ORDER BY report_month DESC, id DESC LIMIT 1`);
-    const allMonths = query(`SELECT id, report_month, month_name, total_records, total_employees, total_sales_amount, filename, created_at FROM monthly_reports ORDER BY report_month DESC`);
+    const totalEmpRow = await get(`SELECT COUNT(DISTINCT employee_id) AS cnt FROM employee_sales_reports`);
+    const totalRecordsRow = await get(`SELECT COUNT(*) AS cnt FROM sales_records`);
+    const latestReport = await get(`SELECT * FROM monthly_reports ORDER BY report_month DESC, id DESC LIMIT 1`);
+    const allMonths = await query(`SELECT id, report_month, month_name, total_records, total_employees, total_sales_amount, filename, created_at FROM monthly_reports ORDER BY report_month DESC`);
 
     const totalEmployees = totalEmpRow?.cnt || 0;
     const totalSalesRecords = totalRecordsRow?.cnt || 0;
@@ -68,12 +68,12 @@ router.post('/import/preview', async (req, res) => {
     }
 
     const buffer = Buffer.from(fileBase64, 'base64');
-    const knownUsers = query("SELECT id, staff_id, name, username, role FROM users WHERE role = 'sales_staff'");
+    const knownUsers = await query("SELECT id, staff_id, name, username, role FROM users WHERE role = 'sales_staff'");
 
     const preview = await parseMonthlyExcelWorkbook(buffer, filename || 'Monthly_Report.xlsx', knownUsers);
 
     // Check if report month is already in database
-    const existing = get('SELECT id, filename, created_at, total_records, total_employees FROM monthly_reports WHERE report_month = ?', [preview.reportMonth]);
+    const existing = await get('SELECT id, filename, created_at, total_records, total_employees FROM monthly_reports WHERE report_month = ?', [preview.reportMonth]);
 
     const isDuplicateMonth = !!existing;
     const duplicateDetails = existing ? {
@@ -106,7 +106,7 @@ router.post('/import/confirm', async (req, res) => {
     }
 
     const buffer = Buffer.from(fileBase64, 'base64');
-    const knownUsers = query("SELECT id, staff_id, name, username, role FROM users WHERE role = 'sales_staff'");
+    const knownUsers = await query("SELECT id, staff_id, name, username, role FROM users WHERE role = 'sales_staff'");
 
     const parsed = await parseMonthlyExcelWorkbook(buffer, filename || 'Monthly_Report.xlsx', knownUsers);
 
@@ -120,20 +120,20 @@ router.post('/import/confirm', async (req, res) => {
     const monthName = formatMonthName(reportMonth);
     const now = new Date().toISOString();
 
-    transaction(() => {
+    await transaction(async () => {
       // 1. Delete previous records for this month if re-importing (prevents duplicate data)
-      const existingReport = get('SELECT id FROM monthly_reports WHERE report_month = ?', [reportMonth]);
+      const existingReport = await get('SELECT id FROM monthly_reports WHERE report_month = ?', [reportMonth]);
       if (existingReport) {
-        run('DELETE FROM sales_records WHERE monthly_report_id = ?', [existingReport.id]);
-        run('DELETE FROM employee_sales_reports WHERE monthly_report_id = ?', [existingReport.id]);
-        run('DELETE FROM monthly_reports WHERE id = ?', [existingReport.id]);
+        await run('DELETE FROM sales_records WHERE monthly_report_id = ?', [existingReport.id]);
+        await run('DELETE FROM employee_sales_reports WHERE monthly_report_id = ?', [existingReport.id]);
+        await run('DELETE FROM monthly_reports WHERE id = ?', [existingReport.id]);
       }
 
       // Clean up any historical fake user accounts
-      run("DELETE FROM users WHERE staff_id IN ('EMPLOYEE ID', 'DATE', 'TOTAL', 'TOTAL AMOUNT')");
+      await run("DELETE FROM users WHERE staff_id IN ('EMPLOYEE ID', 'DATE', 'TOTAL', 'TOTAL AMOUNT')");
 
       // 2. Insert into monthly_reports
-      run(`
+      await run(`
         INSERT INTO monthly_reports (
           report_month, month_name, filename, file_hash, sheet_names,
           columns_json, total_records, total_employees, total_sales_amount,
@@ -155,7 +155,7 @@ router.post('/import/confirm', async (req, res) => {
         now
       ]);
 
-      const monthlyReport = get('SELECT id FROM monthly_reports WHERE report_month = ?', [reportMonth]);
+      const monthlyReport = await get('SELECT id FROM monthly_reports WHERE report_month = ?', [reportMonth]);
       const monthlyReportId = monthlyReport.id;
 
       // 3. For each registered employee, insert into employee_sales_reports and sales_records
@@ -165,7 +165,7 @@ router.post('/import/confirm', async (req, res) => {
         }
 
         // Must be an existing registered sales staff user! DO NOT auto-provision!
-        const existingUser = get("SELECT id, name FROM users WHERE staff_id = ? AND role = 'sales_staff'", [emp.employeeId]);
+        const existingUser = await get("SELECT id, name FROM users WHERE staff_id = ? AND role = 'sales_staff'", [emp.employeeId]);
         if (!existingUser) {
           continue; // Skip any unregistered employee
         }
@@ -173,12 +173,12 @@ router.post('/import/confirm', async (req, res) => {
         if (emp.employeeName && emp.employeeName !== emp.employeeId) {
           // If existing user's name is equal to staff_id or generic, update it with real parsed name
           if (!existingUser.name || existingUser.name === emp.employeeId || existingUser.name.toLowerCase() === 'sales staff') {
-            run('UPDATE users SET name = ?, updated_at = ? WHERE id = ?', [emp.employeeName, now, existingUser.id]);
+            await run('UPDATE users SET name = ?, updated_at = ? WHERE id = ?', [emp.employeeName, now, existingUser.id]);
           }
         }
 
         // Insert into employee_sales_reports
-        run(`
+        await run(`
           INSERT INTO employee_sales_reports (
             monthly_report_id, report_month, employee_id, employee_name,
             record_count, columns_json, created_at, updated_at
@@ -194,12 +194,12 @@ router.post('/import/confirm', async (req, res) => {
           now
         ]);
 
-        const empReport = get('SELECT id FROM employee_sales_reports WHERE monthly_report_id = ? AND employee_id = ?', [monthlyReportId, emp.employeeId]);
+        const empReport = await get('SELECT id FROM employee_sales_reports WHERE monthly_report_id = ? AND employee_id = ?', [monthlyReportId, emp.employeeId]);
         const empReportId = empReport.id;
 
         // Insert all rows into sales_records
         for (const rec of emp.records) {
-          run(`
+          await run(`
             INSERT INTO sales_records (
               monthly_report_id, employee_sales_report_id, report_month,
               employee_id, employee_name, record_date, row_index,
@@ -240,9 +240,9 @@ router.post('/import/confirm', async (req, res) => {
  * 4. GET /api/manager/reports/months
  * Lists all imported months
  */
-router.get('/reports/months', (req, res) => {
+router.get('/reports/months', async (req, res) => {
   try {
-    const months = query(`
+    const months = await query(`
       SELECT id, report_month, month_name, filename, total_records, total_employees, total_sales_amount, created_at
       FROM monthly_reports
       ORDER BY report_month DESC
@@ -257,15 +257,15 @@ router.get('/reports/months', (req, res) => {
  * 5. GET /api/manager/reports/month/:reportMonth
  * Lists all employees for a given month with their record count and summary
  */
-router.get('/reports/month/:reportMonth', (req, res) => {
+router.get('/reports/month/:reportMonth', async (req, res) => {
   try {
     const { reportMonth } = req.params;
-    const monthlyReport = get('SELECT * FROM monthly_reports WHERE report_month = ?', [reportMonth]);
+    const monthlyReport = await get('SELECT * FROM monthly_reports WHERE report_month = ?', [reportMonth]);
     if (!monthlyReport) {
       return res.status(404).json({ error: `No imported report found for month ${reportMonth}` });
     }
 
-    const employees = query(`
+    const employees = await query(`
       SELECT
         esr.id,
         esr.employee_id,
@@ -301,11 +301,11 @@ router.get('/reports/month/:reportMonth', (req, res) => {
  * 6. GET /api/manager/reports/month/:reportMonth/employee/:employeeId
  * Returns the full sales report for an individual employee
  */
-router.get('/reports/month/:reportMonth/employee/:employeeId', (req, res) => {
+router.get('/reports/month/:reportMonth/employee/:employeeId', async (req, res) => {
   try {
     const { reportMonth, employeeId } = req.params;
 
-    const empReport = get(`
+    const empReport = await get(`
       SELECT esr.*, mr.month_name, mr.filename
       FROM employee_sales_reports esr
       JOIN monthly_reports mr ON esr.monthly_report_id = mr.id
@@ -318,7 +318,7 @@ router.get('/reports/month/:reportMonth/employee/:employeeId', (req, res) => {
 
     const columns = empReport.columns_json ? JSON.parse(empReport.columns_json) : [];
 
-    const rawRecords = query(`
+    const rawRecords = await query(`
       SELECT id, record_date, row_index, data_json
       FROM sales_records
       WHERE employee_sales_report_id = ?
@@ -354,7 +354,7 @@ router.get('/reports/month/:reportMonth/employee/:employeeId/export-excel', asyn
   try {
     const { reportMonth, employeeId } = req.params;
 
-    const empReport = get(`
+    const empReport = await get(`
       SELECT esr.*, mr.month_name
       FROM employee_sales_reports esr
       JOIN monthly_reports mr ON esr.monthly_report_id = mr.id
@@ -366,7 +366,7 @@ router.get('/reports/month/:reportMonth/employee/:employeeId/export-excel', asyn
     }
 
     const columns = empReport.columns_json ? JSON.parse(empReport.columns_json) : [];
-    const rawRecords = query(`
+    const rawRecords = await query(`
       SELECT data_json FROM sales_records
       WHERE employee_sales_report_id = ?
       ORDER BY record_date ASC, row_index ASC, id ASC
@@ -463,9 +463,9 @@ router.get('/reports/month/:reportMonth/employee/:employeeId/export-excel', asyn
  * 8. GET /api/manager/history
  * Lists all imported monthly reports
  */
-router.get('/history', (req, res) => {
+router.get('/history', async (req, res) => {
   try {
-    const history = query(`
+    const history = await query(`
       SELECT
         mr.id,
         mr.report_month,
@@ -491,18 +491,18 @@ router.get('/history', (req, res) => {
  * 9. DELETE /api/manager/history/:id
  * Removes an imported monthly report and all its associated employee records
  */
-router.delete('/history/:id', (req, res) => {
+router.delete('/history/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const report = get('SELECT id, report_month, month_name FROM monthly_reports WHERE id = ?', [id]);
+    const report = await get('SELECT id, report_month, month_name FROM monthly_reports WHERE id = ?', [id]);
     if (!report) {
       return res.status(404).json({ error: 'Monthly report not found.' });
     }
 
-    transaction(() => {
-      run('DELETE FROM sales_records WHERE monthly_report_id = ?', [id]);
-      run('DELETE FROM employee_sales_reports WHERE monthly_report_id = ?', [id]);
-      run('DELETE FROM monthly_reports WHERE id = ?', [id]);
+    await transaction(async () => {
+      await run('DELETE FROM sales_records WHERE monthly_report_id = ?', [id]);
+      await run('DELETE FROM employee_sales_reports WHERE monthly_report_id = ?', [id]);
+      await run('DELETE FROM monthly_reports WHERE id = ?', [id]);
     });
 
     saveDb();
@@ -520,9 +520,9 @@ router.delete('/history/:id', (req, res) => {
  * 10. GET /api/manager/employees
  * Lists all sales staff employees with their account status and report counts
  */
-router.get('/employees', (req, res) => {
+router.get('/employees', async (req, res) => {
   try {
-    const employees = query(`
+    const employees = await query(`
       SELECT 
         u.id, 
         u.staff_id, 
@@ -537,7 +537,7 @@ router.get('/employees', (req, res) => {
       FROM users u
       LEFT JOIN employee_sales_reports esr ON u.staff_id = esr.employee_id
       WHERE u.role = 'sales_staff'
-      GROUP BY u.id
+      GROUP BY u.id, u.staff_id, u.name, u.username, u.role, u.status, u.created_at, u.updated_at
       ORDER BY u.name ASC, u.staff_id ASC
     `);
 
@@ -551,7 +551,7 @@ router.get('/employees', (req, res) => {
  * 11. POST /api/manager/employees
  * Creates a new sales staff employee
  */
-router.post('/employees', (req, res) => {
+router.post('/employees', async (req, res) => {
   try {
     let { staff_id, name, username, password, status = 'active' } = req.body;
 
@@ -575,13 +575,13 @@ router.post('/employees', (req, res) => {
     }
 
     // Check duplicate staff_id
-    const existingId = get('SELECT id FROM users WHERE UPPER(staff_id) = ?', [staff_id]);
+    const existingId = await get('SELECT id FROM users WHERE UPPER(staff_id) = ?', [staff_id]);
     if (existingId) {
       return res.status(400).json({ error: `Employee ID "${staff_id}" is already assigned to another employee.` });
     }
 
     // Check duplicate username
-    const existingUsername = get('SELECT id FROM users WHERE LOWER(username) = ?', [username.trim().toLowerCase()]);
+    const existingUsername = await get('SELECT id FROM users WHERE LOWER(username) = ?', [username.trim().toLowerCase()]);
     if (existingUsername) {
       return res.status(400).json({ error: `Username "${username}" is already taken.` });
     }
@@ -589,14 +589,14 @@ router.post('/employees', (req, res) => {
     const passwordHash = bcrypt.hashSync(password, 10);
     const now = new Date().toISOString();
 
-    const result = run(`
+    const result = await run(`
       INSERT INTO users (staff_id, name, username, password_hash, role, status, created_at, updated_at)
       VALUES (?, ?, ?, ?, 'sales_staff', ?, ?, ?)
     `, [staff_id, name.trim(), username.trim().toLowerCase(), passwordHash, status === 'inactive' ? 'inactive' : 'active', now, now]);
 
     saveDb();
 
-    const created = get('SELECT id, staff_id, name, username, role, status, created_at FROM users WHERE id = ?', [result.lastInsertRowid]);
+    const created = await get('SELECT id, staff_id, name, username, role, status, created_at FROM users WHERE id = ?', [result.lastInsertRowid]);
     res.status(201).json({ employee: created, message: `Employee "${name.trim()}" created successfully.` });
   } catch (err) {
     res.status(500).json({ error: 'Failed to create employee: ' + err.message });
@@ -607,10 +607,10 @@ router.post('/employees', (req, res) => {
  * 12. PUT /api/manager/employees/:id
  * Updates an employee's details (Name, Staff ID, Username, Status)
  */
-router.put('/employees/:id', (req, res) => {
+router.put('/employees/:id', async (req, res) => {
   try {
     const targetId = parseInt(req.params.id, 10);
-    const targetUser = get('SELECT * FROM users WHERE id = ?', [targetId]);
+    const targetUser = await get('SELECT * FROM users WHERE id = ?', [targetId]);
 
     if (!targetUser) {
       return res.status(404).json({ error: 'Employee not found.' });
@@ -635,7 +635,7 @@ router.put('/employees/:id', (req, res) => {
       if (isInvalidEmployeeId(cleanStaffId)) {
         return res.status(400).json({ error: `"${cleanStaffId}" is a reserved keyword and cannot be used as an Employee ID.` });
       }
-      const duplicateId = get('SELECT id FROM users WHERE UPPER(staff_id) = ? AND id != ?', [cleanStaffId, targetId]);
+      const duplicateId = await get('SELECT id FROM users WHERE UPPER(staff_id) = ? AND id != ?', [cleanStaffId, targetId]);
       if (duplicateId) {
         return res.status(400).json({ error: `Employee ID "${cleanStaffId}" is already assigned to another user.` });
       }
@@ -647,7 +647,7 @@ router.put('/employees/:id', (req, res) => {
       if (!cleanUsername) {
         return res.status(400).json({ error: 'Username cannot be empty.' });
       }
-      const duplicateUser = get('SELECT id FROM users WHERE LOWER(username) = ? AND id != ?', [cleanUsername, targetId]);
+      const duplicateUser = await get('SELECT id FROM users WHERE LOWER(username) = ? AND id != ?', [cleanUsername, targetId]);
       if (duplicateUser) {
         return res.status(400).json({ error: `Username "${cleanUsername}" is already in use.` });
       }
@@ -655,20 +655,20 @@ router.put('/employees/:id', (req, res) => {
 
     const now = new Date().toISOString();
 
-    transaction(() => {
+    await transaction(async () => {
       // If staff_id changed, update corresponding reports and records
       if (cleanStaffId !== targetUser.staff_id) {
-        run('UPDATE employee_sales_reports SET employee_id = ? WHERE employee_id = ?', [cleanStaffId, targetUser.staff_id]);
-        run('UPDATE sales_records SET employee_id = ? WHERE employee_id = ?', [cleanStaffId, targetUser.staff_id]);
+        await run('UPDATE employee_sales_reports SET employee_id = ? WHERE employee_id = ?', [cleanStaffId, targetUser.staff_id]);
+        await run('UPDATE sales_records SET employee_id = ? WHERE employee_id = ?', [cleanStaffId, targetUser.staff_id]);
       }
       // If name changed, update corresponding reports and records
       const newName = name !== undefined ? name.trim() : targetUser.name;
       if (newName !== targetUser.name) {
-        run('UPDATE employee_sales_reports SET employee_name = ? WHERE employee_id = ?', [newName, cleanStaffId]);
-        run('UPDATE sales_records SET employee_name = ? WHERE employee_id = ?', [newName, cleanStaffId]);
+        await run('UPDATE employee_sales_reports SET employee_name = ? WHERE employee_id = ?', [newName, cleanStaffId]);
+        await run('UPDATE sales_records SET employee_name = ? WHERE employee_id = ?', [newName, cleanStaffId]);
       }
 
-      run(`
+      await run(`
         UPDATE users SET
           name = ?,
           staff_id = ?,
@@ -688,7 +688,7 @@ router.put('/employees/:id', (req, res) => {
 
     saveDb();
 
-    const updated = get('SELECT id, staff_id, name, username, role, status, updated_at FROM users WHERE id = ?', [targetId]);
+    const updated = await get('SELECT id, staff_id, name, username, role, status, updated_at FROM users WHERE id = ?', [targetId]);
     res.json({ employee: updated, message: `Employee "${updated.name}" updated successfully.` });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update employee: ' + err.message });
@@ -699,10 +699,10 @@ router.put('/employees/:id', (req, res) => {
  * 13. POST /api/manager/employees/:id/reset-password
  * Resets employee login password
  */
-router.post('/employees/:id/reset-password', (req, res) => {
+router.post('/employees/:id/reset-password', async (req, res) => {
   try {
     const targetId = parseInt(req.params.id, 10);
-    const targetUser = get('SELECT * FROM users WHERE id = ?', [targetId]);
+    const targetUser = await get('SELECT * FROM users WHERE id = ?', [targetId]);
 
     if (!targetUser) {
       return res.status(404).json({ error: 'Employee not found.' });
@@ -716,7 +716,7 @@ router.post('/employees/:id/reset-password', (req, res) => {
     const newHash = bcrypt.hashSync(newPassword, 10);
     const now = new Date().toISOString();
 
-    run('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?', [newHash, now, targetId]);
+    await run('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?', [newHash, now, targetId]);
     saveDb();
 
     res.json({ success: true, message: `Password reset successfully for ${targetUser.name}.` });
@@ -729,10 +729,10 @@ router.post('/employees/:id/reset-password', (req, res) => {
  * 14. DELETE /api/manager/employees/:id
  * Removes an employee user account
  */
-router.delete('/employees/:id', (req, res) => {
+router.delete('/employees/:id', async (req, res) => {
   try {
     const targetId = parseInt(req.params.id, 10);
-    const targetUser = get('SELECT * FROM users WHERE id = ?', [targetId]);
+    const targetUser = await get('SELECT * FROM users WHERE id = ?', [targetId]);
 
     if (!targetUser) {
       return res.status(404).json({ error: 'Employee not found.' });
@@ -742,7 +742,7 @@ router.delete('/employees/:id', (req, res) => {
       return res.status(403).json({ error: 'Cannot delete a Brand Manager account.' });
     }
 
-    run('DELETE FROM users WHERE id = ?', [targetId]);
+    await run('DELETE FROM users WHERE id = ?', [targetId]);
     saveDb();
 
     res.json({ success: true, message: `Employee account "${targetUser.name}" deleted successfully.` });
